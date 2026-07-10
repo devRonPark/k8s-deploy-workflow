@@ -6,7 +6,10 @@ import tempfile
 import unittest
 
 from preanalyzer.analyzer.parsers.compose import _merge_compose_documents, parse_with_override
+from preanalyzer.models.semantic import SemanticTaskBudget
+from preanalyzer.models.semantic_tools import SemanticToolResultStatus
 from preanalyzer.pipeline import run_phase1_analysis
+from preanalyzer.semantic.budget import SemanticToolSession
 from preanalyzer.semantic.tools import build_semantic_tool_context, execute_semantic_tool
 
 from tests.unit.semantic_tools.helpers import evidence_model, rules_for, task, write
@@ -268,6 +271,43 @@ class HardeningReadinessComposeMergeTests(unittest.TestCase):
 
         self.assertEqual(parsed.warnings, [])
         self.assertEqual(parsed.service("api").image, "api")
+
+
+class HardeningReadinessSemanticBudgetTests(unittest.TestCase):
+    def test_semantic_tool_session_reports_budget_status_after_exhaustion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            write(repo / "backend" / "app.py", "print('one')\nprint('two')\n")
+            context = build_semantic_tool_context(
+                repo,
+                task(allowed_tools=["read_source_range"], max_source_lines=10),
+                rules_for(),
+                evidence_model("F001"),
+            )
+            session = SemanticToolSession(
+                context,
+                budget=SemanticTaskBudget(max_tool_calls=1, max_source_lines=10),
+            )
+
+            first = session.call(
+                "read_source_range",
+                {"path": "app.py", "start_line": 1, "end_line": 1},
+            )
+            second = session.call(
+                "read_source_range",
+                {"path": "app.py", "start_line": 2, "end_line": 2},
+            )
+            status = session.budget_status()
+
+        self.assertEqual(first.status, SemanticToolResultStatus.OK.value)
+        self.assertEqual(second.status, SemanticToolResultStatus.BUDGET_EXHAUSTED.value)
+        self.assertEqual(status["status"], "budget_exhausted")
+        self.assertEqual(status["reason"], "max_tool_calls")
+        self.assertEqual(status["budget"]["max_tool_calls"], 1)
+        self.assertEqual(status["budget"]["used_tool_calls"], 1)
+        self.assertEqual(status["budget"]["used_files_read"], 1)
+        self.assertEqual(status["budget"]["used_source_lines"], 1)
+        self.assertTrue(status["partial_evidence_preserved"])
 
 
 if __name__ == "__main__":
