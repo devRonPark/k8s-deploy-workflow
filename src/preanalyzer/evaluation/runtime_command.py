@@ -73,6 +73,7 @@ class RuntimeCommandEvaluationResult:
     provider_error: bool
     verifier_reasons: list[str] = field(default_factory=list)
     provider_messages: list[str] = field(default_factory=list)
+    tool_call_records: list[dict[str, Any]] = field(default_factory=list)
 
 
 def load_evaluation_cases(root: Path, fixture_names: list[str] | None = None) -> list[RuntimeCommandEvaluationCase]:
@@ -382,6 +383,7 @@ def _result_from_audit(
         provider_error=first_run.get("run_status") == "provider_error",
         verifier_reasons=[str(reason) for reason in verification.get("reasons", [])],
         provider_messages=[str(message) for message in first_run.get("messages", [])],
+        tool_call_records=list(tool_records),
     )
 
 

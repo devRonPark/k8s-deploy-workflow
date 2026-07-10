@@ -90,6 +90,13 @@ class OpenAIChatDecisionProviderTests(unittest.TestCase):
         self.assertEqual([message["role"] for message in request["messages"]], ["system", "user"])
         self.assertNotIn("secret-key", json.dumps(request, sort_keys=True))
         self.assertIn("available_tools", request["messages"][1]["content"])
+        self.assertIn("tool_contracts", request["messages"][1]["content"])
+        self.assertIn("component-relative path", request["messages"][1]["content"])
+        self.assertIn("Do not repeat", request["messages"][1]["content"])
+        self.assertIn("exec_command", request["messages"][1]["content"])
+        self.assertIn("resolution_contract", request["messages"][1]["content"])
+        self.assertIn("recommended_candidate_id", request["messages"][1]["content"])
+        self.assertIn("llm_semantic_inference", request["messages"][1]["content"])
 
     def test_parses_tool_call_action(self):
         client = FakeClient(
@@ -133,7 +140,34 @@ class OpenAIChatDecisionProviderTests(unittest.TestCase):
         with self.assertRaises(SemanticProviderError) as raised:
             provider.decide(context())
 
-        self.assertEqual(raised.exception.code, "provider_schema_error")
+        self.assertEqual(raised.exception.code, "provider_schema_error_tool_call")
+
+    def test_classifies_resolution_schema_error_without_raw_response(self):
+        candidate = SemanticCandidate(
+            candidate_id="SC-001",
+            component_id="backend",
+            target_field="/components/backend/runtime/command",
+            value={"command": "uvicorn main:app"},
+            classification="llm_semantic_inference",
+            confidence="medium",
+            evidence_refs=["SE-001"],
+        )
+        payload = {
+            "action_type": "resolution",
+            "resolution": SemanticResolution(
+                task_id="ST-001",
+                status=SemanticResolutionStatus.RESOLVED,
+                candidates=[candidate],
+                recommended_candidate_id="SC-001",
+            ).model_dump(),
+        }
+        payload["resolution"]["recommended_candidate_id"] = "missing"
+        provider = OpenAIChatDecisionProvider(settings(), client=FakeClient(json.dumps(payload)))
+
+        with self.assertRaises(SemanticProviderError) as raised:
+            provider.decide(context())
+
+        self.assertEqual(raised.exception.code, "provider_schema_error_resolution_recommendation")
 
 
 if __name__ == "__main__":

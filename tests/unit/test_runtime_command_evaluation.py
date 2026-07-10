@@ -140,6 +140,7 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
             provider_error=False,
             verifier_reasons=[],
             provider_messages=[],
+            tool_call_records=[],
         ),
             RuntimeCommandEvaluationResult(
                 fixture="bad",
@@ -164,6 +165,7 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
                 provider_error=False,
                 verifier_reasons=["candidate_not_grounded"],
                 provider_messages=[],
+                tool_call_records=[],
             ),
         ]
 
@@ -200,6 +202,13 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
             provider_error=True,
             verifier_reasons=["SEMANTIC_LLM_API_KEY=sk-secretsecretsecret"],
             provider_messages=["provider_auth_error"],
+            tool_call_records=[
+                {
+                    "tool_name": "inspect_entrypoint_script",
+                    "result_status": "blocked",
+                    "arguments": {"path": "/abs/path/secret.py"},
+                }
+            ],
         )
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -216,6 +225,8 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
             report = report_path.read_text(encoding="utf-8")
 
         self.assertNotIn("sk-secretsecretsecret", payload)
+        self.assertIn("inspect_entrypoint_script", payload)
+        self.assertIn("blocked", payload)
         self.assertNotIn("SEMANTIC_LLM_API_KEY", report)
         self.assertIn("secret-case", report)
         self.assertIn("provider_auth_error", payload)
