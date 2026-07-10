@@ -6,6 +6,14 @@ from typing import Any
 
 import yaml
 
+from preanalyzer.analyzer.parsers.result import (
+    CODE_INVALID_ENCODING,
+    CODE_INVALID_SYNTAX,
+    CODE_INVALID_YAML,
+    CODE_READ_ERROR,
+    ParseWarning,
+)
+
 
 @dataclass(frozen=True)
 class ComposePort:
@@ -70,6 +78,32 @@ def parse_with_override(base_path: Path, override_path: Path | None) -> ParsedCo
         override = yaml.safe_load(override_path.read_text(encoding="utf-8")) or {}
         document = _merge_compose_documents(base, override)
     return _parse_document(base_path, document)
+
+
+def try_parse(path: Path) -> ParsedCompose | ParseWarning:
+    return _guard(path, lambda: parse(path))
+
+
+def try_parse_with_override(base_path: Path, override_path: Path | None) -> ParsedCompose | ParseWarning:
+    return _guard(base_path, lambda: parse_with_override(base_path, override_path))
+
+
+def _guard(path: Path, call) -> ParsedCompose | ParseWarning:
+    try:
+        return call()
+    except yaml.YAMLError as exc:
+        message = getattr(exc, "problem", None) or "YAML parsing failed"
+        return ParseWarning(path=str(path), parser="compose", message=str(message), code=CODE_INVALID_YAML)
+    except UnicodeDecodeError:
+        return ParseWarning(
+            path=str(path), parser="compose", message="invalid text encoding", code=CODE_INVALID_ENCODING
+        )
+    except OSError as exc:
+        return ParseWarning(
+            path=str(path), parser="compose", message=exc.strerror or "read error", code=CODE_READ_ERROR
+        )
+    except (ValueError, TypeError, AttributeError) as exc:
+        return ParseWarning(path=str(path), parser="compose", message=str(exc), code=CODE_INVALID_SYNTAX)
 
 
 def _parse_document(path: Path, document: dict) -> ParsedCompose:

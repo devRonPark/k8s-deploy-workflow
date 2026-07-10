@@ -4,18 +4,27 @@ from dataclasses import dataclass
 from pathlib import Path
 import tomllib
 
+from preanalyzer.analyzer.parsers.result import (
+    CODE_INVALID_ENCODING,
+    CODE_INVALID_TOML,
+    CODE_READ_ERROR,
+    ParseWarning,
+)
+
+__all__ = [
+    "ParsedPythonPackage",
+    "ParseWarning",
+    "parse_pyproject",
+    "parse_requirements",
+    "try_parse_pyproject",
+    "try_parse_requirements",
+]
+
 
 @dataclass(frozen=True)
 class ParsedPythonPackage:
     path: str
     dependencies: list[str]
-
-
-@dataclass(frozen=True)
-class ParseWarning:
-    path: str
-    parser: str
-    message: str
 
 
 def parse_pyproject(path: Path) -> ParsedPythonPackage:
@@ -40,15 +49,31 @@ def parse_requirements(path: Path) -> ParsedPythonPackage:
 def try_parse_pyproject(path: Path) -> ParsedPythonPackage | ParseWarning:
     try:
         return parse_pyproject(path)
-    except Exception as exc:
-        return ParseWarning(path=str(path), parser="python_pyproject", message=str(exc))
+    except tomllib.TOMLDecodeError as exc:
+        return ParseWarning(
+            path=str(path), parser="python_pyproject", message=str(exc), code=CODE_INVALID_TOML
+        )
+    except UnicodeDecodeError:
+        return ParseWarning(
+            path=str(path), parser="python_pyproject", message="invalid text encoding", code=CODE_INVALID_ENCODING
+        )
+    except OSError as exc:
+        return ParseWarning(
+            path=str(path), parser="python_pyproject", message=exc.strerror or "read error", code=CODE_READ_ERROR
+        )
 
 
 def try_parse_requirements(path: Path) -> ParsedPythonPackage | ParseWarning:
     try:
         return parse_requirements(path)
-    except Exception as exc:
-        return ParseWarning(path=str(path), parser="python_requirements", message=str(exc))
+    except UnicodeDecodeError:
+        return ParseWarning(
+            path=str(path), parser="python_requirements", message="invalid text encoding", code=CODE_INVALID_ENCODING
+        )
+    except OSError as exc:
+        return ParseWarning(
+            path=str(path), parser="python_requirements", message=exc.strerror or "read error", code=CODE_READ_ERROR
+        )
 
 
 def _dependency_name(value: str) -> str:

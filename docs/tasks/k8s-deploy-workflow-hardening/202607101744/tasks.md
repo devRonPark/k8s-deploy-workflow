@@ -802,10 +802,10 @@ Parser마다 다른 예외 처리 방식을 통합하고, pipeline이 부분 실
 
 ## Milestone 2 — Reproducibility and Parser Resilience
 
-- [ ] TASK-003 Snapshot mode 분리
-- [ ] TASK-006 Parser 오류 격리
-- [ ] TASK-013 공통 Parser Result
-- [ ] TASK-014 재현성 테스트
+- [x] TASK-003 Snapshot mode 분리
+- [x] TASK-006 Parser 오류 격리
+- [x] TASK-013 공통 Parser Result
+- [x] TASK-014 재현성 테스트
 
 ### Exit Criteria
 

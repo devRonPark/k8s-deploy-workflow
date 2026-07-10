@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 import fnmatch
+import hashlib
 import subprocess
 
 import yaml
@@ -53,18 +54,37 @@ def snapshot(
     url: str | None,
     ref: str | None,
     clock: Callable[[], datetime],
+    mode: str = "workspace",
+    git_repo: Path | None = None,
 ) -> RepositorySnapshot:
+    """Capture a repository snapshot.
+
+    ``repo`` is the directory whose files are analyzed. ``git_repo`` is the
+    directory git metadata (commit SHA, branch, working-tree status) is read
+    from; it defaults to ``repo`` and differs only in commit mode, where
+    ``repo`` is an extracted commit tree with no ``.git``.
+    """
     repo = resolve_repository_path(repo)
+    git_repo = resolve_repository_path(git_repo) if git_repo is not None else repo
     warnings: list[str] = []
-    commit_sha = _git_output(repo, ["rev-parse", "HEAD"])
+    commit_sha = _git_output(git_repo, ["rev-parse", "HEAD"])
     if commit_sha is None:
         warnings.append("not a git repository")
 
-    default_branch = _default_branch(repo)
+    default_branch = _default_branch(git_repo)
     analyzed_at = _format_utc(clock())
 
     files, skip_warnings = _scan_repository(repo)
     warnings.extend(skip_warnings)
+
+    workspace_dirty: bool | None = None
+    modified_files: list[str] = []
+    untracked_files: list[str] = []
+    if mode == "workspace":
+        status = _workspace_status(git_repo)
+        if status is not None:
+            modified_files, untracked_files = status
+            workspace_dirty = bool(modified_files or untracked_files)
 
     return RepositorySnapshot(
         url=url,
@@ -76,6 +96,11 @@ def snapshot(
         analyzer_version=__version__,
         rules_version=RULES_VERSION,
         file_count=len(files),
+        snapshot_mode=mode,
+        workspace_hash=_workspace_hash(repo, files),
+        workspace_dirty=workspace_dirty,
+        modified_files=modified_files,
+        untracked_files=untracked_files,
         excluded_patterns=list(EXCLUDED_PATTERNS),
         warnings=sorted(warnings),
     )
@@ -234,7 +259,56 @@ def _format_utc(value: datetime) -> str:
     return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _git_output(repo: Path, args: list[str]) -> str | None:
+def _workspace_hash(root: Path, files: list[Path]) -> str:
+    """Content hash over the exact analyzed file set.
+
+    Deterministic for identical inputs and independent of directory traversal
+    order: files are keyed by their repository-relative path and each content
+    is folded in as its own digest. Unreadable files contribute a stable
+    marker rather than aborting the snapshot.
+    """
+    digest = hashlib.sha256()
+    for rel, path in sorted((_rel(path, root), path) for path in files):
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        try:
+            digest.update(hashlib.sha256(path.read_bytes()).digest())
+        except OSError:
+            digest.update(b"<unreadable>")
+        digest.update(b"\n")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _workspace_status(repo: Path) -> tuple[list[str], list[str]] | None:
+    """Return (modified, untracked) file lists, or None if not a worktree root.
+
+    Only reports status when ``repo`` is itself the git top-level, so a nested
+    subdirectory does not inherit the enclosing repository's dirty state.
+    """
+    toplevel = _git_output(repo, ["rev-parse", "--show-toplevel"])
+    if toplevel is None or Path(toplevel).resolve() != repo.resolve():
+        return None
+    raw = _git_run(repo, ["status", "--porcelain"])
+    if raw is None:
+        return None
+    modified: set[str] = set()
+    untracked: set[str] = set()
+    for line in raw.splitlines():
+        if not line:
+            continue
+        code, path = line[:2], line[3:]
+        if " -> " in path:  # rename/copy: record the destination path
+            path = path.split(" -> ", 1)[1]
+        path = path.strip().strip('"')
+        if code == "??":
+            untracked.add(path)
+        else:
+            modified.add(path)
+    return sorted(modified), sorted(untracked)
+
+
+def _git_run(repo: Path, args: list[str]) -> str | None:
+    """Run git and return raw stdout (``""`` on clean/empty), or None on error."""
     try:
         result = subprocess.run(
             ["git", "-C", str(repo), *args],
@@ -246,7 +320,14 @@ def _git_output(repo: Path, args: list[str]) -> str | None:
         return None
     if result.returncode != 0:
         return None
-    output = result.stdout.strip()
+    return result.stdout
+
+
+def _git_output(repo: Path, args: list[str]) -> str | None:
+    raw = _git_run(repo, args)
+    if raw is None:
+        return None
+    output = raw.strip()
     return output or None
 
 

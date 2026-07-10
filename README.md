@@ -97,6 +97,17 @@ run_phase1_analysis(
 
 `./out/` 아래에 `00-repository-snapshot.yaml`, `01-artifact-inventory.yaml`, `02-evidence-model.yaml`, `03-rule-inference.yaml` 4개 파일이 생성된다.
 
+## Snapshot 모드 (재현성)
+
+`run_phase1_analysis(..., mode=...)`로 분석 입력의 재현성 기준을 선택한다.
+
+| mode | 분석 대상 | 재현성 의미 |
+|---|---|---|
+| `workspace` (기본) | 현재 working tree | 커밋하지 않은 변경·untracked 파일 포함. `workspace_hash`(분석 대상 파일 내용 해시)가 재현성 키이며, dirty 여부·수정/untracked 파일 목록을 snapshot에 기록 |
+| `commit` | `git archive HEAD` 트리 | working tree 상태와 무관하게 **동일 commit → byte-identical 산출물**. 커밋되지 않은 값은 산출물·prompt에 노출되지 않음 |
+
+Snapshot metadata에 `snapshot_mode`, `workspace_hash`, `workspace_dirty`, `modified_files`, `untracked_files`가 포함된다. `commit` 모드에서 git 저장소가 아니면 working tree로 fallback하고 warning을 남긴다.
+
 ## 프로젝트 구조
 
 ```
