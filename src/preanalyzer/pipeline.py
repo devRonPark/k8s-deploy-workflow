@@ -23,14 +23,21 @@ from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
 from preanalyzer.analyzer.parsers.python_pkg import try_parse_pyproject, try_parse_requirements
 from preanalyzer.analyzer.parsers.result import ParseWarning
 from preanalyzer.analyzer.rule_inference import infer
+from preanalyzer.analyzer.runtime_command_resolver import analyze_runtime_commands
 from preanalyzer.analyzer.scanner import build_inventory, snapshot
 from preanalyzer.models.evidence import EvidenceModel
 from preanalyzer.models.inventory import ArtifactInventory
-from preanalyzer.models.rule_inference import RuleInferenceSet
+from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
+from preanalyzer.models.semantic_agent import SemanticAgentRunResult
 from preanalyzer.models.snapshot import RepositorySnapshot
+from preanalyzer.semantic.agent import AgentDecisionProvider, run_semantic_agent
+from preanalyzer.semantic.task_builder import build_runtime_command_semantic_tasks
+from preanalyzer.semantic.tools import build_semantic_tool_context
+from preanalyzer.semantic.tools.common import SemanticToolContextBuildError
 
 
 SNAPSHOT_MODES = {"workspace", "commit"}
+SEMANTIC_MODES = {"disabled", "fake", "openai_compatible"}
 
 
 def run_phase1_analysis(
@@ -40,9 +47,14 @@ def run_phase1_analysis(
     ref: str | None,
     clock: Callable[[], datetime],
     mode: str = "workspace",
+    semantic_mode: str = "disabled",
+    semantic_decision_provider: AgentDecisionProvider | None = None,
+    semantic_model: str | None = None,
 ) -> tuple[RepositorySnapshot, ArtifactInventory, EvidenceModel, RuleInferenceSet]:
     if mode not in SNAPSHOT_MODES:
         raise ValueError(f"unknown snapshot mode: {mode!r}")
+    if semantic_mode not in SEMANTIC_MODES:
+        raise ValueError(f"unknown semantic mode: {semantic_mode!r}")
 
     git_repo = resolve_repository_path(repo)
     analysis_root = git_repo
@@ -56,30 +68,216 @@ def run_phase1_analysis(
             extra_warnings.append("commit snapshot unavailable; analyzed working tree")
 
     try:
-        repo_snapshot = snapshot(
-            repo=analysis_root, url=url, ref=ref, clock=clock, mode=mode, git_repo=git_repo
-        )
+        repo_snapshot = snapshot(repo=analysis_root, url=url, ref=ref, clock=clock, mode=mode, git_repo=git_repo)
         if extra_warnings:
             repo_snapshot = repo_snapshot.model_copy(
                 update={"warnings": sorted(repo_snapshot.warnings + extra_warnings)}
             )
         inventory = build_inventory(repo=analysis_root, snapshot=repo_snapshot)
         parsed_artifacts, parse_warnings = _parse_inventory(analysis_root, inventory)
+
+        evidence = build_evidence(inventory, parsed_artifacts)
+        evidence = EvidenceModel(facts=evidence.facts, warnings=evidence.warnings + parse_warnings)
+        rules = infer(evidence)
+        semantic_audit = _build_semantic_analysis_audit(
+            repository_root=analysis_root,
+            evidence=evidence,
+            rules=rules,
+            semantic_mode=semantic_mode,
+            decision_provider=semantic_decision_provider,
+            semantic_model=semantic_model,
+        )
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _write_yaml(output_dir / "00-repository-snapshot.yaml", {"repository_snapshot": repo_snapshot.model_dump()})
+        _write_yaml(output_dir / "01-artifact-inventory.yaml", {"artifact_inventory": inventory.model_dump()})
+        _write_yaml(output_dir / "02-evidence-model.yaml", {"evidence_model": evidence.model_dump()})
+        _write_yaml(output_dir / "03-rule-inference.yaml", {"rule_inference": rules.model_dump()})
+        _write_yaml(output_dir / "04-semantic-analysis.yaml", {"semantic_analysis": semantic_audit})
+
+        return repo_snapshot, inventory, evidence, rules
     finally:
         if temp_tree is not None:
             shutil.rmtree(temp_tree, ignore_errors=True)
 
-    evidence = build_evidence(inventory, parsed_artifacts)
-    evidence = EvidenceModel(facts=evidence.facts, warnings=evidence.warnings + parse_warnings)
-    rules = infer(evidence)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_yaml(output_dir / "00-repository-snapshot.yaml", {"repository_snapshot": repo_snapshot.model_dump()})
-    _write_yaml(output_dir / "01-artifact-inventory.yaml", {"artifact_inventory": inventory.model_dump()})
-    _write_yaml(output_dir / "02-evidence-model.yaml", {"evidence_model": evidence.model_dump()})
-    _write_yaml(output_dir / "03-rule-inference.yaml", {"rule_inference": rules.model_dump()})
+def _build_semantic_analysis_audit(
+    *,
+    repository_root: Path,
+    evidence: EvidenceModel,
+    rules: RuleInferenceSet,
+    semantic_mode: str,
+    decision_provider: AgentDecisionProvider | None,
+    semantic_model: str | None,
+) -> dict:
+    runtime_analysis = analyze_runtime_commands(evidence, rules)
+    task_build_result = build_runtime_command_semantic_tasks(runtime_analysis)
+    runs: list[dict] = []
+    setup_statuses: list[str] = []
 
-    return repo_snapshot, inventory, evidence, rules
+    provider = decision_provider
+    if semantic_mode == "openai_compatible" and provider is None:
+        try:
+            from preanalyzer.semantic import OpenAIChatDecisionProvider
+
+            provider = OpenAIChatDecisionProvider.from_env()
+            if semantic_model is None:
+                semantic_model = provider.settings.model
+        except Exception:
+            setup_statuses.append("provider_config_error")
+
+    enabled = semantic_mode != "disabled"
+    if enabled and provider is not None:
+        for task in task_build_result.tasks:
+            runs.append(
+                _run_semantic_task_for_audit(
+                    repository_root=repository_root,
+                    task=task,
+                    rules=rules,
+                    evidence=evidence,
+                    decision_provider=provider,
+                )
+            )
+    elif enabled and task_build_result.tasks:
+        setup_statuses.append("provider_unavailable")
+
+    return {
+        "schema_version": "semantic-analysis/v1",
+        "enabled": enabled,
+        "provider": semantic_mode,
+        "model": semantic_model,
+        "runtime_command_analysis": runtime_analysis.model_dump(),
+        "task_build_result": task_build_result.model_dump(),
+        "runs": runs,
+        "summary": _semantic_summary(task_build_result, runs, setup_statuses),
+    }
+
+
+def _run_semantic_task_for_audit(
+    *,
+    repository_root: Path,
+    task,
+    rules: RuleInferenceSet,
+    evidence: EvidenceModel,
+    decision_provider: AgentDecisionProvider,
+) -> dict:
+    rules = _rules_with_implicit_root_if_needed(rules, task.component_id)
+    try:
+        tool_context = build_semantic_tool_context(repository_root, task, rules, evidence)
+    except SemanticToolContextBuildError as exc:
+        return _empty_semantic_run_audit(task, "context_build_error", message=exc.code)
+
+    try:
+        result = run_semantic_agent(
+            task=task,
+            tool_context=tool_context,
+            decision_provider=decision_provider,
+            phase1_evidence=evidence,
+        )
+    except Exception:
+        return _empty_semantic_run_audit(task, "semantic_agent_error")
+    return _semantic_run_audit(task, result)
+
+
+def _rules_with_implicit_root_if_needed(rules: RuleInferenceSet, component_id: str) -> RuleInferenceSet:
+    if rules.component_candidates or component_id != "root":
+        return rules
+    return rules.model_copy(
+        update={
+            "component_candidates": [
+                ComponentCandidate(
+                    component_id="root",
+                    root_path=".",
+                    source="implicit_root",
+                    evidence_refs=[],
+                )
+            ]
+        }
+    )
+
+
+def _empty_semantic_run_audit(task, status: str, *, message: str | None = None) -> dict:
+    return {
+        "task_id": task.task_id,
+        "component_id": task.component_id,
+        "target_field": task.target_field,
+        "run_status": status,
+        "messages": [message] if message is not None else [],
+        "turn_count": 0,
+        "tool_call_count": 0,
+        "distinct_tools_used": 0,
+        "files_read": 0,
+        "source_lines_returned": 0,
+        "tool_call_records": [],
+        "resolution": None,
+        "verification_result": None,
+    }
+
+
+def _semantic_run_audit(task, result: SemanticAgentRunResult) -> dict:
+    return {
+        "task_id": task.task_id,
+        "component_id": task.component_id,
+        "target_field": task.target_field,
+        "run_status": str(result.status),
+        "messages": list(result.messages),
+        "turn_count": result.turn_count,
+        "tool_call_count": result.tool_call_count,
+        "distinct_tools_used": result.distinct_tools_used,
+        "files_read": result.files_read,
+        "source_lines_returned": result.source_lines_returned,
+        "tool_call_records": [record.model_dump() for record in result.tool_call_records],
+        "resolution": _audit_resolution(result),
+        "verification_result": (
+            result.verification_result.model_dump() if result.verification_result is not None else None
+        ),
+    }
+
+
+def _audit_resolution(result: SemanticAgentRunResult) -> dict | None:
+    if result.resolution is None:
+        return None
+    return {
+        "status": str(result.resolution.status),
+        "candidate_ids": [candidate.candidate_id for candidate in result.resolution.candidates],
+        "recommended_candidate_id": result.resolution.recommended_candidate_id,
+        "tool_trace_refs": list(result.resolution.tool_trace_refs),
+    }
+
+
+def _semantic_summary(task_build_result, runs: list[dict], setup_statuses: list[str]) -> dict:
+    summary = {
+        "tasks_created": len(task_build_result.tasks),
+        "runs_attempted": len(runs),
+        "accepted": 0,
+        "verification_rejected": 0,
+        "ambiguous": 0,
+        "insufficient_evidence": 0,
+        "budget_exhausted": 0,
+        "tool_error": 0,
+        "provider_error": 0,
+        "invalid_action": 0,
+        "context_build_error": 0,
+        "provider_config_error": 0,
+        "provider_unavailable": 0,
+    }
+    for status in setup_statuses:
+        summary[status] = summary.get(status, 0) + 1
+    for run in runs:
+        run_status = str(run["run_status"])
+        if run_status in summary:
+            summary[run_status] += 1
+        verification = run.get("verification_result") or {}
+        verification_status = verification.get("status")
+        if verification_status == "accepted":
+            summary["accepted"] += 1
+        elif verification_status == "rejected":
+            summary["verification_rejected"] += 1
+        elif verification_status in {"ambiguous", "insufficient_evidence", "budget_exhausted", "tool_error"}:
+            summary[verification_status] += 1
+        if run_status == "context_build_error":
+            summary["context_build_error"] += 1
+    return summary
 
 
 def _extract_commit_tree(git_repo: Path) -> Path | None:
