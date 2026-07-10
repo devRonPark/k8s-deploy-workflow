@@ -230,6 +230,8 @@ feat:  fix:  test:  refactor:  docs:  chore:
 
 One commit should represent one independently verifiable purpose.
 
+At the end of each approved implementation task, run the required verification and commit that task's changes before starting the next task. If a task cannot be committed immediately, report the blocker and leave the worktree state explicit.
+
 ## Completion
 
 Before claiming completion, apply `superpowers:verification-before-completion` and freshly run:
