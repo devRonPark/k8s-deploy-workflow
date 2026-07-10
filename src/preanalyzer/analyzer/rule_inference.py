@@ -3,6 +3,7 @@ from __future__ import annotations
 from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.models.rule_inference import (
     ComponentCandidate,
+    DependencyEdgeCandidate,
     EnvClassification,
     RoleCandidate,
     RuleInferenceSet,
@@ -30,6 +31,7 @@ def infer(evidence: EvidenceModel) -> RuleInferenceSet:
         runtime_version_candidates=_runtime_version_candidates(evidence, component_candidates),
         runtime_port_candidates=_runtime_port_candidates(evidence, component_candidates),
         runtime_command_candidates=_runtime_command_candidates(evidence, component_candidates),
+        dependency_edge_candidates=_dependency_edge_candidates(evidence),
         env_classification=EnvClassification(secret_candidates=_secret_candidates(evidence)),
     )
 
@@ -290,3 +292,43 @@ def _source_for_package_fact(fact: EvidenceFact) -> str:
 def _is_secret_name(name: str) -> bool:
     upper = name.upper()
     return any(token in upper for token in ["PASSWORD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "PRIVATE"])
+
+
+def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeCandidate]:
+    candidates: list[DependencyEdgeCandidate] = []
+    compose_services = {fact.value["service"] for fact in evidence.facts_by_type("compose_service")}
+    for fact in evidence.facts_by_type("compose_depends_on"):
+        candidates.append(
+            DependencyEdgeCandidate(
+                source_component=fact.value["service"],
+                target=fact.value["depends_on"],
+                dependency_type="internal",
+                source=fact.source,
+                confidence="high",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
+    for fact in evidence.facts_by_type("compose_environment"):
+        name = fact.value["name"]
+        value = str(fact.value.get("value", ""))
+        if name.upper().endswith("DATABASE_URL"):
+            target = _database_target(value, compose_services)
+            if target is not None:
+                candidates.append(
+                    DependencyEdgeCandidate(
+                        source_component=fact.value["service"],
+                        target=target,
+                        dependency_type="database",
+                        source=fact.source,
+                        confidence="medium",
+                        evidence_refs=[fact.evidence_id],
+                    )
+                )
+    return sorted(candidates, key=lambda c: (c.source_component, c.target, c.dependency_type))
+
+
+def _database_target(value: str, compose_services: set[str]) -> str | None:
+    for service in sorted(compose_services):
+        if f"@{service}:" in value or f"//{service}:" in value:
+            return service
+    return None

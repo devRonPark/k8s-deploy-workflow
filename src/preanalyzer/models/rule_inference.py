@@ -79,6 +79,19 @@ class RuntimeCommandCandidate:
 
 
 @dataclass(frozen=True)
+class DependencyEdgeCandidate:
+    source_component: str
+    target: str
+    dependency_type: str
+    source: str
+    confidence: str
+    evidence_refs: list[str]
+
+    def model_dump(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class SecretCandidate:
     component_id: str
     name: str
@@ -105,6 +118,7 @@ class RuleInferenceSet:
     runtime_version_candidates: list[RuntimeVersionCandidate] = field(default_factory=list)
     runtime_port_candidates: list[RuntimePortCandidate] = field(default_factory=list)
     runtime_command_candidates: list[RuntimeCommandCandidate] = field(default_factory=list)
+    dependency_edge_candidates: list[DependencyEdgeCandidate] = field(default_factory=list)
     env_classification: EnvClassification = field(default_factory=EnvClassification)
 
     def model_dump(self) -> dict:
