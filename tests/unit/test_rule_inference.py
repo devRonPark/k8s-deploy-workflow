@@ -44,7 +44,7 @@ class RuleInferenceTests(unittest.TestCase):
 
         self.assertEqual(
             [candidate.model_dump() for candidate in rules.component_candidates],
-            [{"component_id": "root", "root_path": ".", "source": "pom.xml", "evidence_refs": ["F0004"]}],
+            [{"component_id": "root", "root_path": ".", "source": "pom.xml", "evidence_refs": ["F0004"], "classification": "rule_inference"}],
         )
         self.assertIn(
             {
@@ -56,6 +56,7 @@ class RuleInferenceTests(unittest.TestCase):
                 "source": "pom.xml",
                 "confidence": "high",
                 "evidence_refs": ["F0004"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_candidates],
         )
@@ -66,17 +67,17 @@ class RuleInferenceTests(unittest.TestCase):
         self.assertEqual(
             [candidate.model_dump() for candidate in rules.component_candidates],
             [
-                {"component_id": "backend", "root_path": "backend", "source": "compose_service", "evidence_refs": ["F0012"]},
-                {"component_id": "db", "root_path": None, "source": "compose_service", "evidence_refs": ["F0017"]},
-                {"component_id": "frontend", "root_path": "frontend", "source": "compose_service", "evidence_refs": ["F0020"]},
+                {"component_id": "backend", "root_path": "backend", "source": "compose_service", "evidence_refs": ["F0012"], "classification": "rule_inference"},
+                {"component_id": "db", "root_path": None, "source": "compose_service", "evidence_refs": ["F0017"], "classification": "rule_inference"},
+                {"component_id": "frontend", "root_path": "frontend", "source": "compose_service", "evidence_refs": ["F0020"], "classification": "rule_inference"},
             ],
         )
         self.assertIn(
-            {"component_id": "backend", "role": "application", "source": "compose_build", "confidence": "medium", "evidence_refs": ["F0013"]},
+            {"component_id": "backend", "role": "application", "source": "compose_build", "confidence": "medium", "evidence_refs": ["F0013"], "classification": "rule_inference"},
             [candidate.model_dump() for candidate in rules.role_candidates],
         )
         self.assertIn(
-            {"component_id": "db", "role": "dependency", "source": "infra_image_pattern", "confidence": "high", "evidence_refs": ["F0018"]},
+            {"component_id": "db", "role": "dependency", "source": "infra_image_pattern", "confidence": "high", "evidence_refs": ["F0018"], "classification": "rule_inference"},
             [candidate.model_dump() for candidate in rules.role_candidates],
         )
 
@@ -93,6 +94,7 @@ class RuleInferenceTests(unittest.TestCase):
                 "source": "package.json",
                 "confidence": "high",
                 "evidence_refs": ["F0006"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_candidates],
         )
@@ -101,7 +103,7 @@ class RuleInferenceTests(unittest.TestCase):
         rules = infer(fixture_evidence("fastapi-fullstack-like"))
 
         self.assertIn(
-            {"component_id": "db", "name": "POSTGRES_PASSWORD", "source": "compose_environment", "evidence_refs": ["F0019"]},
+            {"component_id": "db", "name": "POSTGRES_PASSWORD", "source": "compose_environment", "evidence_refs": ["F0019"], "classification": "rule_inference"},
             [candidate.model_dump() for candidate in rules.env_classification.secret_candidates],
         )
         self.assertNotIn("changethis", repr(rules.model_dump()))

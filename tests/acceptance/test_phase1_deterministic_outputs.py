@@ -66,6 +66,7 @@ class Phase1DeterministicOutputTests(unittest.TestCase):
                     "source": "infra_image_pattern",
                     "confidence": "high",
                     "evidence_refs": ["F0018"],
+                    "classification": "rule_inference",
                 },
                 roles,
             )

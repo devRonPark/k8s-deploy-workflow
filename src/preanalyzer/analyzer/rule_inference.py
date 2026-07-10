@@ -231,8 +231,6 @@ def _component_for_artifact(artifact_ref: str, component_candidates: list[Compon
             return candidate.component_id
         if root_path and root_path != "." and artifact_ref.startswith(f"{root_path}/"):
             return candidate.component_id
-    if "/" in artifact_ref:
-        return artifact_ref.split("/", 1)[0]
     return None
 
 

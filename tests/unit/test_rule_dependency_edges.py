@@ -31,6 +31,7 @@ class RuleDependencyEdgeTests(unittest.TestCase):
                 "source": "compose_depends_on",
                 "confidence": "high",
                 "evidence_refs": ["F0009"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.dependency_edge_candidates],
         )
@@ -49,6 +50,7 @@ class RuleDependencyEdgeTests(unittest.TestCase):
                 "source": "compose_environment",
                 "confidence": "medium",
                 "evidence_refs": ["F0011"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.dependency_edge_candidates],
         )

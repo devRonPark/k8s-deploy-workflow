@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 
 from preanalyzer.analyzer.evidence_builder import build as build_evidence
+from preanalyzer.analyzer.parsers.compose import parse as parse_compose
 from preanalyzer.analyzer.parsers.dockerfile import parse as parse_dockerfile
 from preanalyzer.analyzer.parsers.nodejs import parse as parse_nodejs
 from preanalyzer.analyzer.parsers.python_pkg import parse_pyproject
@@ -24,6 +25,7 @@ def rules_for_fastapi():
     evidence = build_evidence(
         inventory,
         {
+            "docker-compose.yml": parse_compose(repo / "docker-compose.yml"),
             "backend/Dockerfile": parse_dockerfile(repo / "backend" / "Dockerfile"),
             "backend/pyproject.toml": parse_pyproject(repo / "backend" / "pyproject.toml"),
             "frontend/Dockerfile": parse_dockerfile(repo / "frontend" / "Dockerfile"),
@@ -45,6 +47,7 @@ class RuleRuntimeCandidateTests(unittest.TestCase):
                 "source": "dockerfile_from",
                 "confidence": "high",
                 "evidence_refs": ["F0007"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_version_candidates],
         )
@@ -55,7 +58,8 @@ class RuleRuntimeCandidateTests(unittest.TestCase):
                 "version": "20",
                 "source": "dockerfile_from",
                 "confidence": "high",
-                "evidence_refs": ["F0012"],
+                "evidence_refs": ["F0023"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_version_candidates],
         )
@@ -70,6 +74,7 @@ class RuleRuntimeCandidateTests(unittest.TestCase):
                 "source": "dockerfile_expose",
                 "confidence": "high",
                 "evidence_refs": ["F0008"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_port_candidates],
         )
@@ -80,6 +85,7 @@ class RuleRuntimeCandidateTests(unittest.TestCase):
                 "source": "dockerfile_cmd",
                 "confidence": "high",
                 "evidence_refs": ["F0009"],
+                "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_command_candidates],
         )

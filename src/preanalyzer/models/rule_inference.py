@@ -9,6 +9,7 @@ class ComponentCandidate:
     root_path: str | None
     source: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -21,6 +22,7 @@ class RoleCandidate:
     source: str
     confidence: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -36,6 +38,7 @@ class RuntimeCandidate:
     source: str
     confidence: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -49,6 +52,7 @@ class RuntimeVersionCandidate:
     source: str
     confidence: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -61,6 +65,7 @@ class RuntimePortCandidate:
     source: str
     confidence: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -73,6 +78,7 @@ class RuntimeCommandCandidate:
     source: str
     confidence: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -86,6 +92,7 @@ class DependencyEdgeCandidate:
     source: str
     confidence: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -97,6 +104,7 @@ class SecretCandidate:
     name: str
     source: str
     evidence_refs: list[str]
+    classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
         return asdict(self)
