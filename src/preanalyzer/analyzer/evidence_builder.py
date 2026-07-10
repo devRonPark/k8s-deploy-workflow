@@ -104,7 +104,7 @@ def _append_compose_facts(append, artifact_ref: str, parsed: ParsedCompose) -> N
                 {"service": service.name, "depends_on": depends_on},
             )
         for port in service.ports:
-            append("compose_port", artifact_ref, port.source, {"service": service.name, **port.model_dump()})
+            append("compose_port", artifact_ref, "compose_ports", {"service": service.name, **port.model_dump()})
         for name, value in sorted(service.environment.items()):
             append("compose_environment", artifact_ref, "compose_environment", build_env_fact(service.name, name, value))
         for volume in service.volumes:

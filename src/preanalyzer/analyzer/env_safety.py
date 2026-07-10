@@ -14,6 +14,23 @@ import re
 from urllib.parse import parse_qs, urlsplit
 
 
+class _HostEnvironment:
+    """Sentinel for a bare Compose environment key (``- DEBUG``).
+
+    A bare key passes the host environment's value through at runtime; it is
+    neither "empty" nor a literal. Kept distinct so evidence can record
+    ``source: host_environment`` without ever reading the host value.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return "HOST_ENVIRONMENT"
+
+
+HOST_ENVIRONMENT = _HostEnvironment()
+
+
 _SECRET_NAME_TOKENS = ["PASSWORD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "PRIVATE"]
 
 _VARIABLE_REF_RE = re.compile(
@@ -99,11 +116,22 @@ def contains_credentials(value: str) -> bool:
     return False
 
 
-def build_env_fact(service_name: str, name: str, value: str | None) -> dict[str, object]:
+def build_env_fact(service_name: str, name: str, value: object) -> dict[str, object]:
     """Build a sanitized evidence fact for one environment variable.
 
     The raw value is intentionally never included in the returned mapping.
     """
+    if value is HOST_ENVIRONMENT:
+        return {
+            "service": service_name,
+            "name": name,
+            "value_present": "unknown",
+            "value_type": "host_environment",
+            "source": "host_environment",
+            "resolved": False,
+            "contains_credentials": False,
+        }
+
     referenced = extract_referenced_variables(value or "")
     fact: dict[str, object] = {
         "service": service_name,

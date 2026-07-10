@@ -817,10 +817,10 @@ Parser마다 다른 예외 처리 방식을 통합하고, pipeline이 부분 실
 
 ## Milestone 3 — Compose Compatibility
 
-- [ ] TASK-004 Compose override 병합
-- [ ] TASK-005 Port parser 개선
-- [ ] TASK-009 Bare environment 처리
-- [ ] Compose golden tests 추가
+- [x] TASK-004 Compose override 병합
+- [x] TASK-005 Port parser 개선
+- [x] TASK-009 Bare environment 처리
+- [x] Compose golden tests 추가
 
 ### Exit Criteria
 

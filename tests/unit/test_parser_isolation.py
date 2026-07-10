@@ -31,9 +31,9 @@ class ParserWarningIsolationTests(unittest.TestCase):
         self.assertEqual(result.code, "invalid_yaml")
         self.assertFalse(result.fatal)
 
-    def test_uninterpolatable_compose_port_becomes_warning(self):
-        # ${VAR} ports still raise until Milestone 3; error isolation must keep
-        # them from crashing the pipeline in the meantime.
+    def test_uninterpolatable_compose_port_is_recorded_unresolved(self):
+        # ${VAR} ports must not crash the parser; they are preserved as raw and
+        # flagged unresolved rather than guessed (TASK-005).
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "compose.yaml"
             path.write_text(
@@ -42,8 +42,12 @@ class ParserWarningIsolationTests(unittest.TestCase):
             )
             result = try_parse_compose(path)
 
-        self.assertIsInstance(result, ParseWarning)
-        self.assertEqual(result.parser, "compose")
+        self.assertNotIsInstance(result, ParseWarning)
+        port = result.service("web").ports[0]
+        self.assertEqual(port.raw, "${HTTP_PORT}:80")
+        self.assertFalse(port.resolved)
+        self.assertIsNone(port.host_port)
+        self.assertEqual(port.container_port, 80)
 
     def test_invalid_dockerfile_encoding_becomes_warning(self):
         with tempfile.TemporaryDirectory() as tmp:

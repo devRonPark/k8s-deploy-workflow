@@ -108,6 +108,13 @@ run_phase1_analysis(
 
 Snapshot metadata에 `snapshot_mode`, `workspace_hash`, `workspace_dirty`, `modified_files`, `untracked_files`가 포함된다. `commit` 모드에서 git 저장소가 아니면 working tree로 fallback하고 warning을 남긴다.
 
+## Compose 지원 범위
+
+- **override 병합**: Compose 공식 병합 규칙을 따른다 — mapping 재귀 병합, `ports`(host_ip/published/target/protocol 키)·`volumes`(target 키)·`secrets`/`configs` 키 기준 병합, `environment`/`labels` map·list 표현 통합, `command`/`entrypoint`/`healthcheck.test` 교체, `!override`/`!reset` 태그 지원. port 병합 결과는 `docker compose config`와 대조하는 golden test로 검증한다.
+- **port 파싱**: `raw` 원문을 항상 보존하고 host IP·IPv6 bracket·protocol·`${VAR}`·`${VAR:-default}`·range를 인식한다. 단일 정수로 확정할 수 없는 값(default 없는 `${VAR}`, range)은 **추측하지 않고** `resolved=false` + `warning`으로 기록한다.
+- **environment**: 원문 값은 저장하지 않는다(secret 정책). bare key(`- DEBUG`)는 `source: host_environment`로, 명시적 빈 값과 구분해 기록한다.
+- **제한**: env 값 interpolation은 의도적으로 수행하지 않는다(secret 비유출). port range는 개별 포트로 전개하지 않는다.
+
 ## 프로젝트 구조
 
 ```
