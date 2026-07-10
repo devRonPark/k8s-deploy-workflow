@@ -51,8 +51,24 @@ def build(inventory: ArtifactInventory, parsed_artifacts: dict[str, object]) -> 
             for name, command in sorted(parsed.scripts.items()):
                 append("package_script", artifact_ref, "package.json", {"name": name, "command": command})
         elif isinstance(parsed, ParsedPythonPackage):
+            source = _python_source(artifact_ref)
             for dependency in parsed.dependencies:
-                append("package_dependency", artifact_ref, _python_source(artifact_ref), {"package": dependency})
+                append("package_dependency", artifact_ref, source, {"package": dependency})
+            for include in parsed.includes:
+                append(
+                    "python_requirement_include",
+                    artifact_ref,
+                    source,
+                    {"kind": include.kind, "path": include.path},
+                )
+            for reference in parsed.direct_references:
+                if reference.name is not None:
+                    append(
+                        "python_direct_reference",
+                        artifact_ref,
+                        source,
+                        {"package": reference.name, "kind": reference.kind},
+                    )
 
     return EvidenceModel(facts=facts)
 
@@ -104,7 +120,7 @@ def _append_compose_facts(append, artifact_ref: str, parsed: ParsedCompose) -> N
                 {"service": service.name, "depends_on": depends_on},
             )
         for port in service.ports:
-            append("compose_port", artifact_ref, port.source, {"service": service.name, **port.model_dump()})
+            append("compose_port", artifact_ref, "compose_ports", {"service": service.name, **port.model_dump()})
         for name, value in sorted(service.environment.items()):
             append("compose_environment", artifact_ref, "compose_environment", build_env_fact(service.name, name, value))
         for volume in service.volumes:

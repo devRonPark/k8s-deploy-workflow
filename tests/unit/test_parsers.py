@@ -105,8 +105,26 @@ services:
         self.assertEqual(
             [port.model_dump() for port in parsed.service("api").ports],
             [
-                {"host_port": 8080, "container_port": 80, "source": "compose_ports"},
-                {"host_port": 19090, "container_port": 9090, "source": "compose_ports"},
+                {
+                    "raw": "8080:80",
+                    "host_ip": None,
+                    "host_port": 8080,
+                    "container_port": 80,
+                    "protocol": None,
+                    "resolved": True,
+                    "resolution_source": "literal",
+                    "warning": None,
+                },
+                {
+                    "raw": "long:published=19090,target=9090",
+                    "host_ip": None,
+                    "host_port": 19090,
+                    "container_port": 9090,
+                    "protocol": None,
+                    "resolved": True,
+                    "resolution_source": "literal",
+                    "warning": None,
+                },
             ],
         )
 

@@ -802,10 +802,10 @@ Parser마다 다른 예외 처리 방식을 통합하고, pipeline이 부분 실
 
 ## Milestone 2 — Reproducibility and Parser Resilience
 
-- [ ] TASK-003 Snapshot mode 분리
-- [ ] TASK-006 Parser 오류 격리
-- [ ] TASK-013 공통 Parser Result
-- [ ] TASK-014 재현성 테스트
+- [x] TASK-003 Snapshot mode 분리
+- [x] TASK-006 Parser 오류 격리
+- [x] TASK-013 공통 Parser Result
+- [x] TASK-014 재현성 테스트
 
 ### Exit Criteria
 
@@ -817,10 +817,10 @@ Parser마다 다른 예외 처리 방식을 통합하고, pipeline이 부분 실
 
 ## Milestone 3 — Compose Compatibility
 
-- [ ] TASK-004 Compose override 병합
-- [ ] TASK-005 Port parser 개선
-- [ ] TASK-009 Bare environment 처리
-- [ ] Compose golden tests 추가
+- [x] TASK-004 Compose override 병합
+- [x] TASK-005 Port parser 개선
+- [x] TASK-009 Bare environment 처리
+- [x] Compose golden tests 추가
 
 ### Exit Criteria
 
@@ -832,9 +832,9 @@ Parser마다 다른 예외 처리 방식을 통합하고, pipeline이 부분 실
 
 ## Milestone 4 — Component and Semantic Accuracy
 
-- [ ] TASK-007 Component ownership 재설계
-- [ ] TASK-008 Semantic budget ledger
-- [ ] TASK-010 Python requirements parser 개선
+- [x] TASK-007 Component ownership 재설계
+- [x] TASK-008 Semantic budget ledger
+- [x] TASK-010 Python requirements parser 개선
 
 ### Exit Criteria
 

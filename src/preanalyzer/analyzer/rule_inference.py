@@ -22,7 +22,8 @@ INFRA_IMAGES = ("traefik", "nginx")
 
 def infer(evidence: EvidenceModel) -> RuleInferenceSet:
     compose_components = _component_candidates_from_compose(evidence)
-    component_candidates = compose_components or _component_candidates_from_packages(evidence)
+    package_components = _component_candidates_from_packages(evidence)
+    component_candidates = _reconcile_components(compose_components, package_components)
     root_by_component = {candidate.component_id: candidate.root_path for candidate in component_candidates}
 
     return RuleInferenceSet(
@@ -56,23 +57,67 @@ def _component_candidates_from_compose(evidence: EvidenceModel) -> list[Componen
     return candidates
 
 
+_PACKAGE_MANIFEST_FACTS = {
+    "maven_packaging",
+    "package_dependency",
+    "package_script",
+    "python_requirement_include",
+    "python_direct_reference",
+}
+
+
 def _component_candidates_from_packages(evidence: EvidenceModel) -> list[ComponentCandidate]:
-    package_facts = [
-        fact
-        for fact in evidence.facts
-        if fact.fact_type in {"maven_packaging", "package_dependency", "package_script"}
-    ]
-    if not package_facts:
-        return []
-    first = package_facts[0]
-    return [
-        ComponentCandidate(
-            component_id="root",
-            root_path=".",
-            source=_source_for_package_fact(first),
-            evidence_refs=[first.evidence_id],
+    """One component per package-manifest root (monorepo-aware).
+
+    Manifests are grouped by their containing directory so that each npm
+    workspace / Maven module / Python package becomes its own component
+    instead of collapsing to a single ``root``. The first manifest fact in a
+    root supplies the representative source and evidence ref.
+    """
+    by_root: dict[str, EvidenceFact] = {}
+    for fact in evidence.facts:
+        if fact.fact_type not in _PACKAGE_MANIFEST_FACTS:
+            continue
+        root = _artifact_root(fact.artifact_ref)
+        if root not in by_root:  # first fact in deterministic evidence order wins
+            by_root[root] = fact
+
+    candidates: list[ComponentCandidate] = []
+    for root, fact in by_root.items():
+        candidates.append(
+            ComponentCandidate(
+                component_id=_component_id_for_root(root),
+                root_path=root,
+                source=_source_for_package_fact(fact),
+                evidence_refs=[fact.evidence_id],
+            )
         )
-    ]
+    return candidates
+
+
+def _reconcile_components(
+    compose_components: list[ComponentCandidate],
+    package_components: list[ComponentCandidate],
+) -> list[ComponentCandidate]:
+    """Union compose and package components, dropping duplicates.
+
+    A package component whose root is already claimed by a compose service's
+    ``build.context`` is subsumed by that service (the compose component wins).
+    Image-only compose services (``root_path is None``) claim no source root,
+    so package components are never merged into them. Remaining package
+    components — monorepo packages with no matching service — are kept.
+    """
+    claimed_roots = {c.root_path for c in compose_components if c.root_path is not None}
+    reconciled = list(compose_components)
+    existing_ids = {c.component_id for c in compose_components}
+    for candidate in package_components:
+        if candidate.root_path in claimed_roots:
+            continue
+        if candidate.component_id in existing_ids:
+            continue
+        reconciled.append(candidate)
+        existing_ids.add(candidate.component_id)
+    return sorted(reconciled, key=lambda c: c.component_id)
 
 
 def _role_candidates(evidence: EvidenceModel) -> list[RoleCandidate]:
@@ -110,17 +155,20 @@ def _runtime_candidates(
     package_dependencies = evidence.facts_by_type("package_dependency")
     maven_packaging = evidence.facts_by_type("maven_packaging")
 
-    if maven_packaging:
+    for fact in maven_packaging:
+        component_id = _owning_component(fact.artifact_ref, component_candidates)
+        if component_id is None:
+            continue
         candidates.append(
             RuntimeCandidate(
-                component_id="root",
+                component_id=component_id,
                 language="java",
                 framework=None,
                 build_tool="maven",
-                build_strategy=_build_strategy_for("root", root_by_component, evidence),
+                build_strategy=_build_strategy_for(component_id, root_by_component, evidence),
                 source="pom.xml",
                 confidence="high",
-                evidence_refs=[maven_packaging[0].evidence_id],
+                evidence_refs=[fact.evidence_id],
             )
         )
 
@@ -128,7 +176,7 @@ def _runtime_candidates(
         component_deps = [
             fact
             for fact in package_dependencies
-            if _artifact_belongs_to_component(fact.artifact_ref, component.root_path)
+            if _owning_component(fact.artifact_ref, component_candidates) == component.component_id
         ]
         if not component_deps:
             continue
@@ -228,13 +276,46 @@ def _runtime_command_candidates(
 
 
 def _component_for_artifact(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
+    return _owning_component(artifact_ref, component_candidates)
+
+
+def _owning_component(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
+    """Return the component that owns ``artifact_ref`` by longest-prefix root.
+
+    Image-only components (``root_path is None``) own nothing. A ``"."`` root
+    owns only top-level files; a nested root owns files beneath it. When roots
+    are nested, the longest matching root wins so an artifact is attributed to
+    the most specific component.
+    """
+    best_id: str | None = None
+    best_specificity = -1
     for candidate in component_candidates:
         root_path = candidate.root_path
-        if root_path in {None, "."} and "/" not in artifact_ref:
-            return candidate.component_id
-        if root_path and root_path != "." and artifact_ref.startswith(f"{root_path}/"):
-            return candidate.component_id
-    return None
+        if root_path is None:
+            continue
+        if root_path == ".":
+            specificity = 0
+            if "/" in artifact_ref:
+                continue
+        elif artifact_ref == root_path or artifact_ref.startswith(f"{root_path}/"):
+            specificity = len(root_path)
+        else:
+            continue
+        if specificity > best_specificity:
+            best_id = candidate.component_id
+            best_specificity = specificity
+    return best_id
+
+
+def _artifact_root(artifact_ref: str) -> str:
+    parent = artifact_ref.rsplit("/", 1)[0] if "/" in artifact_ref else "."
+    return parent or "."
+
+
+def _component_id_for_root(root: str) -> str:
+    if root in {".", ""}:
+        return "root"
+    return root
 
 
 def _runtime_from_image(image: str) -> tuple[str, str] | None:
@@ -265,12 +346,6 @@ def _build_strategy_for(component_id: str, root_by_component: dict[str, str | No
         if root_path and fact.artifact_ref == f"{root_path}/Dockerfile":
             return "dockerfile"
     return "dockerfile_needed"
-
-
-def _artifact_belongs_to_component(artifact_ref: str, root_path: str | None) -> bool:
-    if root_path in {None, "."}:
-        return "/" not in artifact_ref
-    return artifact_ref.startswith(f"{root_path}/")
 
 
 def _fact_for_package(facts: list[EvidenceFact], package_name: str) -> EvidenceFact | None:

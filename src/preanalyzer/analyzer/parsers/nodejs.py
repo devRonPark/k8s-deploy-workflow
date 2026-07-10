@@ -4,19 +4,21 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 
+from preanalyzer.analyzer.parsers.result import (
+    CODE_INVALID_ENCODING,
+    CODE_INVALID_JSON,
+    CODE_READ_ERROR,
+    ParseWarning,
+)
+
+__all__ = ["ParsedNodePackage", "ParseWarning", "parse", "try_parse"]
+
 
 @dataclass(frozen=True)
 class ParsedNodePackage:
     path: str
     scripts: dict[str, str]
     dependencies: list[str]
-
-
-@dataclass(frozen=True)
-class ParseWarning:
-    path: str
-    parser: str
-    message: str
 
 
 def parse(path: Path) -> ParsedNodePackage:
@@ -33,5 +35,13 @@ def parse(path: Path) -> ParsedNodePackage:
 def try_parse(path: Path) -> ParsedNodePackage | ParseWarning:
     try:
         return parse(path)
-    except Exception as exc:
-        return ParseWarning(path=str(path), parser="nodejs", message=str(exc))
+    except json.JSONDecodeError as exc:
+        return ParseWarning(path=str(path), parser="nodejs", message=str(exc), code=CODE_INVALID_JSON)
+    except UnicodeDecodeError:
+        return ParseWarning(
+            path=str(path), parser="nodejs", message="invalid text encoding", code=CODE_INVALID_ENCODING
+        )
+    except OSError as exc:
+        return ParseWarning(
+            path=str(path), parser="nodejs", message=exc.strerror or "read error", code=CODE_READ_ERROR
+        )

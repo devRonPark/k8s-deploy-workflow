@@ -4,7 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 import shlex
 
+from preanalyzer.analyzer.parsers.result import (
+    CODE_INVALID_ENCODING,
+    CODE_INVALID_SYNTAX,
+    CODE_READ_ERROR,
+    ParseWarning,
+)
 from preanalyzer.models.fields import Confidence, Tracked
+
+__all__ = ["ParsedDockerfile", "ParseWarning", "parse", "try_parse"]
 
 
 @dataclass(frozen=True)
@@ -55,6 +63,23 @@ def parse(path: Path) -> ParsedDockerfile:
         base_image=base_image,
         user=user,
     )
+
+
+def try_parse(path: Path) -> ParsedDockerfile | ParseWarning:
+    try:
+        return parse(path)
+    except UnicodeDecodeError:
+        return ParseWarning(
+            path=str(path), parser="dockerfile", message="invalid text encoding", code=CODE_INVALID_ENCODING
+        )
+    except OSError as exc:
+        return ParseWarning(
+            path=str(path), parser="dockerfile", message=exc.strerror or "read error", code=CODE_READ_ERROR
+        )
+    except ValueError as exc:
+        return ParseWarning(
+            path=str(path), parser="dockerfile", message=str(exc), code=CODE_INVALID_SYNTAX
+        )
 
 
 def _parse_expose_ports(value: str) -> list[Tracked[int]]:
