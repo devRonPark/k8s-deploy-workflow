@@ -9,6 +9,7 @@ from preanalyzer.evaluation.runtime_command import (
     RuntimeCommandEvaluationCase,
     RuntimeCommandEvaluationResult,
     RuntimeCommandFixtureExpectation,
+    _result_from_audit,
     calculate_metrics,
     endpoint_is_configured,
     load_evaluation_cases,
@@ -16,6 +17,7 @@ from preanalyzer.evaluation.runtime_command import (
     run_fake_baseline,
     write_evaluation_outputs,
 )
+from preanalyzer.models.semantic import SemanticCandidate, SemanticResolution, SemanticResolutionStatus
 
 
 def write(path: Path, text: str) -> None:
@@ -178,6 +180,158 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
         self.assertEqual(metrics["provider_error_rate"], 0.0)
         self.assertEqual(metrics["verifier_rejection_reasons"]["candidate_not_grounded"], 1)
 
+    def test_result_extraction_uses_accepted_semantic_command_value(self):
+        case = RuntimeCommandEvaluationCase(
+            name="accepted-command",
+            fixture_dir=Path("accepted-command"),
+            repo_dir=Path("accepted-command/repo"),
+            expectation=RuntimeCommandFixtureExpectation(
+                expected_status="resolved",
+                expected_command="uvicorn main:app",
+                allowed_commands=["uvicorn main:app", "python -m app"],
+                expected_evidence_paths=["entrypoint.sh"],
+                expected_tool_names=["read_source_range"],
+            ),
+        )
+        resolution = SemanticResolution(
+            task_id="ST-001",
+            status=SemanticResolutionStatus.RESOLVED,
+            candidates=[
+                SemanticCandidate(
+                    candidate_id="SC-001",
+                    component_id="root",
+                    target_field="/components/root/runtime/command",
+                    value={"command": "python -m app"},
+                    classification="llm_semantic_inference",
+                    confidence="medium",
+                    evidence_refs=["SE-001"],
+                )
+            ],
+            recommended_candidate_id="SC-001",
+            tool_trace_refs=["SE-001"],
+        )
+        audit = {
+            "task_build_result": {"tasks": [{"task_id": "ST-001"}]},
+            "runtime_command_analysis": {"resolved_commands": []},
+            "runs": [
+                {
+                    "run_status": "completed",
+                    "verification_result": {
+                        "status": "accepted",
+                        "accepted_candidate_ids": ["SC-001"],
+                        "reasons": [],
+                    },
+                    "resolution": {
+                        "status": "resolved",
+                        "candidate_ids": ["SC-001"],
+                        "recommended_candidate_id": "SC-001",
+                        "tool_trace_refs": ["SE-001"],
+                    },
+                    "tool_call_records": [
+                        {
+                            "tool_name": "read_source_range",
+                            "arguments": {"path": "entrypoint.sh"},
+                            "result_status": "ok",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = _result_from_audit(case, "fake", "baseline", audit, 1.0, captured_resolution=resolution)
+        metrics = calculate_metrics([result], repetitions=1)
+
+        self.assertEqual(result.actual_command, "python -m app")
+        self.assertEqual(result.allowed_commands, ["uvicorn main:app", "python -m app"])
+        self.assertEqual(metrics["exact_command_accuracy"], 1.0)
+
+    def test_metric_calculation_distinguishes_rejected_ambiguous_and_budget_exhausted(self):
+        results = [
+            RuntimeCommandEvaluationResult(
+                fixture="rejected",
+                provider="fake",
+                model="baseline",
+                expected_status="rejected",
+                actual_status="rejected",
+                expected_command="gunicorn missing:app",
+                actual_command=None,
+                expected_evidence_paths=["entrypoint.sh"],
+                actual_evidence_paths=["entrypoint.sh"],
+                expected_tool_names=["read_source_range"],
+                actual_tool_names=["read_source_range"],
+                task_created=True,
+                verification_status="rejected",
+                tool_call_count=1,
+                turn_count=2,
+                schema_retries=0,
+                latency_ms=1.0,
+                input_tokens=0,
+                output_tokens=0,
+                provider_error=False,
+                verifier_reasons=["candidate_not_grounded"],
+                provider_messages=[],
+                tool_call_records=[],
+            ),
+            RuntimeCommandEvaluationResult(
+                fixture="ambiguous",
+                provider="fake",
+                model="baseline",
+                expected_status="ambiguous",
+                actual_status="ambiguous",
+                expected_command=None,
+                actual_command=None,
+                expected_evidence_paths=["entrypoint.sh"],
+                actual_evidence_paths=["entrypoint.sh"],
+                expected_tool_names=["read_source_range"],
+                actual_tool_names=["read_source_range"],
+                task_created=True,
+                verification_status="ambiguous",
+                tool_call_count=1,
+                turn_count=2,
+                schema_retries=0,
+                latency_ms=1.0,
+                input_tokens=0,
+                output_tokens=0,
+                provider_error=False,
+                verifier_reasons=[],
+                provider_messages=[],
+                tool_call_records=[],
+            ),
+            RuntimeCommandEvaluationResult(
+                fixture="budget",
+                provider="fake",
+                model="baseline",
+                expected_status="budget_exhausted",
+                actual_status="budget_exhausted",
+                expected_command="uvicorn main:app --host 0.0.0.0",
+                actual_command=None,
+                expected_evidence_paths=["entrypoint.sh"],
+                actual_evidence_paths=["entrypoint.sh"],
+                expected_tool_names=["read_source_range"],
+                actual_tool_names=["read_source_range"],
+                task_created=True,
+                verification_status="budget_exhausted",
+                tool_call_count=1,
+                turn_count=1,
+                schema_retries=0,
+                latency_ms=1.0,
+                input_tokens=0,
+                output_tokens=0,
+                provider_error=False,
+                verifier_reasons=[],
+                provider_messages=[],
+                tool_call_records=[],
+            ),
+        ]
+
+        metrics = calculate_metrics(results, repetitions=1)
+
+        self.assertEqual(metrics["exact_command_accuracy"], 1.0)
+        self.assertEqual(metrics["correct_ambiguous_rate"], 1.0)
+        self.assertEqual(metrics["correct_budget_exhausted_rate"], 1.0)
+        self.assertEqual(metrics["correct_rejected_hallucination_rate"], 1.0)
+        self.assertEqual(metrics["hallucinated_candidate_rate"], 0.0)
+
     def test_report_output_is_redacted_and_deterministically_ordered(self):
         result = RuntimeCommandEvaluationResult(
             fixture="secret-case",
@@ -225,6 +379,7 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
             report = report_path.read_text(encoding="utf-8")
 
         self.assertNotIn("sk-secretsecretsecret", payload)
+        self.assertNotIn("/abs/path", payload)
         self.assertIn("inspect_entrypoint_script", payload)
         self.assertIn("blocked", payload)
         self.assertNotIn("SEMANTIC_LLM_API_KEY", report)
@@ -266,6 +421,24 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
         self.assertEqual(len(results), 3)
         self.assertEqual(metrics["repeat_consistency_rate"], 1.0)
         self.assertEqual(metrics["task_generation_accuracy"], 1.0)
+
+    def test_fake_baseline_fixture_distinguishes_budget_exhaustion(self):
+        root = Path(__file__).resolve().parents[1] / "fixtures" / "evaluation" / "runtime_command"
+
+        results, metrics = run_fake_baseline(root, repetitions=1, fixture_names=["budget-exhausted"])
+
+        self.assertEqual([result.actual_status for result in results], ["budget_exhausted"])
+        self.assertEqual(metrics["correct_budget_exhausted_rate"], 1.0)
+        self.assertEqual(metrics["budget_completion_rate"], 0.0)
+
+    def test_fake_baseline_fixture_resolves_compound_command_from_phase1_evidence(self):
+        root = Path(__file__).resolve().parents[1] / "fixtures" / "evaluation" / "runtime_command"
+
+        results, metrics = run_fake_baseline(root, repetitions=1, fixture_names=["compound-shell-command"])
+
+        self.assertEqual([result.actual_status for result in results], ["resolved"])
+        self.assertEqual([result.actual_command for result in results], ["python app.py && echo ready"])
+        self.assertEqual(metrics["exact_command_accuracy"], 1.0)
 
     def test_repository_evaluation_fixtures_cover_required_cases(self):
         root = Path(__file__).resolve().parents[1] / "fixtures" / "evaluation" / "runtime_command"

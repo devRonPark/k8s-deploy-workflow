@@ -9,6 +9,7 @@ from preanalyzer.analyzer.parsers.maven import parse as parse_maven
 from preanalyzer.analyzer.parsers.nodejs import parse as parse_nodejs
 from preanalyzer.analyzer.parsers.python_pkg import parse_pyproject
 from preanalyzer.analyzer.rule_inference import infer
+from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.analyzer.scanner import build_inventory, snapshot
 
 
@@ -97,6 +98,37 @@ class RuleInferenceTests(unittest.TestCase):
                 "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_candidates],
+        )
+
+    def test_top_level_dockerfile_command_uses_implicit_root_component(self):
+        evidence = EvidenceModel(
+            facts=[
+                EvidenceFact(
+                    evidence_id="F0001",
+                    fact_type="dockerfile_cmd",
+                    artifact_ref="Dockerfile",
+                    source="dockerfile_cmd",
+                    classification="observed_fact",
+                    value='["python", "-m", "app"]',
+                )
+            ]
+        )
+
+        rules = infer(evidence)
+
+        self.assertEqual(rules.component_candidates, [])
+        self.assertEqual(
+            [candidate.model_dump() for candidate in rules.runtime_command_candidates],
+            [
+                {
+                    "component_id": "root",
+                    "command": '["python", "-m", "app"]',
+                    "source": "dockerfile_cmd",
+                    "confidence": "high",
+                    "evidence_refs": ["F0001"],
+                    "classification": "rule_inference",
+                }
+            ],
         )
 
     def test_secret_value_never_serialized(self):

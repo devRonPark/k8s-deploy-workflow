@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
@@ -74,6 +75,7 @@ class RuntimeCommandEvaluationResult:
     verifier_reasons: list[str] = field(default_factory=list)
     provider_messages: list[str] = field(default_factory=list)
     tool_call_records: list[dict[str, Any]] = field(default_factory=list)
+    allowed_commands: list[str] = field(default_factory=list)
 
 
 def load_evaluation_cases(root: Path, fixture_names: list[str] | None = None) -> list[RuntimeCommandEvaluationCase]:
@@ -170,6 +172,8 @@ def calculate_metrics(results: list[RuntimeCommandEvaluationResult], *, repetiti
             "schema_success_after_retry_rate": 0.0,
             "correct_insufficient_evidence_rate": 0.0,
             "correct_ambiguous_rate": 0.0,
+            "correct_budget_exhausted_rate": 0.0,
+            "correct_rejected_hallucination_rate": 0.0,
             "repeat_consistency_rate": 0.0,
             "average_input_tokens": 0.0,
             "average_output_tokens": 0.0,
@@ -191,6 +195,8 @@ def calculate_metrics(results: list[RuntimeCommandEvaluationResult], *, repetiti
     after_retry_schema = sum(1 for result in results if result.schema_retries <= 1)
     insufficient_expected = [result for result in results if result.expected_status == "insufficient_evidence"]
     ambiguous_expected = [result for result in results if result.expected_status == "ambiguous"]
+    budget_expected = [result for result in results if result.expected_status == "budget_exhausted"]
+    rejected_expected = [result for result in results if result.expected_status == "rejected"]
     reasons: dict[str, int] = {}
     for result in results:
         for reason in result.verifier_reasons:
@@ -213,6 +219,8 @@ def calculate_metrics(results: list[RuntimeCommandEvaluationResult], *, repetiti
         "schema_success_after_retry_rate": _ratio(after_retry_schema, total),
         "correct_insufficient_evidence_rate": _expected_status_rate(insufficient_expected, "insufficient_evidence"),
         "correct_ambiguous_rate": _expected_status_rate(ambiguous_expected, "ambiguous"),
+        "correct_budget_exhausted_rate": _expected_status_rate(budget_expected, "budget_exhausted"),
+        "correct_rejected_hallucination_rate": _expected_status_rate(rejected_expected, "rejected"),
         "repeat_consistency_rate": _repeat_consistency_rate(results),
         "average_input_tokens": _average(result.input_tokens for result in results),
         "average_output_tokens": _average(result.output_tokens for result in results),
@@ -301,7 +309,7 @@ def _evaluate_case(
     provider,
 ) -> RuntimeCommandEvaluationResult:
     start = time.perf_counter()
-    decision_provider = provider or _ExpectationFakeProvider(case.expectation)
+    decision_provider = _CapturingDecisionProvider(provider or _ExpectationFakeProvider(case.expectation))
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp) / "out"
         run_phase1_analysis(
@@ -313,10 +321,18 @@ def _evaluate_case(
             semantic_mode="fake" if provider is None else "openai_compatible",
             semantic_decision_provider=decision_provider,
             semantic_model=model,
+            semantic_task_max_tool_calls=case.expectation.max_tool_calls,
         )
         audit = _load_jsonish_yaml(out_dir / "04-semantic-analysis.yaml")["semantic_analysis"]
     latency_ms = round((time.perf_counter() - start) * 1000, 3)
-    return _result_from_audit(case, provider_name, model, audit, latency_ms)
+    return _result_from_audit(
+        case,
+        provider_name,
+        model,
+        audit,
+        latency_ms,
+        captured_resolution=getattr(decision_provider, "captured_resolution", None),
+    )
 
 
 def _result_from_audit(
@@ -325,6 +341,8 @@ def _result_from_audit(
     model: str,
     audit: dict,
     latency_ms: float,
+    *,
+    captured_resolution: SemanticResolution | None = None,
 ) -> RuntimeCommandEvaluationResult:
     runs = audit.get("runs") or []
     first_run = runs[0] if runs else {}
@@ -336,14 +354,22 @@ def _result_from_audit(
     if resolved_commands:
         actual_command = resolved_commands[0].get("command")
     elif verification.get("status") == "accepted":
-        actual_command = case.expectation.expected_command
+        actual_command = _accepted_command(captured_resolution, verification)
 
     if not audit.get("task_build_result", {}).get("tasks"):
         actual_status = "no_task"
     elif first_run.get("run_status") == "provider_error":
         actual_status = "provider_error"
-    elif verification.get("status") in {"accepted", "rejected"}:
+    elif verification.get("status") == "accepted":
         actual_status = "resolved"
+    elif verification.get("status") in {
+        "rejected",
+        "ambiguous",
+        "insufficient_evidence",
+        "budget_exhausted",
+        "tool_error",
+    }:
+        actual_status = verification.get("status")
     else:
         actual_status = verification.get("status") or first_run.get("run_status") or "not_run"
 
@@ -368,6 +394,7 @@ def _result_from_audit(
         actual_status=actual_status,
         expected_command=case.expectation.expected_command,
         actual_command=actual_command,
+        allowed_commands=list(case.expectation.allowed_commands),
         expected_evidence_paths=case.expectation.expected_evidence_paths,
         actual_evidence_paths=actual_paths,
         expected_tool_names=case.expectation.expected_tool_names,
@@ -392,12 +419,10 @@ class _ExpectationFakeProvider:
         self.expectation = expectation
 
     def decide(self, context):
+        if self.expectation.expected_status == "budget_exhausted" and self.expectation.expected_tool_names:
+            return self._tool_call(context)
         if not context.collected_evidence and self.expectation.expected_tool_names:
-            tool_name = self.expectation.expected_tool_names[0]
-            path = self.expectation.expected_evidence_paths[0] if self.expectation.expected_evidence_paths else "entrypoint.sh"
-            if tool_name == "inspect_entrypoint_script":
-                return ToolCallAction(tool_name=tool_name, arguments={"path": path})
-            return ToolCallAction(tool_name=tool_name, arguments={"path": path, "start_line": 1, "end_line": 1})
+            return self._tool_call(context)
         if self.expectation.expected_status == "insufficient_evidence":
             return ResolutionAction(
                 resolution=SemanticResolution(
@@ -407,14 +432,16 @@ class _ExpectationFakeProvider:
                 )
             )
         if self.expectation.expected_status == "ambiguous":
+            evidence_refs = _context_evidence_ids(context)
             return ResolutionAction(
                 resolution=SemanticResolution(
                     task_id=context.task_id,
                     status=SemanticResolutionStatus.AMBIGUOUS,
                     candidates=[
-                        _candidate(context, "SC-A", self.expectation.allowed_commands[0], _context_evidence_ids(context)),
-                        _candidate(context, "SC-B", self.expectation.allowed_commands[-1], _context_evidence_ids(context)),
+                        _candidate(context, "SC-A", self.expectation.allowed_commands[0], evidence_refs),
+                        _candidate(context, "SC-B", self.expectation.allowed_commands[-1], evidence_refs),
                     ],
+                    tool_trace_refs=_semantic_evidence_refs(evidence_refs),
                 )
             )
         evidence_refs = _context_evidence_ids(context)
@@ -425,9 +452,28 @@ class _ExpectationFakeProvider:
                 status=SemanticResolutionStatus.RESOLVED,
                 candidates=[_candidate(context, "SC-EXPECTED", command, evidence_refs)],
                 recommended_candidate_id="SC-EXPECTED",
-                tool_trace_refs=evidence_refs,
+                tool_trace_refs=_semantic_evidence_refs(evidence_refs),
             )
         )
+
+    def _tool_call(self, context):
+        tool_name = self.expectation.expected_tool_names[0]
+        path = self.expectation.expected_evidence_paths[0] if self.expectation.expected_evidence_paths else "entrypoint.sh"
+        if tool_name == "inspect_entrypoint_script":
+            return ToolCallAction(tool_name=tool_name, arguments={"path": path})
+        return ToolCallAction(tool_name=tool_name, arguments={"path": path, "start_line": 1, "end_line": 1})
+
+
+class _CapturingDecisionProvider:
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.captured_resolution: SemanticResolution | None = None
+
+    def decide(self, context):
+        action = self.delegate.decide(context)
+        if isinstance(action, ResolutionAction):
+            self.captured_resolution = action.resolution
+        return action
 
 
 def _candidate(context, candidate_id: str, command: str, evidence_refs: list[str]) -> SemanticCandidate:
@@ -449,6 +495,38 @@ def _context_evidence_ids(context) -> list[str]:
     return [str(ref) for ref in context.reason.get("evidence_refs", [])]
 
 
+def _semantic_evidence_refs(evidence_refs: list[str]) -> list[str]:
+    return [ref for ref in evidence_refs if ref.startswith("SE-")]
+
+
+def _accepted_command(resolution: SemanticResolution | None, verification: Mapping[str, Any]) -> str | None:
+    if resolution is None:
+        return None
+    accepted_ids = [str(item) for item in verification.get("accepted_candidate_ids", [])]
+    candidate_by_id = {candidate.candidate_id: candidate for candidate in resolution.candidates}
+    candidates: list[SemanticCandidate] = []
+    for candidate_id in accepted_ids:
+        candidate = candidate_by_id.get(candidate_id)
+        if candidate is not None:
+            candidates.append(candidate)
+    if not candidates and resolution.recommended_candidate_id:
+        candidate = candidate_by_id.get(resolution.recommended_candidate_id)
+        if candidate is not None:
+            candidates.append(candidate)
+    for candidate in candidates:
+        command = _candidate_command(candidate.value)
+        if command is not None:
+            return command
+    return None
+
+
+def _candidate_command(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        command = value.get("command")
+        return str(command) if command is not None else None
+    return None
+
+
 def _load_jsonish_yaml(path: Path) -> dict:
     import yaml
 
@@ -456,7 +534,9 @@ def _load_jsonish_yaml(path: Path) -> dict:
 
 
 def _command_matches(result: RuntimeCommandEvaluationResult) -> bool:
-    allowed = set(result.allowed_commands if hasattr(result, "allowed_commands") else [])
+    if result.expected_status in {"ambiguous", "insufficient_evidence", "budget_exhausted", "rejected"}:
+        return result.actual_status == result.expected_status and result.actual_command is None
+    allowed = set(result.allowed_commands)
     if result.expected_command:
         allowed.add(result.expected_command)
     return result.actual_command in allowed if allowed else result.actual_command == result.expected_command
@@ -521,11 +601,21 @@ def _mvp_passed(metrics: dict) -> bool:
     )
 
 
+_SECRET_VALUE_RE = re.compile(r"\b(?:sk|pk|AKIA)[A-Za-z0-9_\-]{12,}\b")
+_SENSITIVE_ENV_NAME_RE = re.compile(
+    r"\b[A-Z0-9_]*(?:API_KEY|TOKEN|PASSWORD|PASSWD|SECRET|CREDENTIAL)[A-Z0-9_]*\b"
+)
+_ABSOLUTE_PATH_RE = re.compile(r"(?<!:)\"/(?:Users|private|tmp|var|home|abs)/[^\"\n]*\"")
+
+
 def _redact(text: str) -> str:
     redacted = text
     for name in REQUIRED_ENDPOINT_ENV:
-        redacted = redacted.replace(name, "[REDACTED_ENV_NAME]")
-    return redacted.replace("sk-secretsecretsecret", "[REDACTED_SECRET]")
+        redacted = redacted.replace(name, "[REDACTED_NAME]")
+    redacted = _SENSITIVE_ENV_NAME_RE.sub("[REDACTED_NAME]", redacted)
+    redacted = _SECRET_VALUE_RE.sub("[REDACTED_VALUE]", redacted)
+    redacted = _ABSOLUTE_PATH_RE.sub("\"[REDACTED_PATH]\"", redacted)
+    return redacted
 
 
 def _env_with_dotenv(env_file: Path) -> Mapping[str, str]:

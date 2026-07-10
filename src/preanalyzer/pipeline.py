@@ -50,6 +50,7 @@ def run_phase1_analysis(
     semantic_mode: str = "disabled",
     semantic_decision_provider: AgentDecisionProvider | None = None,
     semantic_model: str | None = None,
+    semantic_task_max_tool_calls: int | None = None,
 ) -> tuple[RepositorySnapshot, ArtifactInventory, EvidenceModel, RuleInferenceSet]:
     if mode not in SNAPSHOT_MODES:
         raise ValueError(f"unknown snapshot mode: {mode!r}")
@@ -86,6 +87,7 @@ def run_phase1_analysis(
             semantic_mode=semantic_mode,
             decision_provider=semantic_decision_provider,
             semantic_model=semantic_model,
+            semantic_task_max_tool_calls=semantic_task_max_tool_calls,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -109,9 +111,25 @@ def _build_semantic_analysis_audit(
     semantic_mode: str,
     decision_provider: AgentDecisionProvider | None,
     semantic_model: str | None,
+    semantic_task_max_tool_calls: int | None,
 ) -> dict:
     runtime_analysis = analyze_runtime_commands(evidence, rules)
     task_build_result = build_runtime_command_semantic_tasks(runtime_analysis)
+    if semantic_task_max_tool_calls is not None:
+        task_build_result = task_build_result.model_copy(
+            update={
+                "tasks": [
+                    task.model_copy(
+                        update={
+                            "budget": task.budget.model_copy(
+                                update={"max_tool_calls": semantic_task_max_tool_calls}
+                            )
+                        }
+                    )
+                    for task in task_build_result.tasks
+                ]
+            }
+        )
     runs: list[dict] = []
     setup_statuses: list[str] = []
 
