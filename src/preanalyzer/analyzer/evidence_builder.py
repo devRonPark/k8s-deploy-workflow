@@ -112,7 +112,7 @@ def _append_compose_facts(append, artifact_ref: str, parsed: ParsedCompose) -> N
         append("parse_warning", artifact_ref, "compose_parser", warning)
 
 
-def _safe_env_fact(service_name: str, name: str, value: str) -> dict[str, str | bool]:
+def _safe_env_fact(service_name: str, name: str, value: str | None) -> dict[str, str | bool | None]:
     if _is_secret_name(name):
         return {"service": service_name, "name": name, "value_present": bool(value)}
     return {"service": service_name, "name": name, "value": value}

@@ -20,6 +20,47 @@ class ComposeParserExtendedTests(unittest.TestCase):
         self.assertEqual(parsed.service("api").image, "new/api")
         self.assertEqual(parsed.service("api").ports[0].container_port, 80)
 
+    def test_override_file_merges_environment_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = root / "docker-compose.yml"
+            override = root / "docker-compose.override.yml"
+            base.write_text(
+                "services:\n  api:\n    image: api\n    environment:\n      A: \"1\"\n      B: \"2\"\n",
+                encoding="utf-8",
+            )
+            override.write_text(
+                "services:\n  api:\n    environment:\n      C: \"3\"\n",
+                encoding="utf-8",
+            )
+
+            parsed = parse_with_override(base, override)
+
+        self.assertEqual(parsed.service("api").environment, {"A": "1", "B": "2", "C": "3"})
+
+    def test_empty_secret_environment_value_is_not_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compose = Path(tmp) / "docker-compose.yml"
+            compose.write_text(
+                "services:\n  api:\n    image: api\n    environment:\n      API_SECRET_KEY:\n",
+                encoding="utf-8",
+            )
+
+            parsed = parse(compose)
+            evidence = build_evidence(inventory=_empty_inventory(), parsed_artifacts={"docker-compose.yml": parsed})
+
+        self.assertIn(
+            {
+                "fact_type": "compose_environment",
+                "artifact_ref": "docker-compose.yml",
+                "source": "compose_environment",
+                "classification": "observed_fact",
+                "value": {"service": "api", "name": "API_SECRET_KEY", "value_present": False},
+            },
+            [_without_id(fact.model_dump()) for fact in evidence.facts],
+        )
+        self.assertNotIn("None", repr(evidence.model_dump()))
+
     def test_unsupported_keys_warned_not_dropped(self):
         with tempfile.TemporaryDirectory() as tmp:
             compose = Path(tmp) / "docker-compose.yml"

@@ -27,7 +27,7 @@ class ComposeService:
     image: str | None
     build_context: str | None
     ports: list[ComposePort]
-    environment: dict[str, str]
+    environment: dict[str, str | None]
     volumes: list[str]
     depends_on: list[str]
     labels: dict[str, str]
@@ -89,10 +89,19 @@ def _merge_compose_documents(base: dict, override: dict) -> dict:
     merged = dict(base)
     merged_services = {name: dict(value or {}) for name, value in (base.get("services") or {}).items()}
     for name, value in (override.get("services") or {}).items():
-        current = dict(merged_services.get(name, {}))
-        current.update(value or {})
+        current = _merge_service(merged_services.get(name, {}), value or {})
         merged_services[name] = current
     merged["services"] = merged_services
+    return merged
+
+
+def _merge_service(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if key in {"environment", "labels"} and isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = {**merged[key], **value}
+        else:
+            merged[key] = value
     return merged
 
 
@@ -142,10 +151,10 @@ def _parse_short_port(raw: str) -> tuple[int | None, int]:
     return int(parts[-2]), int(parts[-1].split("/", 1)[0])
 
 
-def _parse_environment(raw: Any) -> dict[str, str]:
+def _parse_environment(raw: Any) -> dict[str, str | None]:
     if isinstance(raw, dict):
-        return {str(key): str(value) for key, value in raw.items()}
-    result: dict[str, str] = {}
+        return {str(key): None if value is None else str(value) for key, value in raw.items()}
+    result: dict[str, str | None] = {}
     for item in raw:
         key, _, value = str(item).partition("=")
         result[key] = value
