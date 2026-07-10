@@ -1,0 +1,17 @@
+[project]
+name = "k8s-deploy-preanalyzer"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Deterministic pre-analysis workflow for Kubernetes manifest generation"
+dependencies = [
+  "PyYAML>=6.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: real repositories or network-dependent tests",
+  "needs_kubeconform: requires kubeconform binary",
+  "needs_kubectl: requires kubectl binary",
+]
+addopts = "-m 'not integration'"
