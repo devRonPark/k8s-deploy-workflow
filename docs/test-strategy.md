@@ -1,7 +1,7 @@
 # 테스트 전략 — On-Prem LLM K8s Manifest 사전 분석 파이프라인
 
 > 기준 문서: `onprem-llm-k8s-manifest-preanalysis-workflow.md`(이하 "설계 문서"), `docs/implementation-plan.md`(이하 "구현 계획").
-> 구현 계획의 Task별 테스트 명세와 AC-0~AC-6을 상세화·확장한 문서다. 테스트 이름은 구현 계획과 동일한 것을 재사용하며, 여기서 추가된 테스트는 각 절에 명시한다.
+> 구현 계획의 Task별 테스트 명세와 AC-0~AC-6을 상세화·확장한 문서다. 테스트 이름은 구현 계획과 동일한 것을 재사용하며, 여기서 추가된 테스트는 각 절에 명시한다. 본 문서는 기존 Parser/Rule 정확도뿐 아니라 **LLM Semantic Analysis의 정확도와 근거성**을 1급 품질 지표로 평가한다.
 
 ---
 
@@ -28,7 +28,7 @@ REFACTOR: 그린 유지 상태에서만 중복 제거·이름 개선
 파이프라인의 각 단계가 **순수 함수(입력 모델 → 출력 모델)** 로 설계되어 있다(구현 계획 1.6). 따라서:
 
 - 테스트 = "fixture 입력 → 기대 모델" 단언으로 충분하다. 파일시스템 I/O는 scanner/writer에만 있어 mock이 거의 필요 없다.
-- 설계 문서가 이미 **기대 출력을 명세**해 놓았다(11장 스키마 예시, 5장의 "기대 component model / 기대 unresolved questions"). RED 단계의 테스트는 이 명세를 그대로 옮겨 적는 것에서 시작한다.
+- 설계 문서가 이미 **기대 출력을 명세**해 놓았다(11장 스키마 예시, 5장의 "기대 evidence/rule/semantic/reconciled model / 기대 unresolved questions"). RED 단계의 테스트는 이 명세를 그대로 옮겨 적는 것에서 시작한다.
 - 설계 문서 5장의 "드러내는 실패 모드"는 **회귀 테스트 케이스의 원본 목록**이다. 각 실패 모드는 반드시 그것을 검증하는 이름 있는 테스트를 갖는다(3~4장에 매핑).
 
 ## 1.3 테스트 레이어 (3층)
@@ -59,7 +59,7 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 | 대상 | 정책 |
 |---|---|
 | 파서·빌더·병합·렌더러 | mock 금지. fixture 파일과 실제 모델 객체로 테스트 |
-| LLM endpoint | `httpx.MockTransport` + `tests/fixtures/llm_responses/`의 녹화 응답. **LLM 응답 내용이 아니라 provider의 처리 행동**(schema 검증, 재시도, None 폴백)을 검증 |
+| LLM endpoint | `httpx.MockTransport` + `tests/fixtures/llm_responses/`의 녹화 응답. Provider 테스트는 schema 검증·재시도·None 폴백을 검증하고, semantic regression 테스트는 녹화 응답이 Reconciliation 후 기대 component/dependency 결과를 만드는지 검증 |
 | kubeconform / kubectl | acceptance에서는 **실제 바이너리** 실행(판정 로직을 mock하면 Level 1 확정이 무의미). unit에서 도구 부재 시나리오만 `monkeypatch.setenv("PATH", ...)` |
 | 시각 | mock이 아니라 **주입**: `clock=lambda: datetime(2026, 7, 10, 9, 0, 0, tzinfo=UTC)` |
 | git clone | unit/acceptance는 로컬 fixture 디렉터리를 직접 입력(clone 경로 우회). integration만 실제 clone |
@@ -68,7 +68,7 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 
 ## 1.5 결정론이 테스트 전략에 주는 제약 (P10)
 
-- 모든 unit/acceptance 테스트는 **고정 clock + NullProvider**가 기본. LLM 문안이 필요한 테스트만 MockTransport provider를 명시적으로 주입.
+- 모든 unit/acceptance 테스트는 **고정 clock + NullProvider**가 기본. Semantic Analysis 품질 테스트만 MockTransport provider를 명시적으로 주입해 Rule-only와 Hybrid 결과를 비교한다.
 - 순서 의존 검증: 목록 산출물(inventory 항목, 컴포넌트, 질문)은 정렬 상태 자체를 단언한다(`test_inventory_sorted`, `test_question_ids_deterministic`).
 - 재현성은 별도 테스트로 상시 검증: `test_determinism.py`가 파이프라인을 2회 실행해 산출물 트리 byte 비교(AC-0.6).
 
@@ -78,10 +78,26 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 
 | 헬퍼 | 검사 내용 | 근거 |
 |---|---|---|
-| `assert_all_leaves_tracked(model)` | 모델 트리 재귀 순회 — 모든 추출 리프가 `Tracked`이고 불변식(value↔source/confidence, unresolved↔NONE) 충족 | P6, AC-0.2 |
+| `assert_all_leaves_tracked(model)` | 모델 트리 재귀 순회 — 모든 추출·해석 리프가 `Tracked`이고 불변식(value↔source/confidence/classification/evidence_refs, unresolved↔NONE) 충족 | P6, AC-0.2 |
 | `assert_no_forbidden_values(out_dir, allowed)` | 산출물 전체 스캔 — repo/Profile에 근거 없는 hostname·FQDN·registry 패턴, 상투 값(`db.example.com`, `myregistry` 등) 검출 시 실패 | P5, AC-0.3 |
 | `assert_no_secret_leak(out_dir, secrets)` | fixture의 더미 비밀 문자열이 산출물·LLM 요청 payload 어디에도 없음, placeholder 값 == `__REPLACE_ME__` | P9, AC-0.4 |
 | `assert_levels_honest(report)` | `target_level`/`achieved_level` 분리 기록, 실행 안 된 단계는 `not_run`/`skipped(reason)` | 6장, AC-5 |
+| `assert_semantic_grounded(semantic, evidence)` | 모든 `llm_interpretation.evidence_refs[]`가 Evidence Model의 evidence_id에 존재하고 빈 ref가 없음 | Evidence grounding, AC-0.8 |
+| `assert_no_hallucinated_intermediate(report, models)` | Reconciliation에서 rejected된 LLM 값이 component/runtime/dependency/intent에 저장되지 않았음 | Hallucination rate, AC-0.9 |
+
+## 1.7 Semantic Analysis 품질 지표
+
+Semantic Analysis는 "LLM이 그럴듯한 설명을 했는가"가 아니라 "Evidence에 근거해 최종 Intermediate Model 정확도를 높였는가"로 평가한다.
+
+| 지표 | 정의 | MVP 기준 |
+|---|---|---|
+| Component Boundary Accuracy | fixture의 기대 컴포넌트 경계와 reconciled component boundary의 precision/recall | 핵심 fixture(jpetstore, fastapi, node-express)에서 100%, 확장 fixture는 회귀 추적 |
+| Component Role Accuracy | application/dependency/infrastructure/tooling role classification 정확도 | fastapi fixture에서 backend/frontend/db/traefik 기대 role 100% |
+| Dependency Accuracy | internal edge/external dependency 분류의 precision/recall | fastapi fixture internal edge와 DB dependency 100% |
+| Evidence Grounding | `llm_interpretation` 중 유효 evidence_refs를 가진 비율 | 100%. 근거 없는 interpretation은 즉시 rejected |
+| Hallucination Rate | LLM이 만든 값 중 Evidence/Profile에 없는 component/value가 Intermediate Model에 저장된 비율 | 0% |
+| Rule-only vs Hybrid Delta | NullProvider 결과와 Hybrid 결과의 boundary/role/dependency 차이 | 차이는 `05-reconciliation-report.yaml`에 기록. Hybrid가 금지 값/Secret/validation 불변식을 깨면 실패 |
+| LLM Regression Stability | 녹화된 LLM 응답 + 고정 context policy로 같은 semantic/reconciliation 결과가 나오는지 | byte-level 또는 structured diff 동일 |
 
 ---
 
@@ -144,27 +160,67 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 | `test_python_poetry_and_requirements` | pyproject.toml(fastapi 의존)과 requirements.txt 각각 → 의존 목록 | ✓ |
 | `test_malformed_file_raises_parse_warning` | 깨진 pom.xml/JSON → 파서 예외가 아닌 `ParseWarning` 기록 + 해당 artifact skip (파이프라인 계속) | 추가 |
 
-## 2.3 Rule-based Detector + Component Builder (Step 3~4 — 구현 계획 Task 4)
+## 2.3 Evidence Builder (Step 3 — 구현 계획 Task 4)
 
-**책임**: 규칙 테이블 기반 언어/프레임워크/빌드 판정 + 배포 단위 분해. **confidence는 규칙 테이블이 부여하며 하드코딩 검증한다.**
+**책임**: Parser 출력을 의미 해석 전 `observed_fact` 원장으로 정규화한다.
 
 | 테스트 | Given → Expect | 계획 정의 |
 |---|---|---|
-| `test_jpetstore_single_java_component` | 컴포넌트 1개, java(high, pom.xml), maven, `mvn -B package`, `build_strategy: dockerfile_needed` | ✓ |
-| `test_fastapi_three_components_with_roles` | backend/frontend(application), db(**dependency**), traefik은 컴포넌트 아님 (5.2 실패 모드 (a)) | ✓ |
-| `test_detector_rule_priority` | package.json+Dockerfile 공존 → nodejs + dockerfile 전략 | ✓ |
+| `test_evidence_records_file_presence_and_absence` | Dockerfile 존재/부재, package 파일 존재 → 각각 evidence_id를 가진 observed_fact | 추가 |
+| `test_parsed_fields_become_observed_facts` | Dockerfile EXPOSE, Compose depends_on, package dependency → source/evidence_id/artifact_ref 포함 | 추가 |
+| `test_evidence_does_not_classify_roles` | postgres image fact는 남지만 `role: dependency`는 아직 생성되지 않음 | 추가 |
+| `test_evidence_sorted_and_deterministic` | 같은 repo 2회 → evidence_id와 정렬 순서 동일 | 추가 |
+| `test_evidence_excludes_secret_values` | `.env` 값은 fact value로 저장되지 않고 key/source만 기록 | 추가 |
+
+## 2.4 Rule Inference Engine (Step 4~6 — 구현 계획 Task 5)
+
+**책임**: Evidence Model에 규칙 테이블을 적용해 component/runtime/dependency/env 후보를 만든다. **confidence는 규칙 테이블이 부여하며 하드코딩 검증한다.**
+
+| 테스트 | Given → Expect | 계획 정의 |
+|---|---|---|
+| `test_jpetstore_single_java_boundary_candidate` | Java boundary 후보 1개, java(high, pom.xml), maven, `mvn -B package`, `build_strategy: dockerfile_needed` | ✓ |
+| `test_fastapi_rule_candidates_with_roles` | backend/frontend(application 후보), db(dependency 후보), traefik(infrastructure 후보) | ✓ |
+| `test_rule_inference_priority` | package.json+Dockerfile 공존 → nodejs + dockerfile 전략 후보 | ✓ |
 | `test_rule_table_confidences` | 규칙 테이블 파라미터화 테스트: `pom.xml→java(HIGH)`, `application.yml→spring-boot(MEDIUM)`, `pyproject[fastapi]→fastapi(HIGH)` — 4.5절 표의 각 행이 정확한 confidence로 | 추가 |
 | `test_component_boundary_priority` | Compose 서비스 단위 > 빌드 파일 경계 > Dockerfile 위치 순서 검증: compose가 있으면 서비스 단위가 이긴다 | 추가 |
 | `test_infra_image_pattern_table` | postgres/mysql/redis → `role: dependency`; traefik/nginx(프록시 문맥) → `role: infrastructure` | 추가 |
 | `test_monorepo_directory_boundaries` | backend/ frontend/ 각각 package 파일 → 컴포넌트 2개, root_path 정확 | 추가 |
-| `test_no_indicator_yields_unknown_not_guess` | 지표 파일이 전혀 없는 디렉터리 → `language: unresolved(NONE)` + 질문 신호. **임의 언어 부여 금지** | 추가 |
+| `test_no_indicator_yields_unknown_not_guess` | 지표 파일이 전혀 없는 디렉터리 → `language: unresolved(NONE)` + reconciliation 질문 신호. **임의 언어 부여 금지** | 추가 |
 | `test_detection_is_pure` | 동일 입력 2회 → 동일 DetectionResult (규칙 평가에 상태 없음) | 추가 |
 
-## 2.4 Kubernetes Intent Model (Step 7~8 — 구현 계획 Task 6, 상류 Task 5 포함)
+## 2.5 LLM Semantic Analyzer (Step 5~7 — 구현 계획 Task 6~7)
+
+**책임**: Evidence Bundle 기반 semantic interpretation 생성. Repository 전체가 아니라 Context Selector가 선택한 evidence만 입력한다.
+
+| 테스트 | Given → Expect | 계획 정의 |
+|---|---|---|
+| `test_context_bundle_contains_relevant_evidence_only` | backend 분석 context → 관련 evidence만 포함, 무관 파일 원문 제외 | 추가 |
+| `test_context_bundle_excludes_secret_values` | `.env` 더미 비밀번호와 Secret 값 후보 → LLM payload에 부재 | 추가 |
+| `test_semantic_result_requires_evidence_refs` | evidence_ref 없는 component role 응답 → 폐기 + warning | 추가 |
+| `test_component_boundary_accuracy_hybrid` | fastapi fixture + 녹화 LLM 응답 → backend/frontend/db boundary가 기대값과 일치 | 추가 |
+| `test_component_role_accuracy_hybrid` | fastapi fixture → backend/frontend application, db dependency, traefik infrastructure | 추가 |
+| `test_dependency_semantic_accuracy_hybrid` | depends_on + DATABASE_URL evidence → internal/external dependency 분류 기대값 | 추가 |
+| `test_forbidden_operational_values_rejected_from_llm` | LLM이 registry/namespace/DB host 생성 → semantic result rejected | 추가 |
+| `test_llm_regression_recorded_response_stable` | 같은 Evidence Bundle + 녹화 응답 → semantic_analysis structured diff 동일 | 추가 |
+
+## 2.6 Rule/LLM Reconciliation Engine (Step 8~9 — 구현 계획 Task 8)
+
+**책임**: observed_fact, rule_inference, llm_interpretation, user_decision을 교차 검증해 Intermediate Model을 만든다.
+
+| 테스트 | Given → Expect | 계획 정의 |
+|---|---|---|
+| `test_rule_llm_agreement_promotes_boundary` | rule과 LLM이 같은 boundary를 제시 → component_model 채택 + evidence_refs 보존 | 추가 |
+| `test_rule_llm_conflict_routes_user_question` | db role에 rule/LLM 불일치 → component 저장 보류 + 질문 생성 | 추가 |
+| `test_llm_only_without_evidence_rejected` | LLM이 evidence 없는 worker component 주장 → reconciliation report rejected | 추가 |
+| `test_user_decision_overrides_with_resolved_by` | Profile/user correction → classification=user_decision, resolved_by 기록 | 추가 |
+| `test_hallucinated_values_not_in_intermediate_model` | LLM이 만든 registry/DB host → 06~09 산출물에 부재 | 추가 |
+| `test_rule_only_vs_hybrid_report` | NullProvider와 Hybrid 결과 비교 → boundary/role/dependency delta가 report에 기록 | 추가 |
+
+## 2.7 Kubernetes Intent Model (Reconciliation 이후 — 구현 계획 Task 8)
 
 **책임**: 토폴로지 → K8s 리소스 의도. 모든 필드가 Tracked, 누락은 unresolved + profile_field 라우팅.
 
-### 상류: Runtime/Env/Dependency (Task 5)
+### Reconciled Runtime/Env/Dependency (Task 8)
 
 | 테스트 | Given → Expect | 계획 정의 |
 |---|---|---|
@@ -177,7 +233,7 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 | `test_grpc_addr_env_is_internal_dependency` | `*_SERVICE_ADDR` 패턴 env가 repo 내 다른 컴포넌트를 가리키면 internal 엣지 (5.3 실패 모드 (b) — 외부 의존 오분류 방지) | 추가 |
 | `test_health_endpoint_signal_confidence` | actuator 의존/`/health` 라우트 지표 → probe 후보 MEDIUM, 지표 없으면 probe 후보 없음 | 추가 |
 
-### Intent Builder (Task 6)
+### Intent Builder (Task 8)
 
 | 테스트 | Given → Expect | 계획 정의 |
 |---|---|---|
@@ -191,7 +247,7 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 | `test_port_unresolved_means_no_service_intent` | 포트 unresolved 컴포넌트 → Service 의도 미생성 + 질문 (14장 "포트가 확인된 컴포넌트당") | 추가 |
 | `test_existing_manifest_priority_over_source` *(2단계 예약)* | 기존 manifest의 port와 소스 추론 충돌 → manifest 값 우선 (10.2). MVP에서는 `@pytest.mark.skip(reason="phase-2")`로 자리만 | 추가 |
 
-## 2.5 Template Renderer (Step 11 — 구현 계획 Task 9)
+## 2.8 Template Renderer (Step 11 — 구현 계획 Task 10)
 
 **책임**: Intent(+Profile) → YAML. 14장 렌더 정책의 기계적 적용. **여기서 나온 YAML만이 산출물이 될 수 있다(P3).**
 
@@ -209,9 +265,9 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 | `test_readiness_probe_only_when_medium_or_higher` | probe 후보 confidence LOW → readinessProbe 블록 없음 + 질문; MEDIUM 이상 → 생성 (14장 Deployment 규칙) | 추가 |
 | `test_serviceaccount_per_component_and_linked` | 컴포넌트당 SA 1개 + Deployment `serviceAccountName` 연결 | 추가 |
 | `test_renderer_never_invents_values` | intent에 없는 키가 렌더 결과에 등장하지 않음: 렌더 결과 파싱 → 모든 값의 출처가 intent/Profile/템플릿 상수 중 하나 | 추가 |
-| `test_multi_component_renders_subdirectories` | 컴포넌트 2개 이상 → `08-generated-manifests/<component>/` 하위 분리 (16장) | 추가 |
+| `test_multi_component_renders_subdirectories` | 컴포넌트 2개 이상 → `12-generated-manifests/<component>/` 하위 분리 (16장) | 추가 |
 
-## 2.6 Validator (Step 12 — 구현 계획 Task 10)
+## 2.9 Validator (Step 12 — 구현 계획 Task 11)
 
 **책임**: 검증 체인 실행과 **정직한 수준 판정**. 판정은 도구가, 해석만 LLM이(MVP는 해석도 제외).
 
@@ -235,10 +291,10 @@ addopts = "-m 'not integration'"    # 기본 실행에서 integration 제외
 
 | Golden 세트 | 위치 | 비교 대상 | 갱신 트리거 |
 |---|---|---|---|
-| **렌더 golden** | `tests/golden/render/<fixture>/<scenario>/` | `08-generated-manifests/` 트리 (renderer 단위) | 템플릿 변경 (rules_version bump 필수) |
-| **파이프라인 golden** | `tests/golden/pipeline/<fixture>/<mode>/` | 산출물 트리 전체 `00~11` (repo-only / with-profile 두 mode) | 규칙·모델·템플릿 어떤 변경이든 |
+| **렌더 golden** | `tests/golden/render/<fixture>/<scenario>/` | `12-generated-manifests/` 트리 (renderer 단위) | 템플릿 변경 (rules_version bump 필수) |
+| **파이프라인 golden** | `tests/golden/pipeline/<fixture>/<mode>/` | 산출물 트리 전체 `00~15` (repo-only / with-profile 두 mode) | 규칙·모델·템플릿 어떤 변경이든 |
 
-파이프라인 golden이 핵심이다: **중간 모델(00~05)까지 golden에 포함**시켜 "어느 단계에서 출력이 달라졌는지"를 diff 위치로 즉시 알 수 있다. 예: 탐지 규칙 변경 → `02-component-model.yaml` diff부터 나타나고, 템플릿 변경 → `08-*`만 diff.
+파이프라인 golden이 핵심이다: **Evidence/Rule/Semantic/Reconciliation/Intermediate(00~09)까지 golden에 포함**시켜 "어느 단계에서 출력이 달라졌는지"를 diff 위치로 즉시 알 수 있다. 예: 탐지 규칙 변경 → `03-rule-inference.yaml` diff부터 나타나고, 템플릿 변경 → `12-*`만 diff.
 
 ## 3.2 비교 규칙
 
@@ -258,7 +314,7 @@ pytest tests/ --update-golden        # conftest.py의 custom flag
 
 1. golden 갱신은 **전용 커밋**으로 분리한다 — 코드 변경과 golden 갱신이 한 커밋에 섞이면 리뷰에서 의도적 변경과 회귀를 구분할 수 없다.
 2. 갱신 커밋 메시지에 변경 사유와 diff 요약을 기록한다 (예: `test: update golden — readinessProbe 생성 조건 medium 이상으로 변경`).
-3. 템플릿/규칙 변경으로 인한 갱신은 `rules_version` bump가 같은 PR에 없으면 CI가 실패하도록 검사 테스트를 둔다: `test_golden_change_requires_rules_version_bump` (git diff에 templates/ 또는 detector 규칙 변경이 있는데 rules_version 동일하면 실패).
+3. 템플릿/규칙 변경으로 인한 갱신은 `rules_version` bump가 같은 PR에 없으면 CI가 실패하도록 검사 테스트를 둔다: `test_golden_change_requires_rules_version_bump` (git diff에 templates/ 또는 rule inference 규칙 변경이 있는데 rules_version 동일하면 실패).
 4. **golden diff를 읽지 않고 `--update-golden`을 실행하는 것은 금지** — 갱신 전 실패한 테스트의 diff 출력을 확인하고, 기대한 변경만 있는지 검토한다.
 
 ## 3.4 golden과 TDD의 관계
@@ -354,7 +410,7 @@ tests/fixtures/
 | S1-3 | containerPort **unresolved**, 관례 8080은 질문 candidates에 LOW로만 | (b) 관례 포트를 high로 오표기 |
 | S1-4 | 내장 HSQLDB가 외부 의존성으로 등장하지 않음; 외부 DB는 분기 질문(Q-DB)으로만 | (c) 내장 DB를 외부 의존성으로 오탐 |
 | S1-5 | 질문 세트 ⊇ {Q-PORT, 서블릿 컨테이너, Q-DB 분기, Q-REG, Q-NS, Q-ING} | 질문 누락 |
-| S1-6 | `09-validation-report.yaml`: achieved_level 1 (렌더 가능 리소스 한정), 포트 unresolved로 Deployment는 deferred 또는 Level 0 표기 | 거짓 성공 |
+| S1-6 | `13-validation-report.yaml`: achieved_level 1 (렌더 가능 리소스 한정), 포트 unresolved로 Deployment는 deferred 또는 Level 0 표기 | 거짓 성공 |
 
 ## 5.2 fastapi/full-stack-fastapi-template — 모노레포 + Compose `[F][I]`
 
@@ -391,7 +447,7 @@ tests/fixtures/
 
 ## 5.4 spring-petclinic/spring-petclinic-microservices — Maven multi-module `[F 축소][I는 P2]`
 
-**MVP에서 실행하는 부분** (`spring-multimodule-like` fixture — MVP detector가 Java+Maven을 지원하므로 multi-module 분해까지는 MVP 검증 대상):
+**MVP에서 실행하는 부분** (`spring-multimodule-like` fixture — MVP rule inference가 Java+Maven을 지원하므로 multi-module 분해까지는 MVP 검증 대상):
 
 | # | 단언 | 드러내는 실패 모드 |
 |---|---|---|
@@ -414,7 +470,7 @@ tests/fixtures/
 |---|---|
 | S5-1 | `archived: true` 메타데이터가 주어지면 snapshot에 기록되고, 산출물 checklist에 "참조용 분석" 경고 문구 포함 (integration에서 eShopOnContainers로 검증) |
 
-**P2 시나리오** (정의만 — .NET detector 부재):
+**P2 시나리오** (정의만 — .NET rule inference 부재):
 
 | # | 단언 | 드러내는 실패 모드 |
 |---|---|---|
@@ -449,9 +505,9 @@ tests/integration/test_real_repos.py             # 5개 repo 고정 SHA — S1/S
 ## 6.2 완료 판정 (구현 계획 AC와의 관계)
 
 - **모듈 완료** = 해당 절(2장)의 테스트 전부 그린 + golden 갱신 커밋 분리 규율 준수.
-- **MVP 완료** = `pytest`(unit+acceptance) 전체 그린 — 이것이 구현 계획 4장 AC-0~AC-6의 실행형이며, 설계 문서 17.4의 자동 검증이다.
+- **MVP 완료** = `pytest`(unit+acceptance) 전체 그린 + 1.7절 Semantic Analysis 품질 지표 기준 충족 — 이것이 구현 계획 4장 AC-0~AC-6의 실행형이며, 설계 문서 17.4의 자동 검증이다.
 - **회귀 게이트** = rules_version/템플릿 변경 PR은 golden diff 리뷰 + `test_golden_change_requires_rules_version_bump` 통과 필수.
 
 ## 6.3 커버리지 정책
 
-라인 커버리지 수치 목표는 두지 않는다(수치는 게임 가능). 대신 **행동 커버리지**를 강제한다: 설계 문서 5장의 실패 모드 15개(5.1~5.5 각 3개) 각각에 대응하는 이름 있는 테스트가 존재해야 하며, 본 문서 5장의 매핑 표가 그 대장(ledger)이다. 새 실패 모드 발견 시(버그 리포트 포함) — 수정 전에 그것을 재현하는 실패 테스트부터 추가한다(TDD 버그 수정 규칙).
+라인 커버리지 수치 목표는 두지 않는다(수치는 게임 가능). 대신 **행동 커버리지**를 강제한다: 설계 문서 5장의 실패 모드 15개(5.1~5.5 각 3개), Semantic Analysis 품질 지표 7개(1.7), 그리고 LLM hallucination 방어 경로 각각에 대응하는 이름 있는 테스트가 존재해야 한다. 본 문서 5장의 매핑 표가 그 대장(ledger)이다. 새 실패 모드 발견 시(버그 리포트 포함) — 수정 전에 그것을 재현하는 실패 테스트부터 추가한다(TDD 버그 수정 규칙).
