@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-@dataclass(frozen=True)
-class RepositorySnapshot:
+class RepositorySnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     url: str | None
     ref: str | None
     commit_sha: str | None
@@ -14,8 +15,5 @@ class RepositorySnapshot:
     analyzer_version: str
     rules_version: str
     file_count: int
-    excluded_patterns: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-
-    def model_dump(self) -> dict:
-        return asdict(self)
+    excluded_patterns: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

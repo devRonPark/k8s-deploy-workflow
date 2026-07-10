@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import field
+
+from pydantic import BaseModel, Field, TypeAdapter
+from pydantic.dataclasses import dataclass
+
+
+def _dump(instance: object) -> dict:
+    return TypeAdapter(type(instance)).dump_python(instance)
 
 
 @dataclass(frozen=True)
@@ -12,7 +19,7 @@ class ComponentCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -25,7 +32,7 @@ class RoleCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -41,7 +48,7 @@ class RuntimeCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -55,7 +62,7 @@ class RuntimeVersionCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -68,7 +75,7 @@ class RuntimePortCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -81,7 +88,7 @@ class RuntimeCommandCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -95,7 +102,7 @@ class DependencyEdgeCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -107,7 +114,7 @@ class SecretCandidate:
     classification: str = "rule_inference"
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
 @dataclass(frozen=True)
@@ -115,19 +122,15 @@ class EnvClassification:
     secret_candidates: list[SecretCandidate] = field(default_factory=list)
 
     def model_dump(self) -> dict:
-        return asdict(self)
+        return _dump(self)
 
 
-@dataclass(frozen=True)
-class RuleInferenceSet:
-    component_candidates: list[ComponentCandidate] = field(default_factory=list)
-    role_candidates: list[RoleCandidate] = field(default_factory=list)
-    runtime_candidates: list[RuntimeCandidate] = field(default_factory=list)
-    runtime_version_candidates: list[RuntimeVersionCandidate] = field(default_factory=list)
-    runtime_port_candidates: list[RuntimePortCandidate] = field(default_factory=list)
-    runtime_command_candidates: list[RuntimeCommandCandidate] = field(default_factory=list)
-    dependency_edge_candidates: list[DependencyEdgeCandidate] = field(default_factory=list)
-    env_classification: EnvClassification = field(default_factory=EnvClassification)
-
-    def model_dump(self) -> dict:
-        return asdict(self)
+class RuleInferenceSet(BaseModel):
+    component_candidates: list[ComponentCandidate] = Field(default_factory=list)
+    role_candidates: list[RoleCandidate] = Field(default_factory=list)
+    runtime_candidates: list[RuntimeCandidate] = Field(default_factory=list)
+    runtime_version_candidates: list[RuntimeVersionCandidate] = Field(default_factory=list)
+    runtime_port_candidates: list[RuntimePortCandidate] = Field(default_factory=list)
+    runtime_command_candidates: list[RuntimeCommandCandidate] = Field(default_factory=list)
+    dependency_edge_candidates: list[DependencyEdgeCandidate] = Field(default_factory=list)
+    env_classification: EnvClassification = Field(default_factory=EnvClassification)

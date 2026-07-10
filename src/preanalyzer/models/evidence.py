@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-@dataclass(frozen=True)
-class EvidenceFact:
+
+class EvidenceFact(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     evidence_id: str
     fact_type: str
     artifact_ref: str
@@ -13,17 +15,19 @@ class EvidenceFact:
     classification: str
     value: Any
 
-    def model_dump(self) -> dict:
-        return asdict(self)
+    @field_validator("classification")
+    @classmethod
+    def _classification_observed(cls, value: str) -> str:
+        if value != "observed_fact":
+            raise ValueError("phase-1 evidence facts must be observed_fact")
+        return value
 
 
-@dataclass(frozen=True)
-class EvidenceModel:
-    facts: list[EvidenceFact] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+class EvidenceModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    facts: list[EvidenceFact] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
     def facts_by_type(self, fact_type: str) -> list[EvidenceFact]:
         return [fact for fact in self.facts if fact.fact_type == fact_type]
-
-    def model_dump(self) -> dict:
-        return asdict(self)
