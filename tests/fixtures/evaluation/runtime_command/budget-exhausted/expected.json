@@ -1,0 +1,1 @@
+{"allowed_commands":["uvicorn main:app --host 0.0.0.0"],"expected_command":"uvicorn main:app --host 0.0.0.0","expected_evidence_paths":["entrypoint.sh"],"expected_status":"resolved","expected_tool_names":["read_source_range"],"max_tool_calls":1}

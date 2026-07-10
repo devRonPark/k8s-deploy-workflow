@@ -1,0 +1,1 @@
+{"allowed_commands":["python app.py"],"expected_command":"python app.py","expected_evidence_paths":["Dockerfile"],"expected_status":"resolved","expected_tool_names":["read_source_range"],"max_tool_calls":2}

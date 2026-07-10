@@ -1,0 +1,1 @@
+{"allowed_commands":["python -m app"],"expected_command":"python -m app","expected_evidence_paths":[],"expected_status":"no_task","expected_tool_names":[],"max_tool_calls":0}
