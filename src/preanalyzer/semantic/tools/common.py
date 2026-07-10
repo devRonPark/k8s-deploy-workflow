@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import fnmatch
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
 from typing import Iterable
 
-from preanalyzer.analyzer.scanner import EXCLUDED_PATTERNS as SCANNER_EXCLUDED_PATTERNS
 from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
 from preanalyzer.models.semantic import SemanticTask
@@ -19,6 +17,11 @@ from preanalyzer.models.semantic_tools import (
     SemanticToolResultStatus,
     SemanticToolUsage,
 )
+from preanalyzer.path_safety import (
+    is_excluded_rel_path,
+    is_sensitive_rel_path,
+    is_within as _is_relative_to,
+)
 
 
 MAX_FILE_BYTES = 1024 * 1024
@@ -27,32 +30,6 @@ MAX_SEARCH_MATCHES = 50
 MAX_SEARCH_CONTEXT_LINES = 5
 MAX_SCRIPT_CANDIDATES = 20
 MAX_TARGET_RESULTS = 20
-
-EXCLUDED_DIR_NAMES = {
-    ".git",
-    "node_modules",
-    "vendor",
-    "target",
-    "dist",
-    "build",
-    "__pycache__",
-    ".venv",
-    "venv",
-    "coverage",
-    ".cache",
-}
-
-SENSITIVE_FILE_PATTERNS = (
-    ".env",
-    ".env.*",
-    "*.pem",
-    "*.key",
-    "id_rsa",
-    "id_ed25519",
-    "credentials*",
-    "secret*",
-    "secrets*",
-)
 
 _ASSIGNMENT_SECRET_RE = re.compile(
     r"(?i)\b(?P<name>[A-Z0-9_.-]*(?:password|passwd|token|secret|api[_-]?key)[A-Z0-9_.-]*)\b"
@@ -264,18 +241,6 @@ def source_line_budget(context: SemanticToolExecutionContext) -> int:
     return int(getattr(context.task_budget, "max_source_lines", 0))
 
 
-def is_excluded_rel_path(rel: str) -> bool:
-    parts = PurePosixPath(rel).parts
-    if any(part in EXCLUDED_DIR_NAMES for part in parts):
-        return True
-    return any(fnmatch.fnmatch(rel, pattern) for pattern in SCANNER_EXCLUDED_PATTERNS)
-
-
-def is_sensitive_rel_path(rel: str) -> bool:
-    name = PurePosixPath(rel).name
-    return any(fnmatch.fnmatch(name, pattern) for pattern in SENSITIVE_FILE_PATTERNS)
-
-
 def _component_root(repo_root: Path, component: ComponentCandidate) -> Path:
     root_path = component.root_path
     if root_path in {None, "."}:
@@ -294,11 +259,3 @@ def _referenced_phase1_evidence(task: SemanticTask) -> set[str]:
     for candidate in task.known_candidates:
         refs.update(candidate.evidence_refs)
     return {ref for ref in refs if ref}
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True

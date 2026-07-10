@@ -55,7 +55,13 @@ class ComposeParserExtendedTests(unittest.TestCase):
                 "artifact_ref": "docker-compose.yml",
                 "source": "compose_environment",
                 "classification": "observed_fact",
-                "value": {"service": "api", "name": "API_SECRET_KEY", "value_present": False},
+                "value": {
+                    "service": "api",
+                    "name": "API_SECRET_KEY",
+                    "value_present": False,
+                    "value_type": "empty",
+                    "contains_credentials": False,
+                },
             },
             [_without_id(fact.model_dump()) for fact in evidence.facts],
         )

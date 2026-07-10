@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from preanalyzer.analyzer.env_safety import build_env_fact
 from preanalyzer.analyzer.parsers.compose import ParsedCompose
 from preanalyzer.analyzer.parsers.dockerfile import ParsedDockerfile
 from preanalyzer.analyzer.parsers.maven import ParsedMaven
@@ -105,22 +106,11 @@ def _append_compose_facts(append, artifact_ref: str, parsed: ParsedCompose) -> N
         for port in service.ports:
             append("compose_port", artifact_ref, port.source, {"service": service.name, **port.model_dump()})
         for name, value in sorted(service.environment.items()):
-            append("compose_environment", artifact_ref, "compose_environment", _safe_env_fact(service.name, name, value))
+            append("compose_environment", artifact_ref, "compose_environment", build_env_fact(service.name, name, value))
         for volume in service.volumes:
             append("compose_volume", artifact_ref, "compose_volumes", {"service": service.name, "volume": volume})
     for warning in parsed.warnings:
         append("parse_warning", artifact_ref, "compose_parser", warning)
-
-
-def _safe_env_fact(service_name: str, name: str, value: str | None) -> dict[str, str | bool | None]:
-    if _is_secret_name(name):
-        return {"service": service_name, "name": name, "value_present": bool(value)}
-    return {"service": service_name, "name": name, "value": value}
-
-
-def _is_secret_name(name: str) -> bool:
-    upper = name.upper()
-    return any(token in upper for token in ["PASSWORD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "PRIVATE"])
 
 
 def _python_source(artifact_ref: str) -> str:

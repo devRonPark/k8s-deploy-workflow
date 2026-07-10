@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from preanalyzer.analyzer.env_safety import is_secret_name
 from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.models.rule_inference import (
     ComponentCandidate,
@@ -179,7 +180,9 @@ def _secret_candidates(evidence: EvidenceModel) -> list[SecretCandidate]:
     candidates = []
     for fact in evidence.facts_by_type("compose_environment"):
         name = fact.value["name"]
-        if fact.value.get("value_present") is True and _is_secret_name(name):
+        present = fact.value.get("value_present") is True
+        has_credentials = fact.value.get("contains_credentials") is True
+        if (present and is_secret_name(name)) or has_credentials:
             candidates.append(SecretCandidate(fact.value["service"], name, fact.source, [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.name))
 
@@ -287,11 +290,6 @@ def _source_for_package_fact(fact: EvidenceFact) -> str:
     return fact.source
 
 
-def _is_secret_name(name: str) -> bool:
-    upper = name.upper()
-    return any(token in upper for token in ["PASSWORD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "PRIVATE"])
-
-
 def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeCandidate]:
     candidates: list[DependencyEdgeCandidate] = []
     compose_services = {fact.value["service"] for fact in evidence.facts_by_type("compose_service")}
@@ -308,9 +306,8 @@ def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeC
         )
     for fact in evidence.facts_by_type("compose_environment"):
         name = fact.value["name"]
-        value = str(fact.value.get("value", ""))
         if name.upper().endswith("DATABASE_URL"):
-            target = _database_target(value, compose_services)
+            target = _database_target(fact.value.get("sanitized"), compose_services)
             if target is not None:
                 candidates.append(
                     DependencyEdgeCandidate(
@@ -325,8 +322,10 @@ def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeC
     return sorted(candidates, key=lambda c: (c.source_component, c.target, c.dependency_type))
 
 
-def _database_target(value: str, compose_services: set[str]) -> str | None:
-    for service in sorted(compose_services):
-        if f"@{service}:" in value or f"//{service}:" in value:
-            return service
+def _database_target(sanitized: object, compose_services: set[str]) -> str | None:
+    if not isinstance(sanitized, dict):
+        return None
+    host = sanitized.get("host")
+    if isinstance(host, str) and host in compose_services:
+        return host
     return None
