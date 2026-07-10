@@ -245,9 +245,44 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src   .venv/bin/python3 -m unittest discove
 
 Do not trust a subagent report without inspecting the diff and running verification yourself. Never claim an unexecuted test passed.
 
-Final responses must be in Korean and contain:
+Final responses and meaningful progress updates must be written in Korean for a non-developer.
 
-1. Changed behavior
-2. Changed files
-3. Commands run and actual results
-4. Remaining uncertainty or unverified items
+Explain the user impact before technical details. Avoid unexplained terms such as class names, schema, fixture, serialization, worktree, or Superpowers skill names.
+
+Use this structure:
+
+1. **한 줄 요약**
+
+   * 무엇이 달라졌는지 사용자 관점에서 설명
+
+2. **처리한 내용**
+
+   * 주요 변경사항을 쉬운 표현으로 설명
+   * 파일명이나 함수명보다 실제 동작 중심으로 작성
+
+3. **확인 결과**
+
+   * 실행한 테스트 수와 성공·실패 결과
+   * 실행하지 않은 테스트는 성공했다고 표현하지 않음
+
+4. **남은 사항**
+
+   * 확인하지 못한 부분, 제한사항, 실패 원인
+   * 없으면 `현재 확인된 미완료 사항은 없습니다.`라고 작성
+
+5. **개발자 참고**
+
+   * 변경 파일
+   * 실행 명령
+   * 커밋 정보
+   * 필요한 기술 세부사항
+
+Progress updates should briefly explain:
+
+* 현재 무엇을 하고 있는지
+* 발견한 문제
+* 사용자에게 어떤 영향이 있는지
+* 다음에 무엇을 확인할지
+
+Do not paste raw command output unless a command failed or the user requests it.
+Do not mention Superpowers skill names unless the user asks about the development process.
