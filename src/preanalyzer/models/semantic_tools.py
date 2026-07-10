@@ -21,6 +21,7 @@ class SemanticToolResultStatus(str, Enum):
     NOT_FOUND = "not_found"
     UNSUPPORTED = "unsupported"
     ERROR = "error"
+    BUDGET_EXHAUSTED = "budget_exhausted"
 
 
 class _SemanticToolBase(BaseModel):

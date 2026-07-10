@@ -115,6 +115,20 @@ Snapshot metadata에 `snapshot_mode`, `workspace_hash`, `workspace_dirty`, `modi
 - **environment**: 원문 값은 저장하지 않는다(secret 정책). bare key(`- DEBUG`)는 `source: host_environment`로, 명시적 빈 값과 구분해 기록한다.
 - **제한**: env 값 interpolation은 의도적으로 수행하지 않는다(secret 비유출). port range는 개별 포트로 전개하지 않는다.
 
+## Component ownership
+
+- Compose service 후보와 package(manifest) 후보를 **union + reconcile**한다. compose `build.context`가 가리키는 root의 package는 해당 service에 흡수되고, 매칭되지 않는 monorepo package는 별도 component로 남는다.
+- **image-only service**(`root_path=None`)는 source root를 소유하지 않아 runtime/framework가 잘못 연결되지 않는다.
+- artifact는 **longest-prefix** 규칙으로 가장 구체적인 component에 귀속된다(중첩 package 오귀속 방지).
+
+## Semantic budget
+
+- Semantic tool 호출은 `SemanticToolSession`을 통해 실행되며 task 단위 `BudgetLedger`가 tool call·distinct tool·unique file·source line·schema retry를 **누적 강제**한다. 한도 도달 시 이후 호출은 실행 없이 `budget_exhausted`로 거부되고, 직전까지의 evidence는 보존된다.
+
+## Python requirements
+
+- `requirements.txt`의 `-r`/`-c` include, index/`--hash` 옵션, editable/VCS/direct-URL 참조를 일반 package와 분리한다. VCS URL의 credential은 저장하지 않고 `#egg=` 이름만 남긴다.
+
 ## 프로젝트 구조
 
 ```

@@ -832,9 +832,9 @@ Parser마다 다른 예외 처리 방식을 통합하고, pipeline이 부분 실
 
 ## Milestone 4 — Component and Semantic Accuracy
 
-- [ ] TASK-007 Component ownership 재설계
-- [ ] TASK-008 Semantic budget ledger
-- [ ] TASK-010 Python requirements parser 개선
+- [x] TASK-007 Component ownership 재설계
+- [x] TASK-008 Semantic budget ledger
+- [x] TASK-010 Python requirements parser 개선
 
 ### Exit Criteria
 
