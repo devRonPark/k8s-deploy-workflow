@@ -11,6 +11,13 @@ class ParsedPythonPackage:
     dependencies: list[str]
 
 
+@dataclass(frozen=True)
+class ParseWarning:
+    path: str
+    parser: str
+    message: str
+
+
 def parse_pyproject(path: Path) -> ParsedPythonPackage:
     document = tomllib.loads(path.read_text(encoding="utf-8"))
     project = document.get("project") or {}
@@ -28,6 +35,20 @@ def parse_requirements(path: Path) -> ParsedPythonPackage:
             continue
         dependencies.append(_dependency_name(line))
     return ParsedPythonPackage(path=path.as_posix(), dependencies=dependencies)
+
+
+def try_parse_pyproject(path: Path) -> ParsedPythonPackage | ParseWarning:
+    try:
+        return parse_pyproject(path)
+    except Exception as exc:
+        return ParseWarning(path=str(path), parser="python_pyproject", message=str(exc))
+
+
+def try_parse_requirements(path: Path) -> ParsedPythonPackage | ParseWarning:
+    try:
+        return parse_requirements(path)
+    except Exception as exc:
+        return ParseWarning(path=str(path), parser="python_requirements", message=str(exc))
 
 
 def _dependency_name(value: str) -> str:

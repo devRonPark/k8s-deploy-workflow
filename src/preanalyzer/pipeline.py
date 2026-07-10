@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -9,9 +10,9 @@ import yaml
 from preanalyzer.analyzer.evidence_builder import build as build_evidence
 from preanalyzer.analyzer.parsers.compose import parse as parse_compose
 from preanalyzer.analyzer.parsers.dockerfile import parse as parse_dockerfile
-from preanalyzer.analyzer.parsers.maven import parse as parse_maven
-from preanalyzer.analyzer.parsers.nodejs import parse as parse_nodejs
-from preanalyzer.analyzer.parsers.python_pkg import parse_pyproject, parse_requirements
+from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
+from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
+from preanalyzer.analyzer.parsers.python_pkg import try_parse_pyproject, try_parse_requirements
 from preanalyzer.analyzer.rule_inference import infer
 from preanalyzer.analyzer.scanner import build_inventory, snapshot
 from preanalyzer.models.evidence import EvidenceModel
@@ -29,8 +30,9 @@ def run_phase1_analysis(
 ) -> tuple[RepositorySnapshot, ArtifactInventory, EvidenceModel, RuleInferenceSet]:
     repo_snapshot = snapshot(repo=repo, url=url, ref=ref, clock=clock)
     inventory = build_inventory(repo=repo, snapshot=repo_snapshot)
-    parsed_artifacts = _parse_inventory(repo, inventory)
+    parsed_artifacts, parse_warnings = _parse_inventory(repo, inventory)
     evidence = build_evidence(inventory, parsed_artifacts)
+    evidence = EvidenceModel(facts=evidence.facts, warnings=evidence.warnings + parse_warnings)
     rules = infer(evidence)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -42,8 +44,9 @@ def run_phase1_analysis(
     return repo_snapshot, inventory, evidence, rules
 
 
-def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> dict[str, object]:
+def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str, object], list[str]]:
     parsed: dict[str, object] = {}
+    warnings: list[str] = []
     for item in inventory.container_files:
         if item.get("present") is False:
             continue
@@ -56,14 +59,34 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> dict[str, obje
         path = str(item["path"])
         artifact_type = item["type"]
         if artifact_type == "maven":
-            parsed[path] = parse_maven(repo / path)
+            result = try_parse_maven(repo / path)
+            if _is_parse_warning(result):
+                warnings.append(json.dumps({"path": path, "parser": result.parser, "message": result.message}))
+            else:
+                parsed[path] = result
         elif artifact_type == "nodejs":
-            parsed[path] = parse_nodejs(repo / path)
+            result = try_parse_nodejs(repo / path)
+            if _is_parse_warning(result):
+                warnings.append(json.dumps({"path": path, "parser": result.parser, "message": result.message}))
+            else:
+                parsed[path] = result
         elif artifact_type == "python_pyproject":
-            parsed[path] = parse_pyproject(repo / path)
+            result = try_parse_pyproject(repo / path)
+            if _is_parse_warning(result):
+                warnings.append(json.dumps({"path": path, "parser": result.parser, "message": result.message}))
+            else:
+                parsed[path] = result
         elif artifact_type == "python_requirements":
-            parsed[path] = parse_requirements(repo / path)
-    return parsed
+            result = try_parse_requirements(repo / path)
+            if _is_parse_warning(result):
+                warnings.append(json.dumps({"path": path, "parser": result.parser, "message": result.message}))
+            else:
+                parsed[path] = result
+    return parsed, warnings
+
+
+def _is_parse_warning(value: object) -> bool:
+    return all(hasattr(value, attr) for attr in ["path", "parser", "message"])
 
 
 def _write_yaml(path: Path, document: dict) -> None:

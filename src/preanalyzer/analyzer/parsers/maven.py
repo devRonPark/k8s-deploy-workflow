@@ -18,6 +18,13 @@ class ParsedMaven:
         return bool(self.modules)
 
 
+@dataclass(frozen=True)
+class ParseWarning:
+    path: str
+    parser: str
+    message: str
+
+
 def parse(path: Path) -> ParsedMaven:
     root = ET.fromstring(path.read_text(encoding="utf-8"))
     packaging = _find_text(root, "packaging") or "jar"
@@ -27,6 +34,13 @@ def parse(path: Path) -> ParsedMaven:
         packaging=Tracked(packaging, "pom.xml", Confidence.HIGH),
         modules=modules,
     )
+
+
+def try_parse(path: Path) -> ParsedMaven | ParseWarning:
+    try:
+        return parse(path)
+    except Exception as exc:
+        return ParseWarning(path=str(path), parser="maven", message=str(exc))
 
 
 def _find_text(root: ET.Element, path: str) -> str | None:
