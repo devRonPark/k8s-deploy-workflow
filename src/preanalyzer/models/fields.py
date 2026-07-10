@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import field
 from enum import Enum
-from typing import Any
+from typing import Generic, TypeVar
 
 from pydantic import ConfigDict, TypeAdapter
 from pydantic.dataclasses import dataclass
@@ -15,9 +15,12 @@ class Confidence(str, Enum):
     NONE = "none"
 
 
+T = TypeVar("T")
+
+
 @dataclass(frozen=True, config=ConfigDict(use_enum_values=True))
-class Tracked:
-    value: Any = None
+class Tracked(Generic[T]):
+    value: T | None = None
     source: str | None = None
     confidence: Confidence = Confidence.NONE
     evidence_refs: list[str] = field(default_factory=list)

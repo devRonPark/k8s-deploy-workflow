@@ -9,6 +9,7 @@ import yaml
 
 from preanalyzer.analyzer.evidence_builder import build as build_evidence
 from preanalyzer.analyzer.parsers.compose import parse as parse_compose
+from preanalyzer.analyzer.parsers.compose import parse_with_override
 from preanalyzer.analyzer.parsers.dockerfile import parse as parse_dockerfile
 from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
 from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
@@ -52,9 +53,11 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
             continue
         path = str(item["path"])
         parsed[path] = parse_dockerfile(repo / path)
-    for item in inventory.compose_files:
-        path = str(item["path"])
-        parsed[path] = parse_compose(repo / path)
+    for base_path, override_path in _pair_compose_files(inventory.compose_files):
+        if override_path is None:
+            parsed[base_path] = parse_compose(repo / base_path)
+        else:
+            parsed[base_path] = parse_with_override(repo / base_path, repo / override_path)
     for item in inventory.build_files:
         path = str(item["path"])
         artifact_type = item["type"]
@@ -83,6 +86,51 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
             else:
                 parsed[path] = result
     return parsed, warnings
+
+
+COMPOSE_BASE_NAMES = {
+    "compose.yaml",
+    "compose.yml",
+    "docker-compose.yaml",
+    "docker-compose.yml",
+}
+COMPOSE_OVERRIDE_NAMES = {
+    "docker-compose.override.yaml",
+    "docker-compose.override.yml",
+}
+
+
+def _pair_compose_files(compose_files: list) -> list[tuple[str, str | None]]:
+    """Pair base compose files with a same-directory override file.
+
+    Yields (base_path, override_path) tuples. When a directory holds exactly
+    one base and exactly one override file they are paired for merged parsing.
+    Every other compose file (no override, an orphan override, or an ambiguous
+    multi-base directory) is yielded as (path, None) for independent parsing.
+    """
+    by_dir: dict[str, dict[str, list[str]]] = {}
+    for item in compose_files:
+        path = str(item["path"])
+        parent = str(Path(path).parent)
+        lower_name = Path(path).name.lower()
+        bucket = by_dir.setdefault(parent, {"base": [], "override": [], "other": []})
+        if lower_name in COMPOSE_BASE_NAMES:
+            bucket["base"].append(path)
+        elif lower_name in COMPOSE_OVERRIDE_NAMES:
+            bucket["override"].append(path)
+        else:
+            bucket["other"].append(path)
+
+    pairs: list[tuple[str, str | None]] = []
+    for bucket in by_dir.values():
+        if len(bucket["base"]) == 1 and len(bucket["override"]) == 1:
+            pairs.append((bucket["base"][0], bucket["override"][0]))
+        else:
+            for path in bucket["base"] + bucket["override"]:
+                pairs.append((path, None))
+        for path in bucket["other"]:
+            pairs.append((path, None))
+    return sorted(pairs, key=lambda pair: pair[0])
 
 
 def _is_parse_warning(value: object) -> bool:
