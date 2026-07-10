@@ -53,7 +53,7 @@ def semantic_task(**overrides) -> SemanticTask:
             evidence_refs=["F0009"],
         ),
         "known_candidates": [known_candidate()],
-        "evidence_refs": ["F0009"],
+        "evidence_refs": [EvidenceReference(evidence_id="F0009", origin="phase1")],
         "allowed_tools": ["read_source_range", "inspect_entrypoint_script"],
         "budget": SemanticTaskBudget(),
     }
@@ -138,6 +138,17 @@ class SemanticModelTests(unittest.TestCase):
                 tool_trace_refs=[],
             )
 
+    def test_resolved_resolution_requires_recommendation(self):
+        with self.assertRaises(ValidationError):
+            SemanticResolution(
+                task_id="ST-0001",
+                status=SemanticResolutionStatus.RESOLVED,
+                candidates=[semantic_candidate("SC-0001")],
+                recommended_candidate_id=None,
+                analysis_summary="candidate found",
+                tool_trace_refs=[],
+            )
+
     def test_recommended_candidate_must_exist(self):
         with self.assertRaises(ValidationError):
             SemanticResolution(
@@ -148,6 +159,52 @@ class SemanticModelTests(unittest.TestCase):
                 analysis_summary="candidate found",
                 tool_trace_refs=["TC-0001"],
             )
+
+    def test_ambiguous_resolution_requires_two_candidates(self):
+        with self.assertRaises(ValidationError):
+            SemanticResolution(
+                task_id="ST-0001",
+                status=SemanticResolutionStatus.AMBIGUOUS,
+                candidates=[semantic_candidate("SC-0001")],
+                recommended_candidate_id=None,
+                analysis_summary="multiple candidates",
+                tool_trace_refs=[],
+            )
+
+    def test_ambiguous_resolution_cannot_recommend_candidate(self):
+        with self.assertRaises(ValidationError):
+            SemanticResolution(
+                task_id="ST-0001",
+                status=SemanticResolutionStatus.AMBIGUOUS,
+                candidates=[semantic_candidate("SC-0001"), semantic_candidate("SC-0002")],
+                recommended_candidate_id="SC-0001",
+                analysis_summary="multiple candidates",
+                tool_trace_refs=[],
+            )
+
+    def test_ambiguous_resolution_with_two_candidates(self):
+        resolution = SemanticResolution(
+            task_id="ST-0001",
+            status=SemanticResolutionStatus.AMBIGUOUS,
+            candidates=[semantic_candidate("SC-0001"), semantic_candidate("SC-0002")],
+            recommended_candidate_id=None,
+            analysis_summary="multiple candidates",
+            tool_trace_refs=[],
+        )
+
+        self.assertEqual(resolution.status, "ambiguous")
+
+    def test_resolved_resolution_can_recommend_one_of_multiple_candidates(self):
+        resolution = SemanticResolution(
+            task_id="ST-0001",
+            status=SemanticResolutionStatus.RESOLVED,
+            candidates=[semantic_candidate("SC-0001"), semantic_candidate("SC-0002")],
+            recommended_candidate_id="SC-0002",
+            analysis_summary="candidate found",
+            tool_trace_refs=[],
+        )
+
+        self.assertEqual(resolution.recommended_candidate_id, "SC-0002")
 
     def test_unresolved_resolution_cannot_recommend_candidate(self):
         with self.assertRaises(ValidationError):
