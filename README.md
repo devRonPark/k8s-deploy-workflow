@@ -49,6 +49,23 @@ Phase 1이 산출하는 것 (`03-rule-inference.yaml` 기준):
 - 손상된 파일(`package.json`, `pom.xml`, `pyproject.toml`)을 만나도 죽지 않고 경고만 기록
 - Compose override(`docker-compose.override.yml`) 병합, 정의되지 않은 key는 경고로 기록
 
+## Semantic analysis support status
+
+The repository now includes deterministic support code that prepares for a bounded semantic agent, but it does not yet run an LLM or persist a final semantic-analysis artifact.
+
+Implemented support:
+- Semantic task models and runtime-command task building for deterministic runtime gaps.
+- Constrained semantic read/search/inspect tools scoped to one component.
+- Deterministic semantic candidate verification.
+- Task-level semantic tool budget tracking through `SemanticToolSession`.
+
+Not implemented:
+- LLM executor or semantic orchestrator.
+- Persisted semantic output artifact.
+- Application Topology Model.
+- Kubernetes Intent Model.
+- Manifest rendering, validation, deployment, smoke testing, or repair loop.
+
 Phase 1이 하지 않는 것: 실제 매니페스트 생성, LLM 기반 의미 분석/추론, 배포·검증·복구.
 
 ## 개발 환경 설정
@@ -76,7 +93,7 @@ python3 -m venv .venv
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v
 ```
 
-현재 50개 테스트 전부 통과. `tests/fixtures/repos/` 아래 샘플 레포 3종(`jpetstore-like`, `fastapi-fullstack-like`, `node-express-like`)으로 acceptance 테스트도 함께 검증된다.
+단위 테스트와 acceptance 테스트는 아래 명령으로 함께 실행한다. `tests/fixtures/repos/` 아래 샘플 레포 3종(`jpetstore-like`, `fastapi-fullstack-like`, `node-express-like`)이 end-to-end 검증에 사용된다.
 
 ## Phase 1 파이프라인 직접 실행해보기
 
@@ -149,4 +166,4 @@ docs/superpowers/         # 개발 과정 기록 (plan, task brief/report, revie
 
 ## 다음 단계
 
-Step 7(Application Topology Model) 이후는 LLM 기반 의미 분석이 개입하는 구간으로, 아직 설계 문서만 존재하고 구현은 시작 전이다.
+Step 7(Application Topology Model) 이후의 최종 모델과 Kubernetes 산출물 생성은 아직 구현 전이다. 다만 런타임 명령처럼 결정론만으로 확정하기 어려운 일부 값을 다루기 위한 semantic task 모델, 제한된 읽기 도구, 예산 추적, 결정론적 검증기는 준비되어 있다.
