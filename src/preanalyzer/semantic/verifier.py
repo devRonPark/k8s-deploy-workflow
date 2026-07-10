@@ -23,9 +23,12 @@ from preanalyzer.models.semantic_tools import (
     SemanticToolResult,
     SemanticToolResultStatus,
 )
-from preanalyzer.semantic.tools.common import (
+from preanalyzer.path_safety import (
     is_excluded_rel_path,
     is_sensitive_rel_path,
+    is_within as _is_relative_to,
+)
+from preanalyzer.semantic.tools.common import (
     line_excerpt,
     read_text_file,
 )
@@ -481,11 +484,3 @@ def _has_high_confidence_deterministic_conflict(task: SemanticTask, command: str
 
 def _merge(existing: list[str], additions: set[str]) -> list[str]:
     return sorted(set(existing).union(additions))
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True

@@ -11,19 +11,16 @@ import yaml
 from preanalyzer import __version__
 from preanalyzer.models.inventory import ArtifactInventory, ArtifactItem
 from preanalyzer.models.snapshot import RepositorySnapshot
+from preanalyzer.path_safety import (
+    REPO_EXCLUDED_GLOBS,
+    iter_repository_files,
+    resolve_repository_path,
+)
 from preanalyzer.rules_version import RULES_VERSION
 
 
-EXCLUDED_PATTERNS = [
-    ".git/**",
-    "**/.git/**",
-    "node_modules/**",
-    "**/node_modules/**",
-    "**/*.png",
-    "**/*.jpg",
-    "**/*.jpeg",
-    "**/*.gif",
-]
+# Kept as a module attribute for the snapshot output and semantic-layer imports.
+EXCLUDED_PATTERNS = REPO_EXCLUDED_GLOBS
 
 COMPOSE_NAMES = {
     "compose.yaml",
@@ -57,7 +54,7 @@ def snapshot(
     ref: str | None,
     clock: Callable[[], datetime],
 ) -> RepositorySnapshot:
-    repo = Path(repo)
+    repo = resolve_repository_path(repo)
     warnings: list[str] = []
     commit_sha = _git_output(repo, ["rev-parse", "HEAD"])
     if commit_sha is None:
@@ -65,6 +62,9 @@ def snapshot(
 
     default_branch = _default_branch(repo)
     analyzed_at = _format_utc(clock())
+
+    files, skip_warnings = _scan_repository(repo)
+    warnings.extend(skip_warnings)
 
     return RepositorySnapshot(
         url=url,
@@ -75,15 +75,15 @@ def snapshot(
         default_branch=default_branch,
         analyzer_version=__version__,
         rules_version=RULES_VERSION,
-        file_count=sum(1 for _ in _iter_files(repo)),
+        file_count=len(files),
         excluded_patterns=list(EXCLUDED_PATTERNS),
-        warnings=warnings,
+        warnings=sorted(warnings),
     )
 
 
 def build_inventory(repo: Path, snapshot: RepositorySnapshot) -> ArtifactInventory:
     del snapshot
-    repo = Path(repo)
+    repo = resolve_repository_path(repo)
     build_files: list[ArtifactItem] = []
     container_files: list[ArtifactItem] = []
     compose_files: list[ArtifactItem] = []
@@ -146,17 +146,24 @@ def build_inventory(repo: Path, snapshot: RepositorySnapshot) -> ArtifactInvento
 
 
 def _iter_files(repo: Path) -> Iterable[Path]:
-    for path in sorted(repo.rglob("*"), key=lambda p: _rel(p, repo)):
-        if not path.is_file():
-            continue
-        rel = _rel(path, repo)
-        if _is_excluded(rel):
-            continue
-        yield path
+    files, _ = _scan_repository(repo)
+    yield from files
+
+
+def _scan_repository(repo: Path) -> tuple[list[Path], list[str]]:
+    """Return safe repository files (after exclusion) and skip warnings.
+
+    Boundary and symlink safety is delegated to :func:`iter_repository_files`;
+    this only layers the scanner's glob-based exclusions on top.
+    """
+    root = resolve_repository_path(repo)
+    safe_files, warnings = iter_repository_files(root)
+    files = [path for path in safe_files if not _is_excluded(_rel(path, root))]
+    return files, warnings
 
 
 def _is_excluded(rel: str) -> bool:
-    return any(fnmatch.fnmatch(rel, pattern) for pattern in EXCLUDED_PATTERNS)
+    return any(fnmatch.fnmatch(rel, pattern) for pattern in REPO_EXCLUDED_GLOBS)
 
 
 def _rel(path: Path, repo: Path) -> str:
