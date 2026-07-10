@@ -106,6 +106,10 @@ def _append_compose_facts(append, artifact_ref: str, parsed: ParsedCompose) -> N
             append("compose_port", artifact_ref, port.source, {"service": service.name, **port.model_dump()})
         for name, value in sorted(service.environment.items()):
             append("compose_environment", artifact_ref, "compose_environment", _safe_env_fact(service.name, name, value))
+        for volume in service.volumes:
+            append("compose_volume", artifact_ref, "compose_volumes", {"service": service.name, "volume": volume})
+    for warning in parsed.warnings:
+        append("parse_warning", artifact_ref, "compose_parser", warning)
 
 
 def _safe_env_fact(service_name: str, name: str, value: str) -> dict[str, str | bool]:

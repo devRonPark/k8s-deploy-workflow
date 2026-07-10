@@ -46,11 +46,54 @@ class ParsedCompose:
         raise KeyError(name)
 
 
+SUPPORTED_SERVICE_KEYS = {
+    "image",
+    "build",
+    "ports",
+    "environment",
+    "volumes",
+    "depends_on",
+    "labels",
+}
+
+
 def parse(path: Path) -> ParsedCompose:
     document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return _parse_document(path, document)
+
+
+def parse_with_override(base_path: Path, override_path: Path | None) -> ParsedCompose:
+    base = yaml.safe_load(base_path.read_text(encoding="utf-8")) or {}
+    if override_path is None:
+        document = base
+    else:
+        override = yaml.safe_load(override_path.read_text(encoding="utf-8")) or {}
+        document = _merge_compose_documents(base, override)
+    return _parse_document(base_path, document)
+
+
+def _parse_document(path: Path, document: dict) -> ParsedCompose:
     raw_services = document.get("services") or {}
-    services = [_parse_service(name, value or {}) for name, value in sorted(raw_services.items())]
-    return ParsedCompose(path=path.as_posix(), services=services, warnings=[])
+    warnings: list[str] = []
+    services: list[ComposeService] = []
+    for name, value in sorted(raw_services.items()):
+        raw = value or {}
+        warnings.extend(
+            f"{name}: unsupported key {key}" for key in sorted(set(raw) - SUPPORTED_SERVICE_KEYS)
+        )
+        services.append(_parse_service(name, raw))
+    return ParsedCompose(path=path.as_posix(), services=services, warnings=warnings)
+
+
+def _merge_compose_documents(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    merged_services = {name: dict(value or {}) for name, value in (base.get("services") or {}).items()}
+    for name, value in (override.get("services") or {}).items():
+        current = dict(merged_services.get(name, {}))
+        current.update(value or {})
+        merged_services[name] = current
+    merged["services"] = merged_services
+    return merged
 
 
 def _parse_service(name: str, raw: dict[str, Any]) -> ComposeService:
