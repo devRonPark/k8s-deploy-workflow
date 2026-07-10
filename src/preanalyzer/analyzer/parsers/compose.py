@@ -82,6 +82,11 @@ SUPPORTED_SERVICE_KEYS = {
     "volumes",
     "depends_on",
     "labels",
+    "command",
+    "entrypoint",
+    "healthcheck",
+    "secrets",
+    "configs",
 }
 
 # Service keys the Compose merge spec replaces wholesale instead of merging.

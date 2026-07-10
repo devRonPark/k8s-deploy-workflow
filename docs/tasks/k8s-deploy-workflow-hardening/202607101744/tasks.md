@@ -5,6 +5,36 @@
 
 ---
 
+## 현재 코드 기준 상태 요약
+
+이 문서는 원래 개선 후보를 정리한 작업 목록이며, 아래 상태는 현재 코드와 테스트 기준의 최신 판정이다.
+
+### 완료 또는 실질적으로 반영됨
+
+- TASK-001: Repository boundary와 symlink 안전성은 scanner와 semantic tool 경로 검증 테스트로 보호된다.
+- TASK-002: 환경변수 원문과 credential-bearing URI 값은 evidence, rule inference, serialized output에서 제거된다.
+- TASK-003: `workspace`와 `commit` snapshot 모드, dirty metadata, workspace hash가 구현되어 있다.
+- TASK-005: 손상된 parser 입력은 pipeline 전체 실패 대신 warning으로 격리된다.
+- TASK-006: Compose port 파싱은 원문 보존, IPv6, protocol, interpolation, range 미추측 동작을 포함한다.
+- TASK-008: component ownership은 compose service와 package 후보를 reconcile하며 image-only service를 source root에 잘못 연결하지 않는다.
+- TASK-009: semantic tool은 component scope, allowed tools, source-line/file 제한, secret redaction을 적용한다.
+- TASK-010: deterministic verifier는 semantic candidate를 검증하며 secret-like candidate와 deterministic conflict를 거부한다.
+
+### 부분 반영됨
+
+- TASK-004: Compose override 병합은 mapping, env/label, ports, volumes, secrets, configs, command, entrypoint, healthcheck.test의 주요 정책을 구현했으며 추가 regression coverage가 필요하다.
+- TASK-007: runtime command gap 분석과 semantic task routing은 구현되어 있으나 LLM executor와 persisted semantic artifact는 없다.
+- TASK-012: Semantic budget ledger와 session wrapper는 구현되어 있으나 최종 semantic artifact가 없어 budget status persistence는 아직 출력 단계와 연결되지 않았다.
+- TASK-013: Python requirements parsing은 include, constraints, index option, hash, editable, VCS/direct URL 분리를 지원하지만 모든 packaging ecosystem 확장은 범위 밖이다.
+- TASK-014: README 일부가 현재 코드보다 뒤처져 있어 이번 readiness 작업에서 정정한다.
+
+### 아직 열려 있음
+
+- TASK-011: README와 작업 문서의 최신 상태 반영은 이번 readiness 작업으로 처리한다.
+- Gradle multi-project, Maven module, workspace 기반 component discovery 확장.
+- LLM executor, semantic orchestrator, final semantic output artifact.
+- Application Topology Model, Kubernetes Intent Model, manifest rendering, validation, deployment, repair loop.
+
 ## 우선순위 정의
 
 - **P0**: 보안 또는 데이터 유출 가능성. 즉시 수정 필요

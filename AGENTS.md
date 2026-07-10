@@ -61,6 +61,33 @@ docs/superpowers/plans/YYYY-MM-DD-<topic>.md
 
 Do not create task briefs, progress reports, task reports, review packages, or duplicate summaries unless explicitly requested. Reuse an existing spec or plan when possible.
 
+## Planning-Only Documentation
+
+When the user asks to write, revise, summarize, or create an implementation plan document, treat that as **planning-only documentation**, not implementation.
+
+Planning-only documentation must stay concise and must not become an execution script unless the user explicitly asks for an agent-executable plan.
+
+For planning-only documentation:
+
+- Do not run unit tests, acceptance tests, the full test suite, application builds, linters, or code-generation commands.
+- Do not follow RED-GREEN-REFACTOR.
+- Do not create or modify production code or test code.
+- Do not include full test code, production code patches, expected failure text, exact `git add` commands, commit commands, or prewritten commit messages.
+- Do not include exhaustive predicted file-change lists. Mention only the owned area or component when it materially helps the reader.
+- Do not include step-by-step implementation recipes at the level of individual code edits.
+- Do not commit planning-only documentation unless the user explicitly asks for a commit.
+- Verify only the document itself: check the requested file exists, skim the diff, and run `git diff --check` after edits.
+
+A planning-only document should normally contain:
+
+- goal and scope;
+- assumptions and exclusions;
+- short phases or work items;
+- acceptance checks at the behavior level;
+- risks or open questions.
+
+Only use the full agent-executable planning format when the user asks for a Superpowers implementation plan, an agentic worker plan, or a plan that another coding agent should execute task-by-task.
+
 ## Working Principles
 
 Follow the Karpathy-inspired rules:
@@ -68,7 +95,7 @@ Follow the Karpathy-inspired rules:
 - **Think before coding:** expose assumptions, ambiguity, and trade-offs.
 - **Simplicity first:** implement the minimum required behavior.
 - **Surgical changes:** every changed line must trace to the request or approved plan.
-- **Goal-driven execution:** define success with tests and commands, then verify it.
+- **Goal-driven execution:** for implementation work, define success with tests and commands, then verify it. For planning-only documentation, define success by whether the document answers the requested planning question.
 
 Do not refactor adjacent code, reformat whole files, rename unrelated symbols, or delete pre-existing dead code.
 
@@ -185,7 +212,7 @@ uv venv --system-site-packages .venv
 uv pip install --python .venv/bin/python3 "pydantic>=2.8" "PyYAML>=6.0"
 ```
 
-Follow true RED-GREEN-REFACTOR:
+For production code changes and test changes, follow true RED-GREEN-REFACTOR:
 
 ```text
 write one failing test
@@ -210,6 +237,8 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src   .venv/bin/python3 -m unittest discove
 
 Parser changes also require the relevant fixture-based acceptance path.
 
+These test rules do not apply to planning-only documentation. Do not run the test suite merely because a plan mentions future tests.
+
 ## Git and Safety
 
 Without explicit approval, do not:
@@ -232,6 +261,8 @@ One commit should represent one independently verifiable purpose.
 
 At the end of each approved implementation task, run the required verification and commit that task's changes before starting the next task. If a task cannot be committed immediately, report the blocker and leave the worktree state explicit.
 
+Planning-only documentation is not an implementation task. Do not commit it unless the user explicitly asks for a commit.
+
 ## Completion
 
 Before claiming completion, apply `superpowers:verification-before-completion` and freshly run:
@@ -243,11 +274,54 @@ git diff --stat
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src   .venv/bin/python3 -m unittest discover -s tests -v
 ```
 
+For planning-only documentation, do not run the full verification block above. Freshly run only:
+
+```bash
+git status --short
+git diff --check
+git diff --stat
+```
+
 Do not trust a subagent report without inspecting the diff and running verification yourself. Never claim an unexecuted test passed.
 
-Final responses must be in Korean and contain:
+Final responses and meaningful progress updates must be written in Korean for a non-developer.
 
-1. Changed behavior
-2. Changed files
-3. Commands run and actual results
-4. Remaining uncertainty or unverified items
+Explain the user impact before technical details. Avoid unexplained terms such as class names, schema, fixture, serialization, worktree, or Superpowers skill names.
+
+Use this structure:
+
+1. **한 줄 요약**
+
+   * 무엇이 달라졌는지 사용자 관점에서 설명
+
+2. **처리한 내용**
+
+   * 주요 변경사항을 쉬운 표현으로 설명
+   * 파일명이나 함수명보다 실제 동작 중심으로 작성
+
+3. **확인 결과**
+
+   * 실행한 테스트 수와 성공·실패 결과
+   * 실행하지 않은 테스트는 성공했다고 표현하지 않음
+
+4. **남은 사항**
+
+   * 확인하지 못한 부분, 제한사항, 실패 원인
+   * 없으면 `현재 확인된 미완료 사항은 없습니다.`라고 작성
+
+5. **개발자 참고**
+
+   * 변경 파일
+   * 실행 명령
+   * 커밋 정보
+   * 필요한 기술 세부사항
+
+Progress updates should briefly explain:
+
+* 현재 무엇을 하고 있는지
+* 발견한 문제
+* 사용자에게 어떤 영향이 있는지
+* 다음에 무엇을 확인할지
+
+Do not paste raw command output unless a command failed or the user requests it.
+Do not mention Superpowers skill names unless the user asks about the development process.
