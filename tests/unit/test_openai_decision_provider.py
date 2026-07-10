@@ -87,7 +87,7 @@ class OpenAIChatDecisionProviderTests(unittest.TestCase):
         self.assertEqual(request["model"], "semantic-model")
         self.assertEqual(request["temperature"], 0)
         self.assertEqual(request["response_format"], {"type": "json_object"})
-        self.assertEqual([message["role"] for message in request["messages"]], ["developer", "user"])
+        self.assertEqual([message["role"] for message in request["messages"]], ["system", "user"])
         self.assertNotIn("secret-key", json.dumps(request, sort_keys=True))
         self.assertIn("available_tools", request["messages"][1]["content"])
 

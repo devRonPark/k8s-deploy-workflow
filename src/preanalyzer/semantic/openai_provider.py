@@ -45,7 +45,7 @@ class OpenAIChatDecisionProvider:
         response = self._client.chat.completions.create(
             model=self.settings.model,
             messages=[
-                {"role": "developer", "content": _DEVELOPER_PROMPT},
+                {"role": "system", "content": _DEVELOPER_PROMPT},
                 {"role": "user", "content": self._context_payload(context)},
             ],
             temperature=0,
