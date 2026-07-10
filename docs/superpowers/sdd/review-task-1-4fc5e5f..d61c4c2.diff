@@ -1,0 +1,394 @@
+# Review package: 4fc5e5f..d61c4c2
+
+## Commits
+d61c4c2 feat: promote runtime version port and command candidates
+
+## Files changed
+ docs/superpowers/sdd/task-1-report.md      | 62 +++++++++++++++++++++
+ src/preanalyzer/analyzer/rule_inference.py | 76 +++++++++++++++++++++++++
+ src/preanalyzer/models/rule_inference.py   | 40 ++++++++++++++
+ tests/unit/test_rule_runtime_candidates.py | 89 ++++++++++++++++++++++++++++++
+ 4 files changed, 267 insertions(+)
+
+## Diff
+diff --git a/docs/superpowers/sdd/task-1-report.md b/docs/superpowers/sdd/task-1-report.md
+new file mode 100644
+index 0000000..8898fa5
+--- /dev/null
++++ b/docs/superpowers/sdd/task-1-report.md
+@@ -0,0 +1,62 @@
++# Task 1 Report
++
++## What changed
++
++- Added `RuntimeVersionCandidate`, `RuntimePortCandidate`, and `RuntimeCommandCandidate` models.
++- Added the three candidate collections to `RuleInferenceSet`.
++- Promoted Dockerfile `FROM`, `EXPOSE`, and `CMD` evidence into deterministic runtime candidates with high confidence and evidence references.
++- Added runtime image parsing for Python, Node.js, and Java base images.
++- Added a Dockerfile path fallback for component IDs when Compose component candidates are unavailable.
++- Added focused unit coverage for the FastAPI fixture.
++- No changes were made to dependency edges, parser warning resilience, Compose override handling, pydantic conversion, or `evidence_builder.py`.
++
++## Test commands and results
++
++Focused:
++
++```text
++PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest tests.unit.test_rule_runtime_candidates -v
++Ran 2 tests in 0.010s
++OK
++```
++
++Full suite:
++
++```text
++PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -v
++Ran 35 tests in 0.154s
++OK
++```
++
++## RED/GREEN evidence
++
++RED was captured immediately after adding the test and before production changes:
++
++```text
++AttributeError: 'RuleInferenceSet' object has no attribute 'runtime_port_candidates'
++AttributeError: 'RuleInferenceSet' object has no attribute 'runtime_version_candidates'
++Ran 2 tests
++FAILED (errors=2)
++```
++
++After the minimal implementation, the focused test passed with 2/2 tests, followed by the full suite passing with 35/35 tests.
++
++## Files changed
++
++- `src/preanalyzer/models/rule_inference.py`
++- `src/preanalyzer/analyzer/rule_inference.py`
++- `tests/unit/test_rule_runtime_candidates.py`
++
++`src/preanalyzer/analyzer/evidence_builder.py` and `tests/acceptance/test_phase1_deterministic_outputs.py` were not changed.
++
++## Self-review
++
++- Candidate lists are default-empty and preserve existing serialized output structure.
++- Candidate ordering is deterministic by component and candidate value.
++- Existing Compose-root matching remains preferred; the path fallback only applies to nested Dockerfile artifacts without an explicit component match.
++- Unsupported or untagged base images do not produce version candidates.
++- Existing tests for evidence, inference, scanning, and phase-1 outputs pass.
++
++## Concerns
++
++The task brief's hard-coded evidence references (`F0005`, `F0006`, `F0007`, `F0008`) do not match the current checkout's evidence numbering for its exact test setup. The focused test uses the actual deterministic references produced here (`F0007`, `F0008`, `F0009`, `F0012`). This avoids changing evidence semantics or renumbering unrelated facts.
+diff --git a/src/preanalyzer/analyzer/rule_inference.py b/src/preanalyzer/analyzer/rule_inference.py
+index 3a3fb2b..85b66ba 100644
+--- a/src/preanalyzer/analyzer/rule_inference.py
++++ b/src/preanalyzer/analyzer/rule_inference.py
+@@ -1,36 +1,42 @@
+ from __future__ import annotations
+ 
+ from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
+ from preanalyzer.models.rule_inference import (
+     ComponentCandidate,
+     EnvClassification,
+     RoleCandidate,
+     RuleInferenceSet,
+     RuntimeCandidate,
++    RuntimeCommandCandidate,
++    RuntimePortCandidate,
++    RuntimeVersionCandidate,
+     SecretCandidate,
+ )
+ 
+ 
+ DEPENDENCY_IMAGES = ("postgres", "mysql", "mariadb", "redis")
+ INFRA_IMAGES = ("traefik", "nginx")
+ 
+ 
+ def infer(evidence: EvidenceModel) -> RuleInferenceSet:
+     compose_components = _component_candidates_from_compose(evidence)
+     component_candidates = compose_components or _component_candidates_from_packages(evidence)
+     root_by_component = {candidate.component_id: candidate.root_path for candidate in component_candidates}
+ 
+     return RuleInferenceSet(
+         component_candidates=component_candidates,
+         role_candidates=_role_candidates(evidence),
+         runtime_candidates=_runtime_candidates(evidence, component_candidates, root_by_component),
++        runtime_version_candidates=_runtime_version_candidates(evidence, component_candidates),
++        runtime_port_candidates=_runtime_port_candidates(evidence, component_candidates),
++        runtime_command_candidates=_runtime_command_candidates(evidence, component_candidates),
+         env_classification=EnvClassification(secret_candidates=_secret_candidates(evidence)),
+     )
+ 
+ 
+ def _component_candidates_from_compose(evidence: EvidenceModel) -> list[ComponentCandidate]:
+     build_context_by_service = {
+         fact.value["service"]: _normalize_root(fact.value["context"])
+         for fact in evidence.facts_by_type("compose_build_context")
+     }
+     candidates = []
+@@ -169,20 +175,90 @@ def _runtime_candidates(
+ 
+ def _secret_candidates(evidence: EvidenceModel) -> list[SecretCandidate]:
+     candidates = []
+     for fact in evidence.facts_by_type("compose_environment"):
+         name = fact.value["name"]
+         if fact.value.get("value_present") is True and _is_secret_name(name):
+             candidates.append(SecretCandidate(fact.value["service"], name, fact.source, [fact.evidence_id]))
+     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.name))
+ 
+ 
++def _runtime_version_candidates(
++    evidence: EvidenceModel,
++    component_candidates: list[ComponentCandidate],
++) -> list[RuntimeVersionCandidate]:
++    candidates: list[RuntimeVersionCandidate] = []
++    for fact in evidence.facts_by_type("dockerfile_base_image"):
++        component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
++        parsed = _runtime_from_image(str(fact.value))
++        if component_id is not None and parsed is not None:
++            language, version = parsed
++            candidates.append(
++                RuntimeVersionCandidate(component_id, language, version, fact.source, "high", [fact.evidence_id])
++            )
++    return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.language))
++
++
++def _runtime_port_candidates(
++    evidence: EvidenceModel,
++    component_candidates: list[ComponentCandidate],
++) -> list[RuntimePortCandidate]:
++    candidates: list[RuntimePortCandidate] = []
++    for fact in evidence.facts_by_type("dockerfile_expose"):
++        component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
++        if component_id is not None:
++            candidates.append(RuntimePortCandidate(component_id, int(fact.value), fact.source, "high", [fact.evidence_id]))
++    return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
++
++
++def _runtime_command_candidates(
++    evidence: EvidenceModel,
++    component_candidates: list[ComponentCandidate],
++) -> list[RuntimeCommandCandidate]:
++    candidates: list[RuntimeCommandCandidate] = []
++    for fact in evidence.facts_by_type("dockerfile_cmd"):
++        component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
++        if component_id is not None:
++            candidates.append(RuntimeCommandCandidate(component_id, str(fact.value), fact.source, "high", [fact.evidence_id]))
++    return sorted(candidates, key=lambda candidate: candidate.component_id)
++
++
++def _component_for_artifact(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
++    for candidate in component_candidates:
++        root_path = candidate.root_path
++        if root_path in {None, "."} and "/" not in artifact_ref:
++            return candidate.component_id
++        if root_path and root_path != "." and artifact_ref.startswith(f"{root_path}/"):
++            return candidate.component_id
++    if "/" in artifact_ref:
++        return artifact_ref.split("/", 1)[0]
++    return None
++
++
++def _runtime_from_image(image: str) -> tuple[str, str] | None:
++    repository, _, tag = image.partition(":")
++    if not tag:
++        return None
++    language = {
++        "python": "python",
++        "node": "nodejs",
++        "eclipse-temurin": "java",
++        "openjdk": "java",
++    }.get(repository.split("/")[-1])
++    if language is None:
++        return None
++    version = tag.split("-", 1)[0]
++    if version:
++        return language, version
++    return None
++
++
+ def _build_strategy_for(component_id: str, root_by_component: dict[str, str | None], evidence: EvidenceModel) -> str:
+     root_path = root_by_component.get(component_id)
+     for fact in evidence.facts_by_type("artifact_presence"):
+         if fact.value["type"] != "dockerfile" or not fact.value["present"]:
+             continue
+         if root_path in {None, "."} and fact.artifact_ref == "Dockerfile":
+             return "dockerfile"
+         if root_path and fact.artifact_ref == f"{root_path}/Dockerfile":
+             return "dockerfile"
+     return "dockerfile_needed"
+diff --git a/src/preanalyzer/models/rule_inference.py b/src/preanalyzer/models/rule_inference.py
+index 4eaf308..b5c7e70 100644
+--- a/src/preanalyzer/models/rule_inference.py
++++ b/src/preanalyzer/models/rule_inference.py
+@@ -34,20 +34,57 @@ class RuntimeCandidate:
+     build_tool: str
+     build_strategy: str
+     source: str
+     confidence: str
+     evidence_refs: list[str]
+ 
+     def model_dump(self) -> dict:
+         return asdict(self)
+ 
+ 
++@dataclass(frozen=True)
++class RuntimeVersionCandidate:
++    component_id: str
++    language: str
++    version: str
++    source: str
++    confidence: str
++    evidence_refs: list[str]
++
++    def model_dump(self) -> dict:
++        return asdict(self)
++
++
++@dataclass(frozen=True)
++class RuntimePortCandidate:
++    component_id: str
++    port: int
++    source: str
++    confidence: str
++    evidence_refs: list[str]
++
++    def model_dump(self) -> dict:
++        return asdict(self)
++
++
++@dataclass(frozen=True)
++class RuntimeCommandCandidate:
++    component_id: str
++    command: str
++    source: str
++    confidence: str
++    evidence_refs: list[str]
++
++    def model_dump(self) -> dict:
++        return asdict(self)
++
++
+ @dataclass(frozen=True)
+ class SecretCandidate:
+     component_id: str
+     name: str
+     source: str
+     evidence_refs: list[str]
+ 
+     def model_dump(self) -> dict:
+         return asdict(self)
+ 
+@@ -58,14 +95,17 @@ class EnvClassification:
+ 
+     def model_dump(self) -> dict:
+         return asdict(self)
+ 
+ 
+ @dataclass(frozen=True)
+ class RuleInferenceSet:
+     component_candidates: list[ComponentCandidate] = field(default_factory=list)
+     role_candidates: list[RoleCandidate] = field(default_factory=list)
+     runtime_candidates: list[RuntimeCandidate] = field(default_factory=list)
++    runtime_version_candidates: list[RuntimeVersionCandidate] = field(default_factory=list)
++    runtime_port_candidates: list[RuntimePortCandidate] = field(default_factory=list)
++    runtime_command_candidates: list[RuntimeCommandCandidate] = field(default_factory=list)
+     env_classification: EnvClassification = field(default_factory=EnvClassification)
+ 
+     def model_dump(self) -> dict:
+         return asdict(self)
+diff --git a/tests/unit/test_rule_runtime_candidates.py b/tests/unit/test_rule_runtime_candidates.py
+new file mode 100644
+index 0000000..5784b53
+--- /dev/null
++++ b/tests/unit/test_rule_runtime_candidates.py
+@@ -0,0 +1,89 @@
++from datetime import datetime, timezone
++from pathlib import Path
++import unittest
++
++from preanalyzer.analyzer.evidence_builder import build as build_evidence
++from preanalyzer.analyzer.parsers.dockerfile import parse as parse_dockerfile
++from preanalyzer.analyzer.parsers.nodejs import parse as parse_nodejs
++from preanalyzer.analyzer.parsers.python_pkg import parse_pyproject
++from preanalyzer.analyzer.rule_inference import infer
++from preanalyzer.analyzer.scanner import build_inventory, snapshot
++
++
++FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "repos"
++FIXED_TIME = datetime(2026, 7, 10, 9, 0, 0, tzinfo=timezone.utc)
++
++
++def fixed_clock():
++    return FIXED_TIME
++
++
++def rules_for_fastapi():
++    repo = FIXTURES / "fastapi-fullstack-like"
++    inventory = build_inventory(repo, snapshot(repo, None, None, fixed_clock))
++    evidence = build_evidence(
++        inventory,
++        {
++            "backend/Dockerfile": parse_dockerfile(repo / "backend" / "Dockerfile"),
++            "backend/pyproject.toml": parse_pyproject(repo / "backend" / "pyproject.toml"),
++            "frontend/Dockerfile": parse_dockerfile(repo / "frontend" / "Dockerfile"),
++            "frontend/package.json": parse_nodejs(repo / "frontend" / "package.json"),
++        },
++    )
++    return infer(evidence)
++
++
++class RuleRuntimeCandidateTests(unittest.TestCase):
++    def test_runtime_versions_promoted_from_dockerfile_base_images(self):
++        rules = rules_for_fastapi()
++
++        self.assertIn(
++            {
++                "component_id": "backend",
++                "language": "python",
++                "version": "3.11",
++                "source": "dockerfile_from",
++                "confidence": "high",
++                "evidence_refs": ["F0007"],
++            },
++            [candidate.model_dump() for candidate in rules.runtime_version_candidates],
++        )
++        self.assertIn(
++            {
++                "component_id": "frontend",
++                "language": "nodejs",
++                "version": "20",
++                "source": "dockerfile_from",
++                "confidence": "high",
++                "evidence_refs": ["F0012"],
++            },
++            [candidate.model_dump() for candidate in rules.runtime_version_candidates],
++        )
++
++    def test_ports_and_commands_promoted_from_dockerfile(self):
++        rules = rules_for_fastapi()
++
++        self.assertIn(
++            {
++                "component_id": "backend",
++                "port": 8000,
++                "source": "dockerfile_expose",
++                "confidence": "high",
++                "evidence_refs": ["F0008"],
++            },
++            [candidate.model_dump() for candidate in rules.runtime_port_candidates],
++        )
++        self.assertIn(
++            {
++                "component_id": "backend",
++                "command": "[\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]",
++                "source": "dockerfile_cmd",
++                "confidence": "high",
++                "evidence_refs": ["F0009"],
++            },
++            [candidate.model_dump() for candidate in rules.runtime_command_candidates],
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()
