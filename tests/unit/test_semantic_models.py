@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from preanalyzer.models.semantic import (
     EvidenceReference,
     KnownCandidate,
+    SemanticCandidateVerification,
     SemanticCandidate,
     SemanticResolution,
     SemanticResolutionStatus,
@@ -250,13 +251,31 @@ class SemanticModelTests(unittest.TestCase):
             status=VerificationStatus.ACCEPTED,
             accepted_candidate_ids=["SC-0001"],
             reasons=["schema_valid", "confidence_allowed"],
+            candidate_results=[
+                SemanticCandidateVerification(
+                    candidate_id="SC-0001",
+                    accepted=True,
+                    reason_codes=[],
+                    verified_evidence_refs=["F0009"],
+                    warnings=[],
+                )
+            ],
         )
 
         self.assertEqual(result.model_dump(), {
             "task_id": "ST-0001",
             "status": "accepted",
             "accepted_candidate_ids": ["SC-0001"],
-            "reasons": ["schema_valid", "confidence_allowed"],
+            "reasons": ["confidence_allowed", "schema_valid"],
+            "candidate_results": [
+                {
+                    "candidate_id": "SC-0001",
+                    "accepted": True,
+                    "reason_codes": [],
+                    "verified_evidence_refs": ["F0009"],
+                    "warnings": [],
+                }
+            ],
         })
 
 

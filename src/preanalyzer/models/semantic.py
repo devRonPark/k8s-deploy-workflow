@@ -38,6 +38,23 @@ class VerificationStatus(str, Enum):
     TOOL_ERROR = "tool_error"
 
 
+class VerificationReasonCode(str, Enum):
+    TASK_ID_MISMATCH = "task_id_mismatch"
+    COMPONENT_MISMATCH = "component_mismatch"
+    TARGET_FIELD_MISMATCH = "target_field_mismatch"
+    UNKNOWN_EVIDENCE_REFERENCE = "unknown_evidence_reference"
+    EVIDENCE_OUTSIDE_TASK_SCOPE = "evidence_outside_task_scope"
+    TOOL_NOT_ALLOWED = "tool_not_allowed"
+    TOOL_EVIDENCE_HASH_MISMATCH = "tool_evidence_hash_mismatch"
+    TOOL_EVIDENCE_PATH_INVALID = "tool_evidence_path_invalid"
+    TOOL_EVIDENCE_RANGE_INVALID = "tool_evidence_range_invalid"
+    CANDIDATE_NOT_GROUNDED = "candidate_not_grounded"
+    SECRET_VALUE_DETECTED = "secret_value_detected"
+    DETERMINISTIC_CANDIDATE_CONFLICT = "deterministic_candidate_conflict"
+    INVALID_TOOL_TRACE_REFERENCE = "invalid_tool_trace_reference"
+    RESOLUTION_STATUS_INCONSISTENT = "resolution_status_inconsistent"
+
+
 class _SemanticBaseModel(BaseModel):
     model_config = ConfigDict(frozen=True, use_enum_values=True)
 
@@ -252,11 +269,34 @@ class SemanticResolution(_SemanticBaseModel):
         return self
 
 
+class SemanticCandidateVerification(_SemanticBaseModel):
+    candidate_id: str
+    accepted: bool
+    reason_codes: list[str] = Field(default_factory=list)
+    verified_evidence_refs: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("candidate_id")
+    @classmethod
+    def _candidate_id_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("candidate_id must not be empty")
+        return value
+
+    @field_validator("reason_codes", "verified_evidence_refs", "warnings")
+    @classmethod
+    def _stable_unique_text(cls, value: list[str]) -> list[str]:
+        if any(not item.strip() for item in value):
+            raise ValueError("values must not be empty")
+        return sorted(dict.fromkeys(value))
+
+
 class VerificationResult(_SemanticBaseModel):
     task_id: str
     status: VerificationStatus
     accepted_candidate_ids: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
+    candidate_results: list[SemanticCandidateVerification] = Field(default_factory=list)
 
     @field_validator("task_id")
     @classmethod
@@ -264,3 +304,32 @@ class VerificationResult(_SemanticBaseModel):
         if not value.strip():
             raise ValueError("task_id must not be empty")
         return value
+
+    @field_validator("accepted_candidate_ids", "reasons")
+    @classmethod
+    def _stable_unique_text(cls, value: list[str]) -> list[str]:
+        if any(not item.strip() for item in value):
+            raise ValueError("values must not be empty")
+        return sorted(dict.fromkeys(value))
+
+    @model_validator(mode="after")
+    def _verification_result_is_consistent(self) -> VerificationResult:
+        accepted_from_candidates = sorted(
+            result.candidate_id for result in self.candidate_results if result.accepted
+        )
+        if self.accepted_candidate_ids != accepted_from_candidates:
+            raise ValueError("accepted_candidate_ids must match accepted candidate_results")
+
+        if self.status == VerificationStatus.ACCEPTED.value and not self.accepted_candidate_ids:
+            raise ValueError("accepted verification requires accepted_candidate_ids")
+        if self.status == VerificationStatus.AMBIGUOUS.value and len(self.accepted_candidate_ids) < 1:
+            raise ValueError("ambiguous verification requires at least one accepted candidate")
+        no_accepted_statuses = {
+            VerificationStatus.REJECTED.value,
+            VerificationStatus.INSUFFICIENT_EVIDENCE.value,
+            VerificationStatus.BUDGET_EXHAUSTED.value,
+            VerificationStatus.TOOL_ERROR.value,
+        }
+        if self.status in no_accepted_statuses and self.accepted_candidate_ids:
+            raise ValueError("unaccepted verification statuses must not have accepted candidates")
+        return self
