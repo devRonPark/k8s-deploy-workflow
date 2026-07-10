@@ -7,6 +7,9 @@ from preanalyzer.models.rule_inference import (
     RoleCandidate,
     RuleInferenceSet,
     RuntimeCandidate,
+    RuntimeCommandCandidate,
+    RuntimePortCandidate,
+    RuntimeVersionCandidate,
     SecretCandidate,
 )
 
@@ -24,6 +27,9 @@ def infer(evidence: EvidenceModel) -> RuleInferenceSet:
         component_candidates=component_candidates,
         role_candidates=_role_candidates(evidence),
         runtime_candidates=_runtime_candidates(evidence, component_candidates, root_by_component),
+        runtime_version_candidates=_runtime_version_candidates(evidence, component_candidates),
+        runtime_port_candidates=_runtime_port_candidates(evidence, component_candidates),
+        runtime_command_candidates=_runtime_command_candidates(evidence, component_candidates),
         env_classification=EnvClassification(secret_candidates=_secret_candidates(evidence)),
     )
 
@@ -174,6 +180,76 @@ def _secret_candidates(evidence: EvidenceModel) -> list[SecretCandidate]:
         if fact.value.get("value_present") is True and _is_secret_name(name):
             candidates.append(SecretCandidate(fact.value["service"], name, fact.source, [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.name))
+
+
+def _runtime_version_candidates(
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate],
+) -> list[RuntimeVersionCandidate]:
+    candidates: list[RuntimeVersionCandidate] = []
+    for fact in evidence.facts_by_type("dockerfile_base_image"):
+        component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
+        parsed = _runtime_from_image(str(fact.value))
+        if component_id is not None and parsed is not None:
+            language, version = parsed
+            candidates.append(
+                RuntimeVersionCandidate(component_id, language, version, fact.source, "high", [fact.evidence_id])
+            )
+    return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.language))
+
+
+def _runtime_port_candidates(
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate],
+) -> list[RuntimePortCandidate]:
+    candidates: list[RuntimePortCandidate] = []
+    for fact in evidence.facts_by_type("dockerfile_expose"):
+        component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
+        if component_id is not None:
+            candidates.append(RuntimePortCandidate(component_id, int(fact.value), fact.source, "high", [fact.evidence_id]))
+    return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
+
+
+def _runtime_command_candidates(
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate],
+) -> list[RuntimeCommandCandidate]:
+    candidates: list[RuntimeCommandCandidate] = []
+    for fact in evidence.facts_by_type("dockerfile_cmd"):
+        component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
+        if component_id is not None:
+            candidates.append(RuntimeCommandCandidate(component_id, str(fact.value), fact.source, "high", [fact.evidence_id]))
+    return sorted(candidates, key=lambda candidate: candidate.component_id)
+
+
+def _component_for_artifact(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
+    for candidate in component_candidates:
+        root_path = candidate.root_path
+        if root_path in {None, "."} and "/" not in artifact_ref:
+            return candidate.component_id
+        if root_path and root_path != "." and artifact_ref.startswith(f"{root_path}/"):
+            return candidate.component_id
+    if "/" in artifact_ref:
+        return artifact_ref.split("/", 1)[0]
+    return None
+
+
+def _runtime_from_image(image: str) -> tuple[str, str] | None:
+    repository, _, tag = image.partition(":")
+    if not tag:
+        return None
+    language = {
+        "python": "python",
+        "node": "nodejs",
+        "eclipse-temurin": "java",
+        "openjdk": "java",
+    }.get(repository.split("/")[-1])
+    if language is None:
+        return None
+    version = tag.split("-", 1)[0]
+    if version:
+        return language, version
+    return None
 
 
 def _build_strategy_for(component_id: str, root_by_component: dict[str, str | None], evidence: EvidenceModel) -> str:

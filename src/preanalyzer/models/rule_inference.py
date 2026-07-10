@@ -42,6 +42,43 @@ class RuntimeCandidate:
 
 
 @dataclass(frozen=True)
+class RuntimeVersionCandidate:
+    component_id: str
+    language: str
+    version: str
+    source: str
+    confidence: str
+    evidence_refs: list[str]
+
+    def model_dump(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RuntimePortCandidate:
+    component_id: str
+    port: int
+    source: str
+    confidence: str
+    evidence_refs: list[str]
+
+    def model_dump(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RuntimeCommandCandidate:
+    component_id: str
+    command: str
+    source: str
+    confidence: str
+    evidence_refs: list[str]
+
+    def model_dump(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class SecretCandidate:
     component_id: str
     name: str
@@ -65,6 +102,9 @@ class RuleInferenceSet:
     component_candidates: list[ComponentCandidate] = field(default_factory=list)
     role_candidates: list[RoleCandidate] = field(default_factory=list)
     runtime_candidates: list[RuntimeCandidate] = field(default_factory=list)
+    runtime_version_candidates: list[RuntimeVersionCandidate] = field(default_factory=list)
+    runtime_port_candidates: list[RuntimePortCandidate] = field(default_factory=list)
+    runtime_command_candidates: list[RuntimeCommandCandidate] = field(default_factory=list)
     env_classification: EnvClassification = field(default_factory=EnvClassification)
 
     def model_dump(self) -> dict:
