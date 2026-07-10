@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from preanalyzer.analyzer.parsers.compose import _merge_compose_documents, parse_with_override
 from preanalyzer.pipeline import run_phase1_analysis
 from preanalyzer.semantic.tools import build_semantic_tool_context, execute_semantic_tool
 
@@ -120,6 +121,153 @@ class HardeningReadinessSecretTests(unittest.TestCase):
         self.assertNotIn("semantic-secret-value", combined)
         self.assertNotIn("entrypoint-secret", combined)
         self.assertIn("[REDACTED]", combined)
+
+
+class HardeningReadinessComposeMergeTests(unittest.TestCase):
+    def test_command_entrypoint_and_healthcheck_test_are_replaced(self):
+        base = {
+            "services": {
+                "api": {
+                    "image": "api",
+                    "command": ["python", "old.py"],
+                    "entrypoint": ["/old-entrypoint.sh"],
+                    "healthcheck": {
+                        "test": ["CMD", "curl", "-f", "http://localhost/old"],
+                        "interval": "10s",
+                        "timeout": "5s",
+                    },
+                }
+            }
+        }
+        override = {
+            "services": {
+                "api": {
+                    "command": ["python", "new.py"],
+                    "entrypoint": ["/new-entrypoint.sh"],
+                    "healthcheck": {
+                        "test": ["CMD-SHELL", "curl -f http://localhost/new"],
+                    },
+                }
+            }
+        }
+
+        merged = _merge_compose_documents(base, override)
+        api = merged["services"]["api"]
+
+        self.assertEqual(api["command"], ["python", "new.py"])
+        self.assertEqual(api["entrypoint"], ["/new-entrypoint.sh"])
+        self.assertEqual(api["healthcheck"]["test"], ["CMD-SHELL", "curl -f http://localhost/new"])
+        self.assertEqual(api["healthcheck"]["interval"], "10s")
+        self.assertEqual(api["healthcheck"]["timeout"], "5s")
+
+    def test_secrets_and_configs_merge_by_source_or_target(self):
+        base = {
+            "services": {
+                "api": {
+                    "image": "api",
+                    "secrets": [
+                        {"source": "db_password", "target": "db_password"},
+                        {"source": "api_token", "target": "api_token"},
+                    ],
+                    "configs": [
+                        {"source": "app_config", "target": "/etc/app/config.yml"},
+                        "shared_config",
+                    ],
+                }
+            },
+            "secrets": {
+                "db_password": {"file": "./db.txt"},
+                "api_token": {"file": "./api-token.txt"},
+            },
+            "configs": {
+                "app_config": {"file": "./config.yml"},
+                "shared_config": {"file": "./shared.yml"},
+            },
+        }
+        override = {
+            "services": {
+                "api": {
+                    "secrets": [
+                        {"source": "db_password", "target": "database_password"},
+                        {"source": "session_key", "target": "session_key"},
+                    ],
+                    "configs": [
+                        {"source": "app_config", "target": "/etc/app/config.yml", "mode": 292},
+                        "worker_config",
+                    ],
+                }
+            },
+            "secrets": {
+                "session_key": {"file": "./session.txt"},
+            },
+            "configs": {
+                "worker_config": {"file": "./worker.yml"},
+            },
+        }
+
+        merged = _merge_compose_documents(base, override)
+        api = merged["services"]["api"]
+
+        self.assertEqual(
+            api["secrets"],
+            [
+                {"source": "db_password", "target": "database_password"},
+                {"source": "api_token", "target": "api_token"},
+                {"source": "session_key", "target": "session_key"},
+            ],
+        )
+        self.assertEqual(
+            api["configs"],
+            [
+                {"source": "app_config", "target": "/etc/app/config.yml", "mode": 292},
+                "shared_config",
+                "worker_config",
+            ],
+        )
+        self.assertEqual(merged["secrets"]["db_password"], {"file": "./db.txt"})
+        self.assertEqual(merged["secrets"]["session_key"], {"file": "./session.txt"})
+        self.assertEqual(merged["configs"]["worker_config"], {"file": "./worker.yml"})
+
+    def test_parse_with_override_does_not_warn_for_implemented_merge_only_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = root / "docker-compose.yml"
+            override = root / "docker-compose.override.yml"
+            base.write_text(
+                "services:\n"
+                "  api:\n"
+                "    image: api\n"
+                "    command: [\"python\", \"old.py\"]\n"
+                "    entrypoint: [\"/old-entrypoint.sh\"]\n"
+                "    healthcheck:\n"
+                "      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost/old\"]\n"
+                "    secrets:\n"
+                "      - source: db_password\n"
+                "        target: db_password\n"
+                "    configs:\n"
+                "      - source: app_config\n"
+                "        target: /etc/app/config.yml\n",
+                encoding="utf-8",
+            )
+            override.write_text(
+                "services:\n"
+                "  api:\n"
+                "    command: [\"python\", \"new.py\"]\n"
+                "    entrypoint: [\"/new-entrypoint.sh\"]\n"
+                "    healthcheck:\n"
+                "      test: [\"CMD-SHELL\", \"curl -f http://localhost/new\"]\n"
+                "    secrets:\n"
+                "      - source: session_key\n"
+                "        target: session_key\n"
+                "    configs:\n"
+                "      - worker_config\n",
+                encoding="utf-8",
+            )
+
+            parsed = parse_with_override(base, override)
+
+        self.assertEqual(parsed.warnings, [])
+        self.assertEqual(parsed.service("api").image, "api")
 
 
 if __name__ == "__main__":
