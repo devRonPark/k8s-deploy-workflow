@@ -42,24 +42,27 @@ class OpenAIChatDecisionProvider:
         return cls(load_semantic_llm_settings(env))
 
     def decide(self, context: SemanticDecisionContext) -> AgentAction:
-        response = self._client.chat.completions.create(
-            model=self.settings.model,
-            messages=[
-                {"role": "system", "content": _DEVELOPER_PROMPT},
-                {"role": "user", "content": self._context_payload(context)},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
+        try:
+            response = self._client.chat.completions.create(
+                model=self.settings.model,
+                messages=[
+                    {"role": "system", "content": _DEVELOPER_PROMPT},
+                    {"role": "user", "content": self._context_payload(context)},
+                ],
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+        except Exception as exc:
+            raise SemanticProviderError(_provider_error_code(exc)) from exc
         content = self._message_content(response)
         try:
             payload = json.loads(content)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise ValueError("model output was not valid JSON") from exc
+            raise SemanticProviderError("provider_schema_error") from exc
         try:
             return _ACTION_ADAPTER.validate_python(payload)
         except (ValidationError, ValueError, TypeError) as exc:
-            raise ValueError("model output did not match semantic action schema") from exc
+            raise SemanticProviderError("provider_schema_error") from exc
 
     def _build_client(self, settings: SemanticLLMSettings):
         from openai import OpenAI
@@ -77,10 +80,32 @@ class OpenAIChatDecisionProvider:
         try:
             content = response.choices[0].message.content
         except (AttributeError, IndexError, TypeError) as exc:
-            raise ValueError("model response did not include message content") from exc
+            raise SemanticProviderError("provider_empty_response") from exc
         if not isinstance(content, str) or not content.strip():
-            raise ValueError("model response did not include message content")
+            raise SemanticProviderError("provider_empty_response")
         return content
 
 
-__all__ = ["OpenAIChatDecisionProvider"]
+class SemanticProviderError(RuntimeError):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def _provider_error_code(exc: Exception) -> str:
+    status_code = getattr(exc, "status_code", None)
+    if status_code in {401, 403}:
+        return "provider_auth_error"
+    if status_code == 404:
+        return "provider_model_or_endpoint_error"
+    if isinstance(status_code, int):
+        return "provider_http_error"
+    name = exc.__class__.__name__.lower()
+    if "timeout" in name:
+        return "provider_timeout"
+    if "connection" in name:
+        return "provider_connection_error"
+    return "provider_error"
+
+
+__all__ = ["OpenAIChatDecisionProvider", "SemanticProviderError"]

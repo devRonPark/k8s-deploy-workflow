@@ -227,6 +227,24 @@ class SemanticAgentTests(unittest.TestCase):
         self.assertEqual(result.status, SemanticAgentRunStatus.PROVIDER_ERROR)
         self.assertIn("provider_error", result.messages)
 
+    def test_provider_error_preserves_sanitized_error_code(self):
+        class Provider:
+            def decide(self, context):
+                raise RuntimeError("provider_model_or_endpoint_error")
+
+        task_obj = task()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_semantic_agent(
+                task=task_obj,
+                tool_context=self.make_context(Path(tmp), task_obj),
+                decision_provider=Provider(),
+                phase1_evidence=phase1_evidence(),
+            )
+
+        self.assertEqual(result.status, SemanticAgentRunStatus.PROVIDER_ERROR)
+        self.assertEqual(result.messages, ["provider_model_or_endpoint_error"])
+
     def test_hallucinated_candidate_is_verification_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

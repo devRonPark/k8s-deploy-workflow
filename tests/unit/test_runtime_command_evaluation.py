@@ -65,6 +65,56 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
         self.assertIsInstance(cases[0], RuntimeCommandEvaluationCase)
         self.assertIsInstance(cases[0].expectation, RuntimeCommandFixtureExpectation)
 
+    def test_fixture_loading_can_select_one_named_case_for_paid_evaluation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_fixture(
+                root,
+                "z-shell",
+                {
+                    "expected_status": "resolved",
+                    "expected_command": "uvicorn main:app",
+                    "expected_evidence_paths": ["entrypoint.sh"],
+                    "expected_tool_names": ["read_source_range"],
+                },
+                dockerfile='FROM python:3.12\nENTRYPOINT ["./entrypoint.sh"]\n',
+            )
+            make_fixture(
+                root,
+                "a-direct",
+                {
+                    "expected_status": "no_task",
+                    "expected_command": "python app.py",
+                    "expected_evidence_paths": [],
+                    "expected_tool_names": [],
+                },
+                dockerfile='FROM python:3.12\nCMD ["python", "app.py"]\n',
+            )
+
+            cases = load_evaluation_cases(root, fixture_names=["z-shell"])
+
+        self.assertEqual([case.name for case in cases], ["z-shell"])
+
+    def test_fixture_loading_reports_unknown_selected_case(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_fixture(
+                root,
+                "a-direct",
+                {
+                    "expected_status": "no_task",
+                    "expected_command": "python app.py",
+                    "expected_evidence_paths": [],
+                    "expected_tool_names": [],
+                },
+                dockerfile='FROM python:3.12\nCMD ["python", "app.py"]\n',
+            )
+
+            with self.assertRaises(ValueError) as raised:
+                load_evaluation_cases(root, fixture_names=["missing-case"])
+
+        self.assertIn("unknown evaluation fixture", str(raised.exception))
+
     def test_metric_calculation_counts_success_hallucination_and_consistency(self):
         results = [
             RuntimeCommandEvaluationResult(
@@ -87,9 +137,10 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
                 latency_ms=1.0,
                 input_tokens=0,
                 output_tokens=0,
-                provider_error=False,
-                verifier_reasons=[],
-            ),
+            provider_error=False,
+            verifier_reasons=[],
+            provider_messages=[],
+        ),
             RuntimeCommandEvaluationResult(
                 fixture="bad",
                 provider="fake",
@@ -112,6 +163,7 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
                 output_tokens=20,
                 provider_error=False,
                 verifier_reasons=["candidate_not_grounded"],
+                provider_messages=[],
             ),
         ]
 
@@ -147,6 +199,7 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
             output_tokens=0,
             provider_error=True,
             verifier_reasons=["SEMANTIC_LLM_API_KEY=sk-secretsecretsecret"],
+            provider_messages=["provider_auth_error"],
         )
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,6 +218,7 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
         self.assertNotIn("sk-secretsecretsecret", payload)
         self.assertNotIn("SEMANTIC_LLM_API_KEY", report)
         self.assertIn("secret-case", report)
+        self.assertIn("provider_auth_error", payload)
         self.assertIn("MVP", render_markdown_report("fake", "baseline", [result], {}, 1, None))
 
     def test_endpoint_configuration_detection_uses_names_not_values(self):

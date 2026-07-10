@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -36,6 +37,27 @@ class SemanticLLMSettings(BaseModel):
         return value
 
 
+def load_dotenv_values(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            raise SemanticLLMConfigError(f"invalid .env line {line_number}")
+        name, raw_value = line.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise SemanticLLMConfigError(f"invalid .env line {line_number}")
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[name] = value
+    return values
+
+
 def load_semantic_llm_settings(env: Mapping[str, str] | None = None) -> SemanticLLMSettings:
     values = env if env is not None else os.environ
     missing = [
@@ -67,5 +89,6 @@ __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "SemanticLLMConfigError",
     "SemanticLLMSettings",
+    "load_dotenv_values",
     "load_semantic_llm_settings",
 ]

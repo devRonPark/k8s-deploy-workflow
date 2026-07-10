@@ -63,8 +63,8 @@ def run_semantic_agent(
             action = _ACTION_ADAPTER.validate_python(decision_provider.decide(context))
         except (ValidationError, ValueError, TypeError):
             return state.result(SemanticAgentRunStatus.INVALID_ACTION, messages=["invalid_action"])
-        except Exception:
-            return state.result(SemanticAgentRunStatus.PROVIDER_ERROR, messages=["provider_error"])
+        except Exception as exc:
+            return state.result(SemanticAgentRunStatus.PROVIDER_ERROR, messages=[_provider_error_message(exc)])
 
         if isinstance(action, ToolCallAction):
             terminal = state.handle_tool_call(action)
@@ -269,3 +269,13 @@ def _redact_arguments(value):
     if isinstance(value, dict):
         return {key: _redact_arguments(item) for key, item in value.items()}
     return value
+
+
+def _provider_error_message(exc: Exception) -> str:
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code.startswith("provider_"):
+        return code
+    text = str(exc).strip().split()[0] if str(exc).strip() else ""
+    if text.startswith("provider_"):
+        return text
+    return "provider_error"

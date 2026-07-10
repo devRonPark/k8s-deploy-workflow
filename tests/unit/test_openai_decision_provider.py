@@ -15,7 +15,7 @@ from preanalyzer.models.semantic_agent import (
     ToolCallAction,
 )
 from preanalyzer.semantic.llm_config import SemanticLLMSettings
-from preanalyzer.semantic.openai_provider import OpenAIChatDecisionProvider
+from preanalyzer.semantic.openai_provider import OpenAIChatDecisionProvider, SemanticProviderError
 
 
 def context() -> SemanticDecisionContext:
@@ -122,14 +122,18 @@ class OpenAIChatDecisionProviderTests(unittest.TestCase):
     def test_rejects_non_json_content(self):
         provider = OpenAIChatDecisionProvider(settings(), client=FakeClient("not json"))
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(SemanticProviderError) as raised:
             provider.decide(context())
+
+        self.assertEqual(raised.exception.code, "provider_schema_error")
 
     def test_rejects_schema_invalid_content(self):
         provider = OpenAIChatDecisionProvider(settings(), client=FakeClient(json.dumps({"action_type": "tool_call"})))
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(SemanticProviderError) as raised:
             provider.decide(context())
+
+        self.assertEqual(raised.exception.code, "provider_schema_error")
 
 
 if __name__ == "__main__":

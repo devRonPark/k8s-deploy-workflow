@@ -17,6 +17,7 @@ from preanalyzer.models.semantic import (
 )
 from preanalyzer.models.semantic_agent import ResolutionAction, ToolCallAction
 from preanalyzer.pipeline import run_phase1_analysis
+from preanalyzer.semantic.llm_config import load_dotenv_values
 from preanalyzer.semantic.openai_provider import OpenAIChatDecisionProvider
 
 
@@ -71,11 +72,15 @@ class RuntimeCommandEvaluationResult:
     output_tokens: int
     provider_error: bool
     verifier_reasons: list[str] = field(default_factory=list)
+    provider_messages: list[str] = field(default_factory=list)
 
 
-def load_evaluation_cases(root: Path) -> list[RuntimeCommandEvaluationCase]:
+def load_evaluation_cases(root: Path, fixture_names: list[str] | None = None) -> list[RuntimeCommandEvaluationCase]:
+    selected = set(fixture_names or [])
     cases: list[RuntimeCommandEvaluationCase] = []
     for fixture_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+        if selected and fixture_dir.name not in selected:
+            continue
         expected_path = fixture_dir / "expected.json"
         repo_dir = fixture_dir / "repo"
         if not expected_path.is_file() or not repo_dir.is_dir():
@@ -97,6 +102,11 @@ def load_evaluation_cases(root: Path) -> list[RuntimeCommandEvaluationCase]:
                 expectation=expectation,
             )
         )
+    if selected:
+        found = {case.name for case in cases}
+        missing = sorted(selected - found)
+        if missing:
+            raise ValueError(f"unknown evaluation fixture: {', '.join(missing)}")
     return cases
 
 
@@ -105,8 +115,13 @@ def endpoint_is_configured(env: Mapping[str, str] | None = None) -> bool:
     return all(values.get(name, "").strip() for name in REQUIRED_ENDPOINT_ENV)
 
 
-def run_fake_baseline(fixture_root: Path, *, repetitions: int = 3) -> tuple[list[RuntimeCommandEvaluationResult], dict]:
-    cases = load_evaluation_cases(fixture_root)
+def run_fake_baseline(
+    fixture_root: Path,
+    *,
+    repetitions: int = 3,
+    fixture_names: list[str] | None = None,
+) -> tuple[list[RuntimeCommandEvaluationResult], dict]:
+    cases = load_evaluation_cases(fixture_root, fixture_names=fixture_names)
     results: list[RuntimeCommandEvaluationResult] = []
     for _ in range(repetitions):
         for case in cases:
@@ -119,11 +134,12 @@ def run_openai_compatible(
     *,
     repetitions: int = 3,
     env: Mapping[str, str] | None = None,
+    fixture_names: list[str] | None = None,
 ) -> tuple[list[RuntimeCommandEvaluationResult], dict, str | None]:
     if not endpoint_is_configured(env):
         return [], calculate_metrics([], repetitions=repetitions), "environment_variables_not_configured"
     provider = OpenAIChatDecisionProvider.from_env(env)
-    cases = load_evaluation_cases(fixture_root)
+    cases = load_evaluation_cases(fixture_root, fixture_names=fixture_names)
     results: list[RuntimeCommandEvaluationResult] = []
     for _ in range(repetitions):
         for case in cases:
@@ -236,10 +252,12 @@ def render_markdown_report(
         lines.append(f"- {_redact(key)}: {count}")
     lines.extend(["", "## Fixture Results", ""])
     for result in sorted(results, key=lambda item: (item.fixture, item.provider, item.model)):
+        messages = ",".join(_redact(message) for message in result.provider_messages) or "none"
         lines.append(
             "- "
             + f"{result.fixture}: expected={result.expected_status}, actual={result.actual_status}, "
-            + f"verification={result.verification_status or 'none'}, tools={','.join(result.actual_tool_names) or 'none'}"
+            + f"verification={result.verification_status or 'none'}, tools={','.join(result.actual_tool_names) or 'none'}, "
+            + f"messages={messages}"
         )
     return "\n".join(lines) + "\n"
 
@@ -363,6 +381,7 @@ def _result_from_audit(
         output_tokens=0,
         provider_error=first_run.get("run_status") == "provider_error",
         verifier_reasons=[str(reason) for reason in verification.get("reasons", [])],
+        provider_messages=[str(message) for message in first_run.get("messages", [])],
     )
 
 
@@ -507,21 +526,36 @@ def _redact(text: str) -> str:
     return redacted.replace("sk-secretsecretsecret", "[REDACTED_SECRET]")
 
 
+def _env_with_dotenv(env_file: Path) -> Mapping[str, str]:
+    values = dict(os.environ)
+    if env_file.is_file():
+        values.update(load_dotenv_values(env_file))
+    return values
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate resolve_runtime_command semantic agent fixtures.")
     parser.add_argument("--fixtures", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--provider", choices=["fake", "openai_compatible"], default="fake")
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--fixture", dest="fixture_names", action="append", help="Run only the named fixture.")
+    parser.add_argument("--env-file", type=Path, default=Path(".env"), help="Optional .env file for semantic LLM settings.")
     args = parser.parse_args(argv)
 
     if args.provider == "fake":
-        results, metrics = run_fake_baseline(args.fixtures, repetitions=args.repetitions)
+        results, metrics = run_fake_baseline(args.fixtures, repetitions=args.repetitions, fixture_names=args.fixture_names)
         skipped_reason = None
         model = "scripted-fake"
     else:
-        results, metrics, skipped_reason = run_openai_compatible(args.fixtures, repetitions=args.repetitions)
-        model = os.environ.get("SEMANTIC_LLM_MODEL", "unconfigured")
+        env = _env_with_dotenv(args.env_file)
+        results, metrics, skipped_reason = run_openai_compatible(
+            args.fixtures,
+            repetitions=args.repetitions,
+            env=env,
+            fixture_names=args.fixture_names,
+        )
+        model = env.get("SEMANTIC_LLM_MODEL", "unconfigured")
     write_evaluation_outputs(
         output_dir=args.output_dir,
         provider=args.provider,
