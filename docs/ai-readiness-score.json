@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-11",
+  "subject": {
+    "project": "k8s-deploy-preanalyzer",
+    "commit_boundary": "Phase 1 (Step 0-6) 완료",
+    "design_principle": "결정론 우선, LLM은 나중"
+  },
+  "methodology": {
+    "model": "safety-harness-centric",
+    "rationale": "이 프로젝트는 'AI를 얼마나 썼나'가 아니라 'AI를 안전하게 꽂을 소켓과 안전장치가 얼마나 갖춰졌나'로 준비도를 정의한다. 따라서 결정론 토대·안전 하네스·불변식에 높은 가중치를 두고, LLM 실행부 미연결은 큰 감점이 아니라 '남은 배선'으로 취급한다.",
+    "scale": "차원별 0-100 점, 가중 합산으로 총점 산출",
+    "status_values": ["done", "built_unwired", "missing", "not_started"],
+    "bands": [
+      {"min": 0,  "max": 39, "label": "not-ready",      "meaning": "AI를 안전하게 붙일 토대 자체가 부족"},
+      {"min": 40, "max": 69, "label": "harness-forming", "meaning": "토대는 있으나 안전장치 미완"},
+      {"min": 70, "max": 89, "label": "harness-ready",   "meaning": "소켓·안전장치 완성, 실행부만 배선하면 가동"},
+      {"min": 90, "max": 100,"label": "ai-live",         "meaning": "LLM이 실제로 검증된 산출물을 생성"}
+    ]
+  },
+  "overall": {
+    "score": 78,
+    "band": "harness-ready",
+    "interpretation": "AI를 안전하게 꽂을 준비는 거의 끝났고, 남은 건 LLM 실행부 배선. 토대·하네스 완성, 실행부 0%.",
+    "weighted_breakdown": "30.0 + 30.0 + 18.0 + 0.0 + 0.0"
+  },
+  "dimensions": [
+    {
+      "id": "deterministic_foundation",
+      "label": "결정론 토대 (Step 0-6)",
+      "weight": 30,
+      "score": 100,
+      "weighted_contribution": 30.0,
+      "status": "done",
+      "rationale": "snapshot→inventory→evidence→rule_inference 체인 완료. 정제된 Evidence Bundle 생성. LLM에 넘길 입력이 준비됨.",
+      "items": [
+        {"name": "Repository Snapshot",            "step": 0, "status": "done", "evidence": "src/preanalyzer/analyzer/scanner.py"},
+        {"name": "Artifact Inventory",             "step": 1, "status": "done", "evidence": "src/preanalyzer/analyzer/scanner.py"},
+        {"name": "기존 배포 파일 분석",             "step": 2, "status": "done", "evidence": "src/preanalyzer/analyzer/parsers/"},
+        {"name": "Component/Service 탐지",          "step": 3, "status": "done", "evidence": "src/preanalyzer/analyzer/rule_inference.py"},
+        {"name": "언어/프레임워크/빌드",            "step": 4, "status": "done", "evidence": "src/preanalyzer/analyzer/evidence_builder.py"},
+        {"name": "런타임 정보 추출",                "step": 5, "status": "done", "evidence": "src/preanalyzer/analyzer/runtime_command_resolver.py"},
+        {"name": "포트/env/volume/의존관계",        "step": 6, "status": "done", "evidence": "src/preanalyzer/models/evidence.py"}
+      ]
+    },
+    {
+      "id": "safety_harness",
+      "label": "AI 안전 하네스",
+      "weight": 30,
+      "score": 100,
+      "weighted_contribution": 30.0,
+      "status": "built_unwired",
+      "rationale": "LLM이 앉을 소켓 4종이 결정론 코드로 구축되고 단위 테스트로 검증됨. 아직 파이프라인에 연결되지 않았으나 컴포넌트 자체는 완비.",
+      "items": [
+        {"name": "Semantic Task 빌더", "status": "built_unwired", "detail": "결정론이 LLM 필요 지점만 태스크화, 1 태스크=1 필드", "evidence": "src/preanalyzer/semantic/task_builder.py", "tests": "tests/unit/test_semantic_task_builder.py"},
+        {"name": "제한된 읽기 도구 4종", "status": "built_unwired", "detail": "search_code·read_source_range·inspect_entrypoint_script·find_command_target, 컴포넌트 범위 한정", "evidence": "src/preanalyzer/semantic/tools/", "tests": "tests/unit/semantic_tools/"},
+        {"name": "예산 원장 (SemanticToolSession)", "status": "built_unwired", "detail": "호출·파일·라인·재시도 누적 강제, 초과 시 거부·근거 보존", "evidence": "src/preanalyzer/semantic/budget.py", "tests": "tests/unit/test_semantic_budget.py"},
+        {"name": "결정론적 검증기", "status": "built_unwired", "detail": "근거·범위·Secret 검사 후 수용 결정", "evidence": "src/preanalyzer/semantic/verifier.py", "tests": "tests/unit/test_semantic_verifier.py"}
+      ]
+    },
+    {
+      "id": "safety_invariants",
+      "label": "안전 불변식",
+      "weight": 20,
+      "score": 90,
+      "weighted_contribution": 18.0,
+      "status": "built_unwired",
+      "rationale": "8개 불변식이 코드(검증기·예산·태스크 빌더)로 강제됨. 다만 실제 LLM 에이전트로 end-to-end 구동해 본 적은 없어 -10.",
+      "items": [
+        {"name": "결정론이 호출 여부 결정",              "enforced_in": "task_builder.py", "status": "built_unwired"},
+        {"name": "1 태스크 = 1 target_field",           "enforced_in": "task_builder.py", "status": "built_unwired"},
+        {"name": "allowed_tools·예산 강제",              "enforced_in": "tools/__init__.py, budget.py", "status": "built_unwired"},
+        {"name": "전체 레포 컨텍스트 미노출",             "enforced_in": "tools/ (범위 한정)", "status": "built_unwired"},
+        {"name": "에이전트 레포 수정·설치 불가",          "enforced_in": "읽기 전용 도구", "status": "built_unwired"},
+        {"name": "LLM 신뢰도 low/medium 상한",           "enforced_in": "verifier.py", "status": "built_unwired"},
+        {"name": "검증기가 수용 결정",                    "enforced_in": "verifier.py", "status": "built_unwired"},
+        {"name": "Secret 값 LLM 미전달",                 "enforced_in": "verifier.py (_contains_secret_literal)", "status": "built_unwired"}
+      ]
+    },
+    {
+      "id": "llm_executor",
+      "label": "LLM 실행부",
+      "weight": 12,
+      "score": 0,
+      "weighted_contribution": 0.0,
+      "status": "missing",
+      "rationale": "하네스를 구동할 주체가 전무. pipeline.py에 semantic 호출 자체가 없음.",
+      "items": [
+        {"name": "LLM Executor / 오케스트레이터 상태기계", "status": "missing", "plan": "docs/tasks/semantic-agent-tasks/TASK-05-bounded-agent-state-machine.md"},
+        {"name": "OpenAI 호환 Qwen 프로바이더",           "status": "missing", "plan": "docs/tasks/semantic-agent-tasks/TASK-06-openai-compatible-qwen-provider.md"},
+        {"name": "파이프라인 연결",                        "status": "missing", "plan": "docs/tasks/semantic-agent-tasks/TASK-07-pipeline-integration.md"},
+        {"name": "Semantic 산출물 저장",                   "status": "missing", "plan": null}
+      ]
+    },
+    {
+      "id": "downstream",
+      "label": "다운스트림 (Step 7-15)",
+      "weight": 8,
+      "score": 0,
+      "weighted_contribution": 0.0,
+      "status": "not_started",
+      "rationale": "토폴로지→인텐트→렌더링→검증→배포→스모크→리페어 전부 미착수.",
+      "items": [
+        {"name": "Application Topology Model", "step": 7,  "status": "not_started"},
+        {"name": "Kubernetes Intent Model",    "step": 8,  "status": "not_started"},
+        {"name": "불확실 값 질문 생성",          "step": 9,  "status": "not_started", "note": "LLM 개입 시작점 — 하네스는 준비됨"},
+        {"name": "Deployment Profile 병합",     "step": 10, "status": "not_started"},
+        {"name": "템플릿 매니페스트 렌더링",     "step": 11, "status": "not_started"},
+        {"name": "Kubernetes 유효성 검증",      "step": 12, "status": "not_started"},
+        {"name": "배포 테스트",                 "step": 13, "status": "not_started"},
+        {"name": "스모크 테스트",               "step": 14, "status": "not_started"},
+        {"name": "리페어 루프",                 "step": 15, "status": "not_started"}
+      ]
+    }
+  ]
+}
