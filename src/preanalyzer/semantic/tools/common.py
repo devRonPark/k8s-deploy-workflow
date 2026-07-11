@@ -250,8 +250,6 @@ def _component_root(repo_root: Path, component: ComponentCandidate) -> Path:
     raw = PurePosixPath(str(root_path))
     if raw.is_absolute():
         return Path(str(root_path)).resolve()
-    if any(part == ".." for part in raw.parts):
-        return (repo_root / Path(*raw.parts)).resolve()
     return (repo_root / Path(*raw.parts)).resolve()
 
 
