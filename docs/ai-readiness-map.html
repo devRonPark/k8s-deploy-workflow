@@ -1,0 +1,360 @@
+<title>AI-Readiness 지도 · k8s-deploy-preanalyzer</title>
+<style>
+  :root {
+    --ink:        #0d1620;
+    --paper:      #f3f6f5;
+    --card:       #ffffff;
+    --line:       #d3dcda;
+    --muted-txt:  #5a6a68;
+    --txt:        #16232a;
+
+    /* semantic states — distinct from structural accent */
+    --done:       #148f7e;   /* teal — deterministic, shipped */
+    --done-bg:    #e2f2ee;
+    --ready:      #b7791f;   /* amber — harness built, idle */
+    --ready-bg:   #f7ecd6;
+    --gap:        #8b5cd6;   /* violet — AI executor absent */
+    --gap-bg:     #efe8fb;
+    --idle:       #6a7a86;   /* slate — not started */
+    --idle-bg:    #e7edec;
+
+    --accent:     #148f7e;
+    --spine:      #c2cecb;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo", "Cascadia Mono", "Roboto Mono", monospace;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:  #0d1620;
+      --card:   #14212b;
+      --line:   #26363f;
+      --muted-txt: #8598a0;
+      --txt:    #e6eeec;
+      --done:   #37c9b2;  --done-bg:  #10322e;
+      --ready:  #e0a94a;  --ready-bg: #362a13;
+      --gap:    #ac8ae8;  --gap-bg:   #241a3a;
+      --idle:   #91a3ad;  --idle-bg:  #1a2831;
+      --accent: #37c9b2;
+      --spine:  #2c3d46;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#f3f6f5; --card:#fff; --line:#d3dcda; --muted-txt:#5a6a68; --txt:#16232a;
+    --done:#148f7e; --done-bg:#e2f2ee; --ready:#b7791f; --ready-bg:#f7ecd6;
+    --gap:#8b5cd6; --gap-bg:#efe8fb; --idle:#6a7a86; --idle-bg:#e7edec;
+    --accent:#148f7e; --spine:#c2cecb;
+  }
+  :root[data-theme="dark"] {
+    --paper:#0d1620; --card:#14212b; --line:#26363f; --muted-txt:#8598a0; --txt:#e6eeec;
+    --done:#37c9b2; --done-bg:#10322e; --ready:#e0a94a; --ready-bg:#362a13;
+    --gap:#ac8ae8; --gap-bg:#241a3a; --idle:#91a3ad; --idle-bg:#1a2831;
+    --accent:#37c9b2; --spine:#2c3d46;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--txt);
+    font-family: var(--sans); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: clamp(28px, 5vw, 64px) clamp(18px, 4vw, 44px) 80px; }
+
+  /* ---- header ---- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--muted-txt); margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 5.4vw, 50px); line-height: 1.04; margin: 0;
+    font-weight: 800; letter-spacing: -.02em; text-wrap: balance;
+  }
+  h1 .hl { color: var(--accent); }
+  .thesis {
+    margin: 18px 0 0; max-width: 60ch; font-size: clamp(15px, 2.1vw, 17px);
+    color: var(--muted-txt);
+  }
+  .thesis b { color: var(--txt); font-weight: 600; }
+
+  /* ---- legend ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 26px 0 0; }
+  .lg { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-family: var(--mono); color: var(--muted-txt); }
+  .dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .d-done { background: var(--done); }
+  .d-ready { background: var(--ready); }
+  .d-gap { background: var(--gap); }
+  .d-idle { background: var(--idle); }
+
+  /* ---- stat row ---- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 30px 0 46px; }
+  @media (max-width: 720px){ .stats { grid-template-columns: repeat(2,1fr);} }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 16px 15px; position: relative; overflow: hidden;
+  }
+  .stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; }
+  .stat.s-done::before { background: var(--done); }
+  .stat.s-ready::before { background: var(--ready); }
+  .stat.s-gap::before { background: var(--gap); }
+  .stat.s-idle::before { background: var(--idle); }
+  .stat .k { font-size: 11px; font-family: var(--mono); letter-spacing:.08em; text-transform:uppercase; color: var(--muted-txt); }
+  .stat .v { font-size: clamp(21px, 3vw, 27px); font-weight: 800; margin: 8px 0 2px; letter-spacing:-.01em; font-variant-numeric: tabular-nums; }
+  .stat .s { font-size: 12.5px; color: var(--muted-txt); }
+  .stat.s-done .v { color: var(--done); }
+  .stat.s-ready .v { color: var(--ready); }
+  .stat.s-gap .v { color: var(--gap); }
+  .stat.s-idle .v { color: var(--idle); }
+
+  /* ---- section heads ---- */
+  .sect-h { display:flex; align-items:baseline; gap:12px; margin: 52px 0 20px; }
+  .sect-h h2 { font-size: clamp(19px,2.6vw,23px); margin:0; font-weight:750; letter-spacing:-.01em; }
+  .sect-h .n { font-family: var(--mono); font-size: 12px; color: var(--muted-txt); }
+  .sect-sub { margin: -8px 0 22px; color: var(--muted-txt); font-size: 14px; max-width: 62ch; }
+
+  /* ---- pipeline spine ---- */
+  .spine { position: relative; margin-left: 10px; }
+  .row {
+    display: grid; grid-template-columns: 46px 1fr; gap: 16px;
+    padding: 3px 0; position: relative;
+  }
+  .rail { position: relative; display:flex; justify-content:center; }
+  .rail::before {
+    content:""; position:absolute; top:0; bottom:0; width:2px; background: var(--spine);
+  }
+  .row:first-child .rail::before { top: 22px; }
+  .row:last-child .rail::before { bottom: calc(100% - 22px); }
+  .node {
+    position: relative; z-index: 2; width: 30px; height: 30px; border-radius: 9px;
+    display:flex; align-items:center; justify-content:center; margin-top: 8px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    border: 1.5px solid; background: var(--card);
+  }
+  .node.done  { border-color: var(--done);  color: var(--done);  background: var(--done-bg); }
+  .node.gap   { border-color: var(--gap);   color: var(--gap);   background: var(--gap-bg); }
+  .node.idle  { border-color: var(--idle);  color: var(--idle);  }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 11px;
+    padding: 12px 15px; margin: 4px 0;
+  }
+  .card .top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .card .title { font-weight: 650; font-size: 15px; }
+  .card .desc { color: var(--muted-txt); font-size: 13px; margin-top: 3px; }
+  .chip {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing:.04em; text-transform:uppercase;
+    padding: 2px 8px; border-radius: 20px; font-weight: 600; white-space: nowrap;
+  }
+  .c-done { background: var(--done-bg); color: var(--done); }
+  .c-gap  { background: var(--gap-bg);  color: var(--gap); }
+  .c-idle { background: var(--idle-bg); color: var(--idle); }
+
+  /* AI boundary marker */
+  .boundary {
+    grid-column: 1 / -1; display:flex; align-items:center; gap: 14px;
+    margin: 18px 0 12px; padding-left: 4px;
+  }
+  .boundary .line { flex:1; height:1px; background: repeating-linear-gradient(90deg, var(--gap) 0 8px, transparent 8px 15px); }
+  .boundary .lbl {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing:.1em; text-transform:uppercase;
+    color: var(--gap); font-weight: 700; white-space: nowrap;
+  }
+
+  /* ---- harness / gap panels ---- */
+  .panel-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px){ .panel-grid { grid-template-columns: 1fr; } }
+  .panel {
+    border: 1px solid var(--line); border-radius: 14px; overflow:hidden; background: var(--card);
+  }
+  .panel > header {
+    padding: 15px 18px; border-bottom: 1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; gap: 10px;
+  }
+  .panel > header h3 { margin:0; font-size: 15.5px; font-weight: 700; }
+  .panel.ready > header { background: var(--ready-bg); }
+  .panel.gap  > header { background: var(--gap-bg); }
+  .panel ul { list-style: none; margin: 0; padding: 8px 8px 12px; }
+  .panel li {
+    display:grid; grid-template-columns: 18px 1fr; gap: 10px; align-items:start;
+    padding: 9px 10px; border-radius: 8px; font-size: 13.5px;
+  }
+  .panel li .mk { font-family: var(--mono); font-weight: 700; line-height:1.5; }
+  .panel.ready li .mk { color: var(--ready); }
+  .panel.gap  li .mk { color: var(--gap); }
+  .panel li b { font-weight: 650; }
+  .panel li .path { font-family: var(--mono); font-size: 11.5px; color: var(--muted-txt); display:block; margin-top:2px; }
+
+  /* ---- guardrails ---- */
+  .rails { display:grid; grid-template-columns: repeat(2,1fr); gap: 10px 26px; }
+  @media (max-width: 680px){ .rails { grid-template-columns: 1fr; } }
+  .guard {
+    display:grid; grid-template-columns: 22px 1fr; gap: 11px; align-items:start;
+    padding: 11px 4px; border-bottom: 1px solid var(--line); font-size: 13.5px;
+  }
+  .guard .lock { color: var(--accent); font-weight:700; font-family: var(--mono); }
+  .guard b { font-weight: 650; }
+  .guard span.d { color: var(--muted-txt); display:block; margin-top: 1px; font-size: 12.5px; }
+
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11.5px; color: var(--muted-txt);
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">k8s-deploy-preanalyzer · 사전분석 워크플로우</p>
+  <h1>AI-Readiness <span class="hl">지도</span></h1>
+  <p class="thesis">
+    이 시스템의 설계 원칙은 <b>"결정론 우선, LLM은 나중"</b>. 그래서 AI 준비도는
+    "AI가 얼마나 쓰였나"가 아니라 <b>"AI를 안전하게 꽂을 자리와 안전장치가 얼마나 갖춰졌나"</b>로 읽습니다.
+    토대는 완성, 안전 하네스는 구축 완료, 그러나 <b>정작 LLM 실행부는 아직 비어 있음</b> — 이게 현재 좌표입니다.
+  </p>
+
+  <div class="legend">
+    <span class="lg"><span class="dot d-done"></span>완료 · 결정론</span>
+    <span class="lg"><span class="dot d-ready"></span>AI 하네스 구축됨 · 미연결</span>
+    <span class="lg"><span class="dot d-gap"></span>AI 실행부 없음</span>
+    <span class="lg"><span class="dot d-idle"></span>미착수</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat s-done">
+      <div class="k">토대 (Step 0–6)</div>
+      <div class="v">7 / 7</div>
+      <div class="s">결정론적 사전분석 완료</div>
+    </div>
+    <div class="stat s-ready">
+      <div class="k">AI 안전 하네스</div>
+      <div class="v">4 / 4</div>
+      <div class="s">도구·예산·검증기·태스크 빌더</div>
+    </div>
+    <div class="stat s-gap">
+      <div class="k">LLM 실행부</div>
+      <div class="v">없음</div>
+      <div class="s">executor · provider · 저장</div>
+    </div>
+    <div class="stat s-idle">
+      <div class="k">다운스트림 (Step 7–15)</div>
+      <div class="v">0 / 9</div>
+      <div class="s">토폴로지 → 매니페스트 → 배포</div>
+    </div>
+  </div>
+
+  <!-- ===== PIPELINE SPINE ===== -->
+  <div class="sect-h">
+    <span class="n">MAP·1</span>
+    <h2>파이프라인 위의 AI 경계선</h2>
+  </div>
+  <p class="sect-sub">
+    Step 0–6은 의도적으로 LLM-free. LLM은 Step 9(불확실 값 질문 생성)에서 처음 등장하도록 설계됨.
+    그 경계 위쪽은 "확실한 사실만", 아래쪽은 "추론이 필요한 값".
+  </p>
+
+  <div class="spine">
+    <div class="row"><div class="rail"><div class="node done">0</div></div>
+      <div class="card"><div class="top"><span class="title">Repository Snapshot</span><span class="chip c-done">완료</span></div>
+      <div class="desc">재현성 기준(workspace / commit 모드) 확정 · 내용 해시 기록</div></div></div>
+    <div class="row"><div class="rail"><div class="node done">1</div></div>
+      <div class="card"><div class="top"><span class="title">Artifact Inventory</span><span class="chip c-done">완료</span></div>
+      <div class="desc">Dockerfile · compose · package.json 등 배포 관련 파일 탐지</div></div></div>
+    <div class="row"><div class="rail"><div class="node done">2</div></div>
+      <div class="card"><div class="top"><span class="title">기존 배포 파일 분석</span><span class="chip c-done">완료</span></div>
+      <div class="desc">Dockerfile / compose 파싱 · override 병합 · 추측 없이 unresolved 표시</div></div></div>
+    <div class="row"><div class="rail"><div class="node done">3</div></div>
+      <div class="card"><div class="top"><span class="title">Component / Service 탐지</span><span class="chip c-done">완료</span></div>
+      <div class="desc">compose service ∪ package 후보 reconcile · longest-prefix 귀속</div></div></div>
+    <div class="row"><div class="rail"><div class="node done">4</div></div>
+      <div class="card"><div class="top"><span class="title">언어 · 프레임워크 · 빌드</span><span class="chip c-done">완료</span></div>
+      <div class="desc">근거 기반 탐지</div></div></div>
+    <div class="row"><div class="rail"><div class="node done">5</div></div>
+      <div class="card"><div class="top"><span class="title">런타임 정보 추출</span><span class="chip c-done">완료</span></div>
+      <div class="desc">버전 · 포트 · 실행 커맨드 (FROM / EXPOSE / CMD 기반)</div></div></div>
+    <div class="row"><div class="rail"><div class="node done">6</div></div>
+      <div class="card"><div class="top"><span class="title">포트 · env · volume · 의존관계</span><span class="chip c-done">완료</span></div>
+      <div class="desc">Evidence Bundle 완성 → 여기까지가 "Phase 1"</div></div></div>
+
+    <div class="row"><div class="boundary">
+      <span class="lbl">▼ AI 경계 · 이 아래부터 LLM 개입 지점</span><span class="line"></span>
+    </div></div>
+
+    <div class="row"><div class="rail"><div class="node idle">7</div></div>
+      <div class="card"><div class="top"><span class="title">Application Topology Model</span><span class="chip c-idle">미착수</span></div>
+      <div class="desc">결정론 산출물을 최종 모델로 승격</div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">8</div></div>
+      <div class="card"><div class="top"><span class="title">Kubernetes Intent Model</span><span class="chip c-idle">미착수</span></div>
+      <div class="desc">매니페스트 직전 중간 모델</div></div></div>
+    <div class="row"><div class="rail"><div class="node gap">9</div></div>
+      <div class="card"><div class="top"><span class="title">불확실 값 질문 생성 — LLM 개입 시작점</span><span class="chip c-gap">하네스 O · 실행부 X</span></div>
+      <div class="desc">안전 하네스(도구·예산·검증기)는 이 지점을 위해 이미 준비됨. 그러나 이를 구동할 LLM 실행부가 없어 실제로는 돌지 않음</div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">10</div></div>
+      <div class="card"><div class="top"><span class="title">Deployment Profile 병합</span><span class="chip c-idle">미착수</span></div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">11</div></div>
+      <div class="card"><div class="top"><span class="title">템플릿 기반 매니페스트 렌더링</span><span class="chip c-idle">미착수</span></div>
+      <div class="desc">자유형 LLM YAML은 최종 산출물이 될 수 없음 (불변식)</div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">12</div></div>
+      <div class="card"><div class="top"><span class="title">Kubernetes 유효성 검증</span><span class="chip c-idle">미착수</span></div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">13</div></div>
+      <div class="card"><div class="top"><span class="title">배포 테스트</span><span class="chip c-idle">미착수</span></div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">14</div></div>
+      <div class="card"><div class="top"><span class="title">스모크 테스트</span><span class="chip c-idle">미착수</span></div></div></div>
+    <div class="row"><div class="rail"><div class="node idle">15</div></div>
+      <div class="card"><div class="top"><span class="title">리페어 루프</span><span class="chip c-idle">미착수</span></div></div></div>
+  </div>
+
+  <!-- ===== HARNESS vs GAP ===== -->
+  <div class="sect-h">
+    <span class="n">MAP·2</span>
+    <h2>AI 자리: 갖춰진 것 vs 비어 있는 것</h2>
+  </div>
+  <p class="sect-sub">
+    "AI를 꽂을 소켓"은 완성돼 있습니다. 소켓에 들어갈 "전구(LLM 실행부)"만 아직 없습니다.
+  </p>
+
+  <div class="panel-grid">
+    <section class="panel ready">
+      <header><h3>구축된 AI 안전 하네스</h3><span class="chip c-done">결정론 · 검증됨</span></header>
+      <ul>
+        <li><span class="mk">✓</span><div><b>Semantic Task 빌더</b> — 결정론이 "LLM이 필요한 지점"만 골라 태스크 생성. 한 태스크 = 한 필드.<span class="path">semantic/task_builder.py</span></div></li>
+        <li><span class="mk">✓</span><div><b>제한된 읽기 도구 4종</b> — search_code · read_source_range · inspect_entrypoint_script · find_command_target. 한 컴포넌트로 범위 한정.<span class="path">semantic/tools/</span></div></li>
+        <li><span class="mk">✓</span><div><b>예산 원장</b> — 호출 수 · 파일 수 · 소스 라인 · 재시도를 누적 강제. 한도 도달 시 이후 호출 거부, 직전 근거는 보존.<span class="path">semantic/budget.py · SemanticToolSession</span></div></li>
+        <li><span class="mk">✓</span><div><b>결정론적 검증기</b> — LLM 후보의 근거(grounding)·범위·Secret 유출을 검사해 수용 여부를 최종 결정.<span class="path">semantic/verifier.py</span></div></li>
+      </ul>
+    </section>
+
+    <section class="panel gap">
+      <header><h3>비어 있는 AI 실행부</h3><span class="chip c-gap">미구현</span></header>
+      <ul>
+        <li><span class="mk">✗</span><div><b>LLM Executor / 오케스트레이터</b> — 태스크를 받아 도구를 호출하는 상태기계. 하네스를 실제로 구동할 주체.<span class="path">docs/tasks · TASK-05 (계획만)</span></div></li>
+        <li><span class="mk">✗</span><div><b>OpenAI 호환 Qwen 프로바이더</b> — 온프렘 LLM 연결부.<span class="path">docs/tasks · TASK-06 (계획만)</span></div></li>
+        <li><span class="mk">✗</span><div><b>파이프라인 연결</b> — <code>pipeline.py</code>에 semantic 호출이 아예 없음. 하네스가 만들어졌지만 배선 미완.<span class="path">docs/tasks · TASK-07 (계획만)</span></div></li>
+        <li><span class="mk">✗</span><div><b>Semantic 산출물 저장</b> — 최종 의미분석 결과를 남기는 artifact 없음.</div></li>
+      </ul>
+    </section>
+  </div>
+
+  <!-- ===== GUARDRAILS ===== -->
+  <div class="sect-h">
+    <span class="n">MAP·3</span>
+    <h2>AI를 안전하게 만드는 불변식</h2>
+  </div>
+  <p class="sect-sub">
+    "AI-ready"의 진짜 의미 — LLM을 붙였을 때 통제 불능이 되지 않도록 미리 박아둔 규칙들. (AGENTS.md · Bounded Semantic Agent)
+  </p>
+
+  <div class="rails">
+    <div class="guard"><span class="lock">01</span><div><b>결정론이 호출 여부를 결정</b><span class="d">LLM은 스스로 개입 시점을 못 정한다</span></div></div>
+    <div class="guard"><span class="lock">02</span><div><b>한 태스크 = 한 target_field</b><span class="d">범위를 하나의 값으로 좁힘</span></div></div>
+    <div class="guard"><span class="lock">03</span><div><b>allowed_tools · 예산 강제</b><span class="d">허용 도구 밖 호출·초과 사용 차단</span></div></div>
+    <div class="guard"><span class="lock">04</span><div><b>전체 레포를 컨텍스트에 넣지 않음</b><span class="d">정제된 Evidence Bundle만 노출</span></div></div>
+    <div class="guard"><span class="lock">05</span><div><b>에이전트는 레포 수정·의존성 설치 불가</b><span class="d">읽기 전용</span></div></div>
+    <div class="guard"><span class="lock">06</span><div><b>LLM 신뢰도는 low / medium 상한</b><span class="d">classification = llm_semantic_inference</span></div></div>
+    <div class="guard"><span class="lock">07</span><div><b>검증기가 수용을 결정</b><span class="d">근거 없는 후보는 거부, 결정론 고신뢰 값을 못 덮음</span></div></div>
+    <div class="guard"><span class="lock">08</span><div><b>Secret 값은 LLM에 전달 금지</b><span class="d">이름·출처·분류만, 값은 산출물·로그에도 미유출</span></div></div>
+  </div>
+
+  <footer>
+    <span>생성일 2026-07-11 · Phase 1 (Step 0–6) 완료 · 브랜치 claude/ai-readiness-map-nkz6dr</span>
+    <span>결정론 우선 · LLM은 나중</span>
+  </footer>
+
+</div>
