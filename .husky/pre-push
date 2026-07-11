@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Block pushes that leave a hallucinated path in an agent context doc.
+# Stale references mislead coding agents — cheaper to catch here than mid-task.
+python3 scripts/validate_context_paths.py .
