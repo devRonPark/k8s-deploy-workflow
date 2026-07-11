@@ -330,7 +330,7 @@ class SemanticTaskBuilderTests(unittest.TestCase):
 
     def test_reason_specific_tool_allowlists(self):
         expected = {
-            RuntimeCommandGapReason.SHELL_SCRIPT_ENTRYPOINT: ["inspect_entrypoint_script", "read_source_range", "find_command_target"],
+            RuntimeCommandGapReason.SHELL_SCRIPT_ENTRYPOINT: ["inspect_entrypoint_script", "read_source_range"],
             RuntimeCommandGapReason.COMPOUND_SHELL_COMMAND: ["read_source_range", "search_code", "find_command_target"],
             RuntimeCommandGapReason.MISSING_RUNTIME_COMMAND: ["search_code", "find_command_target", "read_source_range"],
             RuntimeCommandGapReason.CONFLICTING_EXPLICIT_COMMANDS: ["search_code", "read_source_range", "find_command_target"],

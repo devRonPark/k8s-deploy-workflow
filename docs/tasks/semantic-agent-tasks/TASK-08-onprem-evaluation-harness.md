@@ -27,7 +27,6 @@ python-module-entrypoint
 compound-shell-command
 ambiguous-runtime-command
 insufficient-runtime-evidence
-hallucinated-command-rejection
 invalid-evidence-reference
 budget-exhausted
 ```

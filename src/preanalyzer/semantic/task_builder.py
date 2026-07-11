@@ -42,7 +42,6 @@ _TOOL_ALLOWLIST_BY_REASON = {
     RuntimeCommandGapReason.SHELL_SCRIPT_ENTRYPOINT.value: [
         "inspect_entrypoint_script",
         "read_source_range",
-        "find_command_target",
     ],
     RuntimeCommandGapReason.COMPOUND_SHELL_COMMAND.value: [
         "read_source_range",
