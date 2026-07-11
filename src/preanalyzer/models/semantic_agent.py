@@ -50,6 +50,7 @@ class SemanticDecisionContext(_SemanticAgentBaseModel):
     target_field: str
     reason: dict[str, Any]
     known_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    seed_evidence: list[dict[str, Any]] = Field(default_factory=list)
     available_tools: list[str] = Field(default_factory=list)
     collected_evidence: list[dict[str, Any]] = Field(default_factory=list)
     observations: list[dict[str, Any]] = Field(default_factory=list)

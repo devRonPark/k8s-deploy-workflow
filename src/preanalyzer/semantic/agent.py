@@ -104,6 +104,8 @@ class _AgentState:
         return self.turn_count >= self.task.budget.max_agent_turns or self.session.exhausted
 
     def decision_context(self) -> SemanticDecisionContext:
+        remaining_budget = self._remaining_budget()
+        available_tools = list(self.task.allowed_tools) if remaining_budget.get("tool_calls", 0) > 0 else []
         return SemanticDecisionContext(
             task_id=self.task.task_id,
             task_type=str(self.task.task_type),
@@ -111,10 +113,11 @@ class _AgentState:
             target_field=self.task.target_field,
             reason=self.task.reason.model_dump(),
             known_candidates=[candidate.model_dump() for candidate in self.task.known_candidates],
-            available_tools=list(self.task.allowed_tools),
+            seed_evidence=self._seed_evidence(),
+            available_tools=available_tools,
             collected_evidence=self._collected_evidence(),
             observations=self._observations(),
-            remaining_budget=self._remaining_budget(),
+            remaining_budget=remaining_budget,
         )
 
     def handle_tool_call(self, action: ToolCallAction) -> SemanticAgentRunResult | None:
@@ -230,6 +233,23 @@ class _AgentState:
             source_lines_returned=self.session.ledger.source_lines_returned,
             messages=[*self.messages, *(messages or [])],
         )
+
+    def _seed_evidence(self) -> list[dict]:
+        refs = {ref.evidence_id for ref in self.task.evidence_refs if ref.origin == "phase1"}
+        refs.update(self.task.reason.evidence_refs)
+        for known in self.task.known_candidates:
+            refs.update(known.evidence_refs)
+        items: list[dict] = []
+        for fact in self.phase1_evidence.facts:
+            if fact.evidence_id in refs:
+                items.append(
+                    {
+                        "evidence_id": fact.evidence_id,
+                        "fact_type": fact.fact_type,
+                        "value": _redact_arguments(fact.value),
+                    }
+                )
+        return items
 
     def _collected_evidence(self) -> list[dict]:
         items: list[dict] = []

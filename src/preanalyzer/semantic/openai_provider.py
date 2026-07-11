@@ -24,8 +24,11 @@ Rules:
 - Tool path arguments must be component-relative paths: no leading slash, no repository prefix, no '..'.
 - Do not request repository edits, dependency installation, shell commands, or network access.
 - Do not include secret values, passwords, tokens, credentials, or API keys.
-- If evidence is insufficient, return an insufficient_evidence resolution.
-- If multiple grounded answers conflict, return an ambiguous resolution.
+- seed_evidence lists phase1-observed facts. When a fact of type dockerfile_cmd, package_script, or runtime_command directly states the runtime command, return it resolved using that exact value string (preserve the whole command, including && chains, arguments, and quotes) and cite that seed evidence_id. Do not call a tool and do not invent a different command.
+- A dockerfile_entrypoint fact that only names a script (for example ["./entrypoint.sh"]) is not itself the runtime command; the real command lives inside that script.
+- If evidence is insufficient, return an insufficient_evidence resolution. If remaining_budget tool_calls is 0 and no seed_evidence or observation directly grounds the command, return insufficient_evidence instead of attempting a tool call.
+- When inspecting an entrypoint or script for its runtime command, enumerate every command it runs; do not cap max_candidates at 1. A script that execs more than one distinct long-running command is ambiguous.
+- If evidence yields two or more different grounded commands, return an ambiguous resolution with one candidate per command and no recommended_candidate_id; never pick just one.
 - Resolved candidates must use classification llm_semantic_inference and confidence low or medium.
 - Cite only evidence refs visible in the decision context.
 """
@@ -60,6 +63,11 @@ class OpenAIChatDecisionProvider:
             payload = json.loads(_strip_code_fence(content))
         except (TypeError, json.JSONDecodeError) as exc:
             raise SemanticProviderError("provider_schema_error") from exc
+        # The task_id is authoritative from context; echoing it is not the model's job.
+        if isinstance(payload, dict) and payload.get("action_type") == "resolution":
+            resolution = payload.get("resolution")
+            if isinstance(resolution, dict):
+                resolution["task_id"] = context.task_id
         preflight_error = _schema_error_code(payload)
         if preflight_error is not None:
             raise SemanticProviderError(preflight_error)
@@ -82,6 +90,7 @@ class OpenAIChatDecisionProvider:
         payload["action_policy"] = [
             "Do not repeat a tool call with the same tool_name and arguments.",
             "When collected_evidence is empty, available_tools is non-empty, and remaining tool_calls is positive, you must call one available tool before insufficient_evidence.",
+            "If seed_evidence contains a dockerfile_cmd, package_script, or runtime_command fact, use its value as the grounded candidate and cite that evidence_id instead of calling a tool.",
             "If observations contain kind=exec_command or kind=runtime_command with command_text, use that command_text as a grounded candidate instead of calling another tool.",
             "If a tool result was unsupported, no_match, not_found, blocked, or invalid_input, do not call the same tool with the same arguments again.",
             "Return a resolution as soon as collected evidence directly grounds the runtime command.",
