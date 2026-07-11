@@ -57,13 +57,16 @@ class OpenAIChatDecisionProvider:
             raise SemanticProviderError(_provider_error_code(exc)) from exc
         content = self._message_content(response)
         try:
-            payload = json.loads(content)
+            payload = json.loads(_strip_code_fence(content))
         except (TypeError, json.JSONDecodeError) as exc:
             raise SemanticProviderError("provider_schema_error") from exc
+        preflight_error = _schema_error_code(payload)
+        if preflight_error is not None:
+            raise SemanticProviderError(preflight_error)
         try:
             return _ACTION_ADAPTER.validate_python(payload)
         except (ValidationError, ValueError, TypeError) as exc:
-            raise SemanticProviderError(_schema_error_code(payload)) from exc
+            raise SemanticProviderError(_schema_error_code(payload) or "provider_schema_error") from exc
 
     def _build_client(self, settings: SemanticLLMSettings):
         from openai import OpenAI
@@ -78,6 +81,7 @@ class OpenAIChatDecisionProvider:
         payload = context.model_dump()
         payload["action_policy"] = [
             "Do not repeat a tool call with the same tool_name and arguments.",
+            "When collected_evidence is empty, available_tools is non-empty, and remaining tool_calls is positive, you must call one available tool before insufficient_evidence.",
             "If observations contain kind=exec_command or kind=runtime_command with command_text, use that command_text as a grounded candidate instead of calling another tool.",
             "If a tool result was unsupported, no_match, not_found, blocked, or invalid_input, do not call the same tool with the same arguments again.",
             "Return a resolution as soon as collected evidence directly grounds the runtime command.",
@@ -118,34 +122,79 @@ def _provider_error_code(exc: Exception) -> str:
     return "provider_error"
 
 
-def _schema_error_code(payload: Any) -> str:
+def _strip_code_fence(content: str) -> str:
+    text = content.strip()
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _schema_error_code(payload: Any) -> str | None:
     if not isinstance(payload, dict):
         return "provider_schema_error"
     action_type = payload.get("action_type")
     if action_type == "tool_call":
-        return "provider_schema_error_tool_call"
+        if not isinstance(payload.get("tool_name"), str) or not payload.get("tool_name", "").strip():
+            return "provider_schema_error_tool_call"
+        if "arguments" in payload and not isinstance(payload.get("arguments"), dict):
+            return "provider_schema_error_tool_call"
+        return None
     if action_type != "resolution":
         return "provider_schema_error_action_type"
     resolution = payload.get("resolution")
     if not isinstance(resolution, dict):
         return "provider_schema_error_resolution"
+    status = resolution.get("status")
+    if status not in {"resolved", "ambiguous", "insufficient_evidence", "budget_exhausted", "tool_error"}:
+        return "provider_schema_error_resolution_status"
     candidates = resolution.get("candidates")
-    recommended = resolution.get("recommended_candidate_id")
-    if resolution.get("status") == "resolved":
-        if not candidates:
-            return "provider_schema_error_resolution_candidates"
-        candidate_ids = {candidate.get("candidate_id") for candidate in candidates if isinstance(candidate, dict)}
-        if recommended not in candidate_ids:
-            return "provider_schema_error_resolution_recommendation"
+    if candidates is not None and not isinstance(candidates, list):
+        return "provider_schema_error_resolution_candidates"
+    candidates = candidates or []
+    if not isinstance(resolution.get("tool_trace_refs", []), list):
+        return "provider_schema_error_resolution_tool_trace_refs"
+    if not all(isinstance(ref, str) and ref.strip() for ref in resolution.get("tool_trace_refs", [])):
+        return "provider_schema_error_resolution_tool_trace_refs"
     if isinstance(candidates, list):
         for candidate in candidates:
             if not isinstance(candidate, dict):
                 return "provider_schema_error_candidate"
+            for key in ("candidate_id", "component_id", "target_field"):
+                if not isinstance(candidate.get(key), str) or not candidate.get(key, "").strip():
+                    return "provider_schema_error_candidate_identity"
+            value = candidate.get("value")
+            if not isinstance(value, dict):
+                return "provider_schema_error_candidate_value"
+            command = value.get("command")
+            if not isinstance(command, str) or not command.strip():
+                return "provider_schema_error_candidate_value"
             if candidate.get("classification") != "llm_semantic_inference":
                 return "provider_schema_error_candidate_classification"
             if candidate.get("confidence") not in {"low", "medium"}:
                 return "provider_schema_error_candidate_confidence"
-    return "provider_schema_error_resolution"
+            evidence_refs = candidate.get("evidence_refs", [])
+            if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) and ref.strip() for ref in evidence_refs):
+                return "provider_schema_error_candidate_evidence_refs"
+    recommended = resolution.get("recommended_candidate_id")
+    candidate_ids = {candidate.get("candidate_id") for candidate in candidates if isinstance(candidate, dict)}
+    if status == "resolved":
+        if not candidates:
+            return "provider_schema_error_resolution_candidates"
+        if recommended not in candidate_ids:
+            return "provider_schema_error_resolution_recommendation"
+    if status == "ambiguous":
+        if len(candidate_ids) < 2:
+            return "provider_schema_error_resolution_ambiguous_candidates"
+        if recommended is not None:
+            return "provider_schema_error_resolution_recommendation"
+    if status in {"insufficient_evidence", "budget_exhausted", "tool_error"} and recommended is not None:
+        return "provider_schema_error_resolution_recommendation"
+    return None
 
 
 def _tool_contracts(available_tools: list[str]) -> dict[str, dict[str, Any]]:

@@ -239,6 +239,15 @@ Parser changes also require the relevant fixture-based acceptance path.
 
 These test rules do not apply to planning-only documentation. Do not run the test suite merely because a plan mentions future tests.
 
+## External Network Access
+
+Some provider smoke tests and API examples require external network access.
+
+- If a command that matters to the user's request fails with a likely sandbox/network error, rerun the same narrow command with an external-network approval request.
+- Prefer narrow approvals for the specific command being verified, such as a provider smoke test or API call, instead of broad unrestricted shells.
+- Do not report a network-dependent check as impossible until the approved retry has been attempted or the user declines the approval.
+- Do not print API keys, tokens, or secret values when reporting external API test results.
+
 ## Git and Safety
 
 Without explicit approval, do not:

@@ -245,6 +245,40 @@ class SemanticAgentTests(unittest.TestCase):
         self.assertEqual(result.status, SemanticAgentRunStatus.PROVIDER_ERROR)
         self.assertEqual(result.messages, ["provider_model_or_endpoint_error"])
 
+    def test_schema_provider_error_retries_once_without_raw_response(self):
+        class Provider:
+            def __init__(self):
+                self.contexts = []
+
+            def decide(self, context):
+                self.contexts.append(context)
+                if len(self.contexts) == 1:
+                    raise RuntimeError("provider_schema_error")
+                if not context.collected_evidence:
+                    return ToolCallAction(
+                        tool_name="read_source_range",
+                        arguments={"path": "entrypoint.sh", "start_line": 1, "end_line": 1},
+                    )
+                return ResolutionAction(resolution=resolution(evidence_refs=[context.collected_evidence[0]["evidence_id"]]))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            write(repo / "backend" / "entrypoint.sh", "exec uvicorn main:app --host 0.0.0.0\n")
+            task_obj = task()
+            provider = Provider()
+            result = run_semantic_agent(
+                task=task_obj,
+                tool_context=self.make_context(repo, task_obj),
+                decision_provider=provider,
+                phase1_evidence=phase1_evidence(),
+            )
+
+        self.assertEqual(result.status, SemanticAgentRunStatus.COMPLETED)
+        self.assertEqual(result.verification_result.status, "accepted")
+        self.assertEqual(provider.contexts[1].observations[-1]["kind"], "provider_schema_retry")
+        self.assertEqual(provider.contexts[1].observations[-1]["error_code"], "provider_schema_error")
+        self.assertEqual(result.messages, ["provider_schema_retry"])
+
     def test_hallucinated_candidate_is_verification_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

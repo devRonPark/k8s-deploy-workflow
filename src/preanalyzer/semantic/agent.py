@@ -64,7 +64,10 @@ def run_semantic_agent(
         except (ValidationError, ValueError, TypeError):
             return state.result(SemanticAgentRunStatus.INVALID_ACTION, messages=["invalid_action"])
         except Exception as exc:
-            return state.result(SemanticAgentRunStatus.PROVIDER_ERROR, messages=[_provider_error_message(exc)])
+            message = _provider_error_message(exc)
+            if state.handle_provider_schema_error(message):
+                continue
+            return state.result(SemanticAgentRunStatus.PROVIDER_ERROR, messages=[message])
 
         if isinstance(action, ToolCallAction):
             terminal = state.handle_tool_call(action)
@@ -87,6 +90,8 @@ class _AgentState:
         self.turn_count = 0
         self.tool_results: list[SemanticToolResult] = []
         self.tool_call_records: list[SemanticToolCallRecord] = []
+        self.provider_schema_errors: list[str] = []
+        self.messages: list[str] = []
 
     def context_matches_task(self) -> bool:
         return (
@@ -147,6 +152,16 @@ class _AgentState:
         if result.status in _CONTINUABLE_TOOL_STATUSES:
             return None
         return self.result(SemanticAgentRunStatus.INVALID_ACTION)
+
+    def handle_provider_schema_error(self, message: str) -> bool:
+        if not message.startswith("provider_schema_error"):
+            return False
+        if self.session.ledger.schema_retries >= self.task.budget.max_schema_retries:
+            return False
+        self.session.ledger.schema_retries += 1
+        self.provider_schema_errors.append(message)
+        self.messages.append("provider_schema_retry")
+        return True
 
     def handle_resolution(self, resolution: SemanticResolution) -> SemanticAgentRunResult:
         if resolution.task_id != self.task.task_id:
@@ -213,7 +228,7 @@ class _AgentState:
             distinct_tools_used=len(self.session.ledger.distinct_tools),
             files_read=len(self.session.ledger.files_read),
             source_lines_returned=self.session.ledger.source_lines_returned,
-            messages=messages or [],
+            messages=[*self.messages, *(messages or [])],
         )
 
     def _collected_evidence(self) -> list[dict]:
@@ -237,6 +252,14 @@ class _AgentState:
         for result in self.tool_results:
             for observation in result.observations:
                 observations.append({"tool_name": str(result.tool_name), **observation})
+        for error_code in self.provider_schema_errors:
+            observations.append(
+                {
+                    "kind": "provider_schema_retry",
+                    "error_code": error_code,
+                    "instruction": "Return exactly one valid JSON object matching the action and resolution contracts.",
+                }
+            )
         return observations
 
     def _remaining_budget(self) -> dict[str, int]:

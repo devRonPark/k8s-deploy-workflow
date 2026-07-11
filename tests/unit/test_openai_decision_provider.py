@@ -97,6 +97,7 @@ class OpenAIChatDecisionProviderTests(unittest.TestCase):
         self.assertIn("resolution_contract", request["messages"][1]["content"])
         self.assertIn("recommended_candidate_id", request["messages"][1]["content"])
         self.assertIn("llm_semantic_inference", request["messages"][1]["content"])
+        self.assertIn("must call one available tool before insufficient_evidence", request["messages"][1]["content"])
 
     def test_parses_tool_call_action(self):
         client = FakeClient(
@@ -168,6 +169,77 @@ class OpenAIChatDecisionProviderTests(unittest.TestCase):
             provider.decide(context())
 
         self.assertEqual(raised.exception.code, "provider_schema_error_resolution_recommendation")
+
+    def test_classifies_resolution_status_and_empty_candidate_errors(self):
+        valid_candidate = {
+            "candidate_id": "SC-001",
+            "component_id": "backend",
+            "target_field": "/components/backend/runtime/command",
+            "value": {"command": "uvicorn main:app --host 0.0.0.0"},
+            "classification": "llm_semantic_inference",
+            "confidence": "medium",
+            "evidence_refs": ["SE-001"],
+        }
+        cases = [
+            ("not_a_status", [], None, "provider_schema_error_resolution_status"),
+            ("resolved", [], None, "provider_schema_error_resolution_candidates"),
+            ("ambiguous", [valid_candidate], None, "provider_schema_error_resolution_ambiguous_candidates"),
+        ]
+        for status, candidates, recommended, expected_code in cases:
+            with self.subTest(expected_code=expected_code):
+                payload = {
+                    "action_type": "resolution",
+                    "resolution": {
+                        "task_id": "ST-001",
+                        "status": status,
+                        "candidates": candidates,
+                        "recommended_candidate_id": recommended,
+                        "analysis_summary": "summary",
+                        "tool_trace_refs": [],
+                    },
+                }
+                provider = OpenAIChatDecisionProvider(settings(), client=FakeClient(json.dumps(payload)))
+
+                with self.assertRaises(SemanticProviderError) as raised:
+                    provider.decide(context())
+
+                self.assertEqual(raised.exception.code, expected_code)
+
+    def test_classifies_candidate_shape_errors_without_raw_response(self):
+        base_candidate = {
+            "candidate_id": "SC-001",
+            "component_id": "backend",
+            "target_field": "/components/backend/runtime/command",
+            "value": {"command": "uvicorn main:app --host 0.0.0.0"},
+            "classification": "llm_semantic_inference",
+            "confidence": "medium",
+            "evidence_refs": ["SE-001"],
+        }
+        cases = [
+            ({**base_candidate, "candidate_id": ""}, "provider_schema_error_candidate_identity"),
+            ({**base_candidate, "evidence_refs": "SE-001"}, "provider_schema_error_candidate_evidence_refs"),
+            ({**base_candidate, "value": "uvicorn main:app --host 0.0.0.0"}, "provider_schema_error_candidate_value"),
+            ({**base_candidate, "value": {"command": ""}}, "provider_schema_error_candidate_value"),
+        ]
+        for candidate_payload, expected_code in cases:
+            with self.subTest(expected_code=expected_code):
+                payload = {
+                    "action_type": "resolution",
+                    "resolution": {
+                        "task_id": "ST-001",
+                        "status": "resolved",
+                        "candidates": [candidate_payload],
+                        "recommended_candidate_id": "SC-001",
+                        "analysis_summary": "summary",
+                        "tool_trace_refs": ["SE-001"],
+                    },
+                }
+                provider = OpenAIChatDecisionProvider(settings(), client=FakeClient(json.dumps(payload)))
+
+                with self.assertRaises(SemanticProviderError) as raised:
+                    provider.decide(context())
+
+                self.assertEqual(raised.exception.code, expected_code)
 
 
 if __name__ == "__main__":

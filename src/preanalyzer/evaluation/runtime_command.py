@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
@@ -403,7 +404,9 @@ def _result_from_audit(
         verification_status=verification.get("status"),
         tool_call_count=int(first_run.get("tool_call_count", 0)),
         turn_count=int(first_run.get("turn_count", 0)),
-        schema_retries=0,
+        schema_retries=sum(
+            1 for message in (first_run.get("messages") or []) if message == "provider_schema_retry"
+        ),
         latency_ms=latency_ms,
         input_tokens=0,
         output_tokens=0,
@@ -536,10 +539,34 @@ def _load_jsonish_yaml(path: Path) -> dict:
 def _command_matches(result: RuntimeCommandEvaluationResult) -> bool:
     if result.expected_status in {"ambiguous", "insufficient_evidence", "budget_exhausted", "rejected"}:
         return result.actual_status == result.expected_status and result.actual_command is None
-    allowed = set(result.allowed_commands)
+    actual = _normalize_command(result.actual_command)
+    allowed = {_normalize_command(command) for command in result.allowed_commands}
     if result.expected_command:
-        allowed.add(result.expected_command)
-    return result.actual_command in allowed if allowed else result.actual_command == result.expected_command
+        allowed.add(_normalize_command(result.expected_command))
+    allowed.discard(None)
+    return actual in allowed if allowed else actual == _normalize_command(result.expected_command)
+
+
+def _normalize_command(command: str | None) -> str | None:
+    if command is None:
+        return None
+    text = command.strip()
+    if not text:
+        return None
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError:
+        decoded = None
+    if isinstance(decoded, list) and all(isinstance(item, str) for item in decoded):
+        tokens = decoded
+    else:
+        try:
+            tokens = shlex.split(text)
+        except ValueError:
+            tokens = text.split()
+    if tokens and tokens[0] == "exec":
+        tokens = tokens[1:]
+    return " ".join(tokens) if tokens else None
 
 
 def _evidence_matches(result: RuntimeCommandEvaluationResult) -> bool:

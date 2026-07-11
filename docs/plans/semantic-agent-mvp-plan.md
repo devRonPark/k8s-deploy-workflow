@@ -70,7 +70,6 @@ node-multiple-scripts
 python-module-entrypoint
 ambiguous-runtime-command
 insufficient-runtime-evidence
-hallucinated-command-rejection
 invalid-evidence-reference
 budget-exhausted
 ```

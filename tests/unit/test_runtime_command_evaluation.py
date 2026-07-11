@@ -180,6 +180,38 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
         self.assertEqual(metrics["provider_error_rate"], 0.0)
         self.assertEqual(metrics["verifier_rejection_reasons"]["candidate_not_grounded"], 1)
 
+    def test_metric_calculation_treats_shell_exec_prefix_as_same_runtime_command(self):
+        result = RuntimeCommandEvaluationResult(
+            fixture="entrypoint",
+            provider="openai_compatible",
+            model="model",
+            expected_status="resolved",
+            actual_status="resolved",
+            expected_command="uvicorn main:app --host 0.0.0.0",
+            actual_command="exec uvicorn main:app --host 0.0.0.0",
+            expected_evidence_paths=["entrypoint.sh"],
+            actual_evidence_paths=["entrypoint.sh"],
+            expected_tool_names=["inspect_entrypoint_script"],
+            actual_tool_names=["inspect_entrypoint_script"],
+            task_created=True,
+            verification_status="accepted",
+            tool_call_count=1,
+            turn_count=3,
+            schema_retries=1,
+            latency_ms=1.0,
+            input_tokens=0,
+            output_tokens=0,
+            provider_error=False,
+            verifier_reasons=[],
+            provider_messages=["provider_schema_retry"],
+            tool_call_records=[],
+        )
+
+        metrics = calculate_metrics([result], repetitions=1)
+
+        self.assertEqual(metrics["exact_command_accuracy"], 1.0)
+        self.assertEqual(metrics["hallucinated_candidate_rate"], 0.0)
+
     def test_result_extraction_uses_accepted_semantic_command_value(self):
         case = RuntimeCommandEvaluationCase(
             name="accepted-command",
@@ -469,7 +501,6 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
                 "compound-shell-command",
                 "dockerfile-direct-cmd",
                 "dockerfile-shell-entrypoint",
-                "hallucinated-command-rejection",
                 "insufficient-runtime-evidence",
                 "invalid-evidence-reference",
                 "node-multiple-scripts",
