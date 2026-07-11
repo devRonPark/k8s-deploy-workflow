@@ -1,3 +1,5 @@
+"""Evidence Model 계약: 결정론 분석 산출물을 observed_fact로 정규화."""
+
 from __future__ import annotations
 
 from typing import Any

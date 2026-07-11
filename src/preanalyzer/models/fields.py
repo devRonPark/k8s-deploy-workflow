@@ -1,3 +1,5 @@
+"""공용 필드 타입: Confidence 등급과 value↔source/confidence를 묶는 Tracked 래퍼."""
+
 from __future__ import annotations
 
 from dataclasses import field

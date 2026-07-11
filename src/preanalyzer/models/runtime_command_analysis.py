@@ -1,3 +1,5 @@
+"""런타임 커맨드 분석 계약 (resolved/alternative/gap + 상태·사유 enum)."""
+
 from __future__ import annotations
 
 from enum import Enum

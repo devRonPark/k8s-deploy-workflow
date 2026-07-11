@@ -1,3 +1,5 @@
+"""Artifact Inventory 계약 (Step 1 산출물, 파일 존재/부재 목록)."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field

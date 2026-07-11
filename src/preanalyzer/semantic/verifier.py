@@ -1,3 +1,5 @@
+"""결정론 검증기: LLM 산출물의 evidence·범위·Secret 검사 후 수용 결정."""
+
 from __future__ import annotations
 
 import hashlib

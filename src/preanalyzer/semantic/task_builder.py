@@ -1,3 +1,5 @@
+"""결정론이 LLM 필요 지점만 SemanticTask로 빌드 (1 태스크=1 target_field). 안전 하네스."""
+
 from __future__ import annotations
 
 import hashlib

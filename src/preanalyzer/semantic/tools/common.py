@@ -1,3 +1,5 @@
+"""semantic 도구 공용 실행 컨텍스트·에러·결과 헬퍼 (컴포넌트 범위 한정)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,5 @@
+"""도구: 런타임 커맨드 토큰에서 실제 실행 대상 파일/모듈 탐색."""
+
 from __future__ import annotations
 
 import shlex

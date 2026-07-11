@@ -1,3 +1,5 @@
+"""규칙 추론 후보 계약 (component/role/runtime/port/command/dependency candidate)."""
+
 from __future__ import annotations
 
 from dataclasses import field
