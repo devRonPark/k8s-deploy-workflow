@@ -601,7 +601,7 @@ def _mvp_passed(metrics: dict) -> bool:
     )
 
 
-_SECRET_VALUE_RE = re.compile(r"\b(?:sk|pk|AKIA)[A-Za-z0-9_\-]{12,}\b")
+_SECRET_VALUE_RE = re.compile(r"\b(?:sk-[A-Za-z0-9_\-]{12,}|pk-[A-Za-z0-9_\-]{12,}|AKIA[A-Za-z0-9_\-]{12,})\b")
 _SENSITIVE_ENV_NAME_RE = re.compile(
     r"\b[A-Z0-9_]*(?:API_KEY|TOKEN|PASSWORD|PASSWD|SECRET|CREDENTIAL)[A-Z0-9_]*\b"
 )

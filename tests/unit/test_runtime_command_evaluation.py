@@ -387,6 +387,22 @@ class RuntimeCommandEvaluationTests(unittest.TestCase):
         self.assertIn("provider_auth_error", payload)
         self.assertIn("MVP", render_markdown_report("fake", "baseline", [result], {}, 1, None))
 
+    def test_output_redaction_preserves_skipped_reason_field_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result_path, _ = write_evaluation_outputs(
+                output_dir=Path(tmp),
+                provider="openai_compatible",
+                model="unconfigured",
+                results=[],
+                metrics=calculate_metrics([], repetitions=1),
+                repetitions=1,
+                skipped_reason="environment_variables_not_configured",
+            )
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["skipped_reason"], "environment_variables_not_configured")
+        self.assertNotIn("[REDACTED_VALUE]", payload)
+
     def test_endpoint_configuration_detection_uses_names_not_values(self):
         self.assertFalse(endpoint_is_configured({"SEMANTIC_LLM_BASE_URL": "", "SEMANTIC_LLM_MODEL": "m"}))
         self.assertTrue(
