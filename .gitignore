@@ -8,3 +8,11 @@ __pycache__/
 /.env
 /.env.*
 !/.env.example
+
+# Claude Code / plugin local state (machine-specific, not shared)
+.claude/settings.local.json
+.claude/sessions/
+.claude/state/
+.claude/memory/
+docs/.bkit-memory.json
+docs/.pdca-status.json
