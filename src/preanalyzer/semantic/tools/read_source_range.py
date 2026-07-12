@@ -1,3 +1,5 @@
+"""도구: 지정 파일의 한정된 라인 범위만 읽기."""
+
 from __future__ import annotations
 
 from preanalyzer.models.semantic_tools import (

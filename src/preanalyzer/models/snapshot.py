@@ -1,3 +1,5 @@
+"""Repository Snapshot 계약 (Step 0 산출물, commit SHA·메타데이터)."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field

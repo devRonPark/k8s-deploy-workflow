@@ -1,3 +1,5 @@
+"""도구: 엔트리포인트 스크립트를 논리 라인으로 분해·커맨드 분류."""
+
 from __future__ import annotations
 
 import shlex

@@ -1,3 +1,5 @@
+"""Bounded Semantic Agent 계약 (SemanticTask·verification 상태/사유 enum·evidence ref)."""
+
 from __future__ import annotations
 
 from enum import Enum

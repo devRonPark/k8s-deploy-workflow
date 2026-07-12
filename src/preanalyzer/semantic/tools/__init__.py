@@ -1,3 +1,5 @@
+"""제한된 semantic 읽기 도구 4종의 실행 디스패처 (allowed_tools·범위 강제)."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ValidationError

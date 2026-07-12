@@ -13,6 +13,17 @@
 - Verifier를 통과하지 않은 Candidate는 downstream에서 사용하지 않는다.
 - 최종 Dockerfile 및 Kubernetes Manifest 생성은 결정론적 Renderer 책임이다.
 
+## 관련 코드 · 문서
+
+상위 아키텍처는 [architecture.md](../../architecture.md), 개발 규칙은
+[codex-guidelines.md](../../codex-guidelines.md) 참고. 현재 준비된 결정론 지원 코드:
+
+```text
+src/preanalyzer/models/semantic.py       # Semantic 도메인 모델
+src/preanalyzer/semantic/verifier.py     # Deterministic Semantic Verifier
+tests/unit/test_semantic_verifier.py     # verifier 단위 테스트
+```
+
 ## 현재 완료 상태
 
 다음 단계까지 구현 및 커밋 완료된 상태를 전제로 한다.

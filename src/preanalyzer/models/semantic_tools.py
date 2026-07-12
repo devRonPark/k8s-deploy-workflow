@@ -1,3 +1,5 @@
+"""Semantic 읽기 도구 입출력 계약 (도구명 enum, 입력·결과·evidence 타입)."""
+
 from __future__ import annotations
 
 from enum import Enum

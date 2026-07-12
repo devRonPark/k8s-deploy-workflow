@@ -1,0 +1,9 @@
+# Independent-critic routing for review. Every change gets an owner.
+# Agent context docs and the preanalyzer core get explicit review.
+
+*                       @devRonPark
+/src/preanalyzer/       @devRonPark
+/tests/                 @devRonPark
+CLAUDE.md               @devRonPark
+AGENTS.md               @devRonPark
+/docs/                  @devRonPark

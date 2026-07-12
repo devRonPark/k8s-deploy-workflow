@@ -1,3 +1,5 @@
+"""semantic 도구 공용 실행 컨텍스트·에러·결과 헬퍼 (컴포넌트 범위 한정)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -248,8 +250,6 @@ def _component_root(repo_root: Path, component: ComponentCandidate) -> Path:
     raw = PurePosixPath(str(root_path))
     if raw.is_absolute():
         return Path(str(root_path)).resolve()
-    if any(part == ".." for part in raw.parts):
-        return (repo_root / Path(*raw.parts)).resolve()
     return (repo_root / Path(*raw.parts)).resolve()
 
 

@@ -1,0 +1,21 @@
+name: context-validate
+
+# Verify agent context docs (CLAUDE.md / AGENTS.md / README.md) reference only
+# real paths, and keep the AI-readiness scorecard honest, on every push/PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  context-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate context path references
+        run: python3 scripts/validate_context_paths.py .
+      - name: Self-check the validator
+        run: python3 scripts/validate_context_paths.py --selfcheck

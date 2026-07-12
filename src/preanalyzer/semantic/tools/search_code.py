@@ -1,3 +1,5 @@
+"""도구: 컴포넌트 범위 내 코드 검색."""
+
 from __future__ import annotations
 
 from preanalyzer.models.semantic_tools import (

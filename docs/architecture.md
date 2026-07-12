@@ -87,7 +87,9 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 
 각 모듈을 책임 / 입력 / 출력 / 사용하면 안 되는 것 / LLM 사용 가능 여부 / 실패 시 동작으로 정의한다. "실패 시 동작"의 공통 원칙: **실패는 은폐되지 않고 산출물에 기록되며, 파이프라인은 가능한 한 계속 진행한다(fail-visible, not fail-silent).**
 
-## 2.1 Repository Scanner (Step 0~1)
+> **구현 상태 범례** (2026-07-11, `src/` 기준): ✅ 구현·테스트 완료 · 🔌 컴포넌트 구축·파이프라인 미배선 · 📋 계획(코드 없음). 이 절의 설계 서술은 Step 0~15 전체 청사진이므로, 아래 각 모듈 제목의 마커가 코드의 현재 진실이다. 설계와 코드가 갈리면 마커를 따르라.
+
+## 2.1 Repository Scanner (Step 0~1) ✅
 
 | 항목 | 정의 |
 |---|---|
@@ -98,7 +100,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | clone/checkout 실패는 파이프라인 중단(분석 대상이 없음). `.git` 없는 디렉터리는 `commit_sha: null` + 경고로 계속. 심볼릭 링크 순환 등은 순회 종료 보장 후 경고 기록 |
 
-## 2.2 Artifact Parser (Step 2)
+## 2.2 Artifact Parser (Step 2) ✅
 
 | 항목 | 정의 |
 |---|---|
@@ -109,7 +111,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | 깨진 파일(pom.xml, JSON 등)은 예외가 아닌 `ParseWarning` 기록 + 해당 artifact skip, 파이프라인 계속 |
 
-## 2.3 Evidence Builder (Step 3)
+## 2.3 Evidence Builder (Step 3) ✅
 
 | 항목 | 정의 |
 |---|---|
@@ -120,7 +122,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | 깨진 artifact는 ParseWarning을 evidence로 남기고 해당 artifact fact만 제외. evidence가 적어도 빈 Evidence Model을 산출해 이후 단계가 "근거 부족"으로 판단하게 한다 |
 
-## 2.4 Rule Inference Engine (Step 4~6)
+## 2.4 Rule Inference Engine (Step 4~6) ✅
 
 | 항목 | 정의 |
 |---|---|
@@ -131,7 +133,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | 어떤 규칙에도 걸리지 않는 영역은 unresolved inference로 남긴다. 컴포넌트 0개여도 빈 후보 + 근거 부족 경고로 계속 |
 
-## 2.5 LLM Semantic Analyzer (Step 5~7)
+## 2.5 LLM Semantic Analyzer (Step 5~7) 🔌 (안전 하네스만 구축·미배선, LLM 실행부 없음)
 
 | 항목 | 정의 |
 |---|---|
@@ -142,7 +144,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ⭕ 핵심 기능 — 단 Evidence Bundle 기반 semantic interpretation으로 제한 |
 | 실패 시 | schema 검증 실패 또는 evidence_ref 누락 → 해당 해석 폐기. LLM 장애 시 빈 `llm_interpretation`으로 Reconciliation 진행 |
 
-## 2.6 Rule/LLM Reconciliation Engine (Step 8~9)
+## 2.6 Rule/LLM Reconciliation Engine (Step 8~9) 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -153,7 +155,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허(이미 생성된 `llm_interpretation`을 입력으로만 사용) |
 | 실패 시 | reconciliation conflict는 `needs_user_decision` 질문으로 남긴다. 모든 리프 필드는 provenance classification과 Tracked 불변식(value↔source/confidence)을 통과해야 하며 위반은 버그(테스트로 강제) |
 
-## 2.7 Deployment Profile Merger (Step 10)
+## 2.7 Deployment Profile Merger (Step 10) 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -164,7 +166,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ⭕ 제한적 — 충돌 **설명문** 생성만. 어느 값을 채택할지는 규칙(Profile 우선)과 사용자 결정이 정한다 |
 | 실패 시 | Profile 검증 실패는 명시적 오류로 반환(사용자가 수정 후 재실행). 병합 자체는 결정론이므로 실패 모드가 검증 실패뿐 |
 
-## 2.8 LLM Provider Interface
+## 2.8 LLM Provider Interface 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -175,7 +177,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | — (이 모듈이 LLM 경계 그 자체) |
 | 실패 시 | schema 검증 실패 → 실패 사유 첨부 1회 재시도 → 재실패 시 `None` 반환. 호출측은 빈 semantic result 또는 기계 생성 기본 문구로 진행. endpoint 불달(타임아웃 포함)도 동일하게 `None` — **LLM 장애가 파이프라인을 중단시키는 경로는 없다** |
 
-## 2.9 Template Renderer (Step 11)
+## 2.9 Template Renderer (Step 11) 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -186,7 +188,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | 필수 값이 unresolved인 리소스는 기본 **렌더 보류(defer) + 사유 기록**. 사용자가 `allow_placeholders`를 요청한 경우에만 `__UNRESOLVED__` placeholder로 렌더하고 Level 0으로 캡 |
 
-## 2.10 Kubernetes Validator (Step 12)
+## 2.10 Kubernetes Validator (Step 12) 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -197,7 +199,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ⭕ 제한적 — validator **오류 메시지의 해석·수리 제안**만(Repair Loop 경유). pass/fail 판정은 항상 도구 |
 | 실패 시 | 단계 실패는 fail 기록 + 후속 단계 skipped(fail-fast 체인). 외부 바이너리 부재는 `skipped: tool_not_found`로 기록하고 계속 — 예외를 던지지 않는다 |
 
-## 2.11 Deployment Checker (Step 13)
+## 2.11 Deployment Checker (Step 13) 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -209,7 +211,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | 실패 시 | 실패 증거(이벤트, 로그, exit code)를 수집해 Repair Loop에 전달. `achieved_level`은 2 미만으로 유지 |
 | MVP 상태 | 실행 자동화는 2단계. MVP는 `deployment-readiness-checklist.md`를 생성해 사용자가 수동 수행 |
 
-## 2.12 Smoke Test Runner (Step 14)
+## 2.12 Smoke Test Runner (Step 14) 📋
 
 | 항목 | 정의 |
 |---|---|
@@ -221,7 +223,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | 실패 시 | Level 3 미달성으로 기록(Level 2에 머묾), 실패한 검사·응답 코드를 report에 남기고 Repair Loop로 |
 | MVP 상태 | 실행 자동화는 2단계. MVP는 plan 파일 생성까지 |
 
-## 2.13 Repair Loop (Step 15)
+## 2.13 Repair Loop (Step 15) 📋
 
 | 항목 | 정의 |
 |---|---|
