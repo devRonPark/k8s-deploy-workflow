@@ -1,360 +1,1156 @@
-<title>AI-Readiness 지도 · k8s-deploy-preanalyzer</title>
-<style>
-  :root {
-    --ink:        #0d1620;
-    --paper:      #f3f6f5;
-    --card:       #ffffff;
-    --line:       #d3dcda;
-    --muted-txt:  #5a6a68;
-    --txt:        #16232a;
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>k8s-deploy-workflow · AI-Readiness Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --border: #e5e7eb;
+        --border-strong: #d1d5db;
+        --text: #0f172a;
+        --text-2: #475569;
+        --text-3: #94a3b8;
+        --accent: #2563eb;
+        --accent-soft: #eff6ff;
+        --green: #16a34a;
+        --green-soft: #dcfce7;
+        --amber: #d97706;
+        --amber-soft: #fef3c7;
+        --red: #dc2626;
+        --red-soft: #fee2e2;
+        --grid: #f1f5f9;
+      }
 
-    /* semantic states — distinct from structural accent */
-    --done:       #148f7e;   /* teal — deterministic, shipped */
-    --done-bg:    #e2f2ee;
-    --ready:      #b7791f;   /* amber — harness built, idle */
-    --ready-bg:   #f7ecd6;
-    --gap:        #8b5cd6;   /* violet — AI executor absent */
-    --gap-bg:     #efe8fb;
-    --idle:       #6a7a86;   /* slate — not started */
-    --idle-bg:    #e7edec;
+      * {
+        box-sizing: border-box;
+      }
 
-    --accent:     #148f7e;
-    --spine:      #c2cecb;
-    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo", "Cascadia Mono", "Roboto Mono", monospace;
-    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper:  #0d1620;
-      --card:   #14212b;
-      --line:   #26363f;
-      --muted-txt: #8598a0;
-      --txt:    #e6eeec;
-      --done:   #37c9b2;  --done-bg:  #10322e;
-      --ready:  #e0a94a;  --ready-bg: #362a13;
-      --gap:    #ac8ae8;  --gap-bg:   #241a3a;
-      --idle:   #91a3ad;  --idle-bg:  #1a2831;
-      --accent: #37c9b2;
-      --spine:  #2c3d46;
-    }
-  }
-  :root[data-theme="light"] {
-    --paper:#f3f6f5; --card:#fff; --line:#d3dcda; --muted-txt:#5a6a68; --txt:#16232a;
-    --done:#148f7e; --done-bg:#e2f2ee; --ready:#b7791f; --ready-bg:#f7ecd6;
-    --gap:#8b5cd6; --gap-bg:#efe8fb; --idle:#6a7a86; --idle-bg:#e7edec;
-    --accent:#148f7e; --spine:#c2cecb;
-  }
-  :root[data-theme="dark"] {
-    --paper:#0d1620; --card:#14212b; --line:#26363f; --muted-txt:#8598a0; --txt:#e6eeec;
-    --done:#37c9b2; --done-bg:#10322e; --ready:#e0a94a; --ready-bg:#362a13;
-    --gap:#ac8ae8; --gap-bg:#241a3a; --idle:#91a3ad; --idle-bg:#1a2831;
-    --accent:#37c9b2; --spine:#2c3d46;
-  }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          "Inter",
+          -apple-system,
+          system-ui,
+          "Segoe UI",
+          sans-serif;
+        font-feature-settings: "cv11", "ss01";
+        -webkit-font-smoothing: antialiased;
+      }
 
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--paper); color: var(--txt);
-    font-family: var(--sans); line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 1080px; margin: 0 auto; padding: clamp(28px, 5vw, 64px) clamp(18px, 4vw, 44px) 80px; }
+      .page {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 48px 40px 64px;
+      }
 
-  /* ---- header ---- */
-  .eyebrow {
-    font-family: var(--mono); font-size: 12px; letter-spacing: .16em;
-    text-transform: uppercase; color: var(--muted-txt); margin: 0 0 14px;
-  }
-  h1 {
-    font-size: clamp(30px, 5.4vw, 50px); line-height: 1.04; margin: 0;
-    font-weight: 800; letter-spacing: -.02em; text-wrap: balance;
-  }
-  h1 .hl { color: var(--accent); }
-  .thesis {
-    margin: 18px 0 0; max-width: 60ch; font-size: clamp(15px, 2.1vw, 17px);
-    color: var(--muted-txt);
-  }
-  .thesis b { color: var(--txt); font-weight: 600; }
+      /* ============ HEADER ============ */
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 32px;
+      }
 
-  /* ---- legend ---- */
-  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 26px 0 0; }
-  .lg { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-family: var(--mono); color: var(--muted-txt); }
-  .dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
-  .d-done { background: var(--done); }
-  .d-ready { background: var(--ready); }
-  .d-gap { background: var(--gap); }
-  .d-idle { background: var(--idle); }
+      .header .eyebrow {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-3);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
 
-  /* ---- stat row ---- */
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 30px 0 46px; }
-  @media (max-width: 720px){ .stats { grid-template-columns: repeat(2,1fr);} }
-  .stat {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 16px 16px 15px; position: relative; overflow: hidden;
-  }
-  .stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; }
-  .stat.s-done::before { background: var(--done); }
-  .stat.s-ready::before { background: var(--ready); }
-  .stat.s-gap::before { background: var(--gap); }
-  .stat.s-idle::before { background: var(--idle); }
-  .stat .k { font-size: 11px; font-family: var(--mono); letter-spacing:.08em; text-transform:uppercase; color: var(--muted-txt); }
-  .stat .v { font-size: clamp(21px, 3vw, 27px); font-weight: 800; margin: 8px 0 2px; letter-spacing:-.01em; font-variant-numeric: tabular-nums; }
-  .stat .s { font-size: 12.5px; color: var(--muted-txt); }
-  .stat.s-done .v { color: var(--done); }
-  .stat.s-ready .v { color: var(--ready); }
-  .stat.s-gap .v { color: var(--gap); }
-  .stat.s-idle .v { color: var(--idle); }
+      .header h1 {
+        font-size: 30px;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
 
-  /* ---- section heads ---- */
-  .sect-h { display:flex; align-items:baseline; gap:12px; margin: 52px 0 20px; }
-  .sect-h h2 { font-size: clamp(19px,2.6vw,23px); margin:0; font-weight:750; letter-spacing:-.01em; }
-  .sect-h .n { font-family: var(--mono); font-size: 12px; color: var(--muted-txt); }
-  .sect-sub { margin: -8px 0 22px; color: var(--muted-txt); font-size: 14px; max-width: 62ch; }
+      .header .sub {
+        font-size: 14px;
+        color: var(--text-2);
+        margin-top: 4px;
+      }
 
-  /* ---- pipeline spine ---- */
-  .spine { position: relative; margin-left: 10px; }
-  .row {
-    display: grid; grid-template-columns: 46px 1fr; gap: 16px;
-    padding: 3px 0; position: relative;
-  }
-  .rail { position: relative; display:flex; justify-content:center; }
-  .rail::before {
-    content:""; position:absolute; top:0; bottom:0; width:2px; background: var(--spine);
-  }
-  .row:first-child .rail::before { top: 22px; }
-  .row:last-child .rail::before { bottom: calc(100% - 22px); }
-  .node {
-    position: relative; z-index: 2; width: 30px; height: 30px; border-radius: 9px;
-    display:flex; align-items:center; justify-content:center; margin-top: 8px;
-    font-family: var(--mono); font-size: 12px; font-weight: 700;
-    border: 1.5px solid; background: var(--card);
-  }
-  .node.done  { border-color: var(--done);  color: var(--done);  background: var(--done-bg); }
-  .node.gap   { border-color: var(--gap);   color: var(--gap);   background: var(--gap-bg); }
-  .node.idle  { border-color: var(--idle);  color: var(--idle);  }
+      .header-meta {
+        text-align: right;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.7;
+      }
 
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 11px;
-    padding: 12px 15px; margin: 4px 0;
-  }
-  .card .top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .card .title { font-weight: 650; font-size: 15px; }
-  .card .desc { color: var(--muted-txt); font-size: 13px; margin-top: 3px; }
-  .chip {
-    font-family: var(--mono); font-size: 10.5px; letter-spacing:.04em; text-transform:uppercase;
-    padding: 2px 8px; border-radius: 20px; font-weight: 600; white-space: nowrap;
-  }
-  .c-done { background: var(--done-bg); color: var(--done); }
-  .c-gap  { background: var(--gap-bg);  color: var(--gap); }
-  .c-idle { background: var(--idle-bg); color: var(--idle); }
+      .header-meta strong {
+        color: var(--text);
+        font-weight: 500;
+      }
 
-  /* AI boundary marker */
-  .boundary {
-    grid-column: 1 / -1; display:flex; align-items:center; gap: 14px;
-    margin: 18px 0 12px; padding-left: 4px;
-  }
-  .boundary .line { flex:1; height:1px; background: repeating-linear-gradient(90deg, var(--gap) 0 8px, transparent 8px 15px); }
-  .boundary .lbl {
-    font-family: var(--mono); font-size: 11.5px; letter-spacing:.1em; text-transform:uppercase;
-    color: var(--gap); font-weight: 700; white-space: nowrap;
-  }
+      /* ============ SCORE STRIP ============ */
+      .score-strip {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
 
-  /* ---- harness / gap panels ---- */
-  .panel-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 760px){ .panel-grid { grid-template-columns: 1fr; } }
-  .panel {
-    border: 1px solid var(--line); border-radius: 14px; overflow:hidden; background: var(--card);
-  }
-  .panel > header {
-    padding: 15px 18px; border-bottom: 1px solid var(--line);
-    display:flex; align-items:center; justify-content:space-between; gap: 10px;
-  }
-  .panel > header h3 { margin:0; font-size: 15.5px; font-weight: 700; }
-  .panel.ready > header { background: var(--ready-bg); }
-  .panel.gap  > header { background: var(--gap-bg); }
-  .panel ul { list-style: none; margin: 0; padding: 8px 8px 12px; }
-  .panel li {
-    display:grid; grid-template-columns: 18px 1fr; gap: 10px; align-items:start;
-    padding: 9px 10px; border-radius: 8px; font-size: 13.5px;
-  }
-  .panel li .mk { font-family: var(--mono); font-weight: 700; line-height:1.5; }
-  .panel.ready li .mk { color: var(--ready); }
-  .panel.gap  li .mk { color: var(--gap); }
-  .panel li b { font-weight: 650; }
-  .panel li .path { font-family: var(--mono); font-size: 11.5px; color: var(--muted-txt); display:block; margin-top:2px; }
+      .score-hero {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 28px 28px 24px;
+      }
 
-  /* ---- guardrails ---- */
-  .rails { display:grid; grid-template-columns: repeat(2,1fr); gap: 10px 26px; }
-  @media (max-width: 680px){ .rails { grid-template-columns: 1fr; } }
-  .guard {
-    display:grid; grid-template-columns: 22px 1fr; gap: 11px; align-items:start;
-    padding: 11px 4px; border-bottom: 1px solid var(--line); font-size: 13.5px;
-  }
-  .guard .lock { color: var(--accent); font-weight:700; font-family: var(--mono); }
-  .guard b { font-weight: 650; }
-  .guard span.d { color: var(--muted-txt); display:block; margin-top: 1px; font-size: 12.5px; }
+      .score-hero .label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
 
-  footer {
-    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
-    font-family: var(--mono); font-size: 11.5px; color: var(--muted-txt);
-    display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
-  }
-</style>
+      .score-hero .value {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-top: 8px;
+      }
 
-<div class="wrap">
+      .score-hero .num {
+        font-size: 64px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        color: var(--text);
+      }
 
-  <p class="eyebrow">k8s-deploy-preanalyzer · 사전분석 워크플로우</p>
-  <h1>AI-Readiness <span class="hl">지도</span></h1>
-  <p class="thesis">
-    이 시스템의 설계 원칙은 <b>"결정론 우선, LLM은 나중"</b>. 그래서 AI 준비도는
-    "AI가 얼마나 쓰였나"가 아니라 <b>"AI를 안전하게 꽂을 자리와 안전장치가 얼마나 갖춰졌나"</b>로 읽습니다.
-    토대는 완성, 안전 하네스는 구축 완료, 그러나 <b>정작 LLM 실행부는 아직 비어 있음</b> — 이게 현재 좌표입니다.
-  </p>
+      .score-hero .denom {
+        font-size: 20px;
+        color: var(--text-3);
+        font-weight: 500;
+      }
 
-  <div class="legend">
-    <span class="lg"><span class="dot d-done"></span>완료 · 결정론</span>
-    <span class="lg"><span class="dot d-ready"></span>AI 하네스 구축됨 · 미연결</span>
-    <span class="lg"><span class="dot d-gap"></span>AI 실행부 없음</span>
-    <span class="lg"><span class="dot d-idle"></span>미착수</span>
-  </div>
+      .score-hero .grade-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 14px;
+      }
 
-  <div class="stats">
-    <div class="stat s-done">
-      <div class="k">토대 (Step 0–6)</div>
-      <div class="v">7 / 7</div>
-      <div class="s">결정론적 사전분석 완료</div>
+      .grade-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--green-soft);
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 600;
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .grade-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--green);
+      }
+
+      .score-hero .desc {
+        font-size: 13px;
+        color: var(--text-2);
+        line-height: 1.5;
+        margin-top: 10px;
+      }
+
+      .score-hero hr {
+        border: 0;
+        border-top: 1px solid var(--border);
+        margin: 18px 0 14px;
+      }
+
+      .mini-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .mini-stat .k {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        margin-bottom: 2px;
+      }
+
+      .mini-stat .v {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      /* ============ CATEGORY BAR CHART ============ */
+      .rules {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px 24px 24px;
+      }
+
+      .rules .rules-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .rules h2 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .legend-inline {
+        display: flex;
+        gap: 14px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-2);
+      }
+
+      .legend-inline span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .legend-inline i {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+      }
+
+      .rule-row {
+        display: grid;
+        grid-template-columns: 28px 1fr 220px 56px;
+        gap: 12px;
+        align-items: center;
+        padding: 7px 0;
+        font-size: 13px;
+      }
+
+      .rule-row + .rule-row {
+        border-top: 1px dashed var(--border);
+      }
+
+      .rule-row .idx {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        font-weight: 500;
+      }
+
+      .rule-row .title {
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      .rule-row .sub {
+        font-size: 11.5px;
+        color: var(--text-3);
+        margin-top: 1px;
+      }
+
+      .subscores {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .subscores .chip {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: var(--grid);
+        color: var(--text-2);
+      }
+
+      .subscores .chip.full {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .subscores .chip.zero {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .rule-row .bar {
+        height: 8px;
+        border-radius: 3px;
+        background: var(--grid);
+        overflow: hidden;
+      }
+
+      .rule-row .bar > span {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+      }
+
+      .bar-good > span {
+        background: var(--green);
+      }
+      .bar-warn > span {
+        background: var(--amber);
+      }
+      .bar-bad > span {
+        background: var(--red);
+      }
+
+      .rule-row .num {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: right;
+        color: var(--text);
+      }
+
+      /* ============ MAP ============ */
+      .map-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 32px;
+        overflow: hidden;
+      }
+
+      .map-head {
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .map-head h2 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .map-head .sub {
+        font-size: 12px;
+        color: var(--text-2);
+        margin-top: 2px;
+      }
+
+      .map-legend {
+        display: flex;
+        gap: 18px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-2);
+        align-items: center;
+      }
+
+      .map-legend > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
+
+      .legend-square {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+      }
+
+      .map-body {
+        padding: 28px 24px 32px;
+      }
+
+      .map-body svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      /* ============ FINDINGS ============ */
+      .findings {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .panel-head h3 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .panel-head .count {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        margin-left: auto;
+      }
+
+      .panel-strength .panel-head {
+        background: var(--green-soft);
+      }
+      .panel-strength .panel-head h3 {
+        color: var(--green);
+      }
+
+      .panel-risk .panel-head {
+        background: var(--amber-soft);
+      }
+      .panel-risk .panel-head h3 {
+        color: var(--amber);
+      }
+
+      .panel-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .panel-list li {
+        padding: 14px 20px;
+        border-top: 1px solid var(--border);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .panel-list li:first-child {
+        border-top: 0;
+      }
+
+      .panel-list .head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        color: var(--text);
+      }
+
+      .panel-list .tag {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        padding: 2px 7px;
+        border-radius: 3px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+      }
+
+      .tag-rule {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .panel-list .note {
+        margin-top: 4px;
+        color: var(--text-2);
+        font-size: 12.5px;
+      }
+
+      .panel-list code {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11.5px;
+        background: var(--grid);
+        padding: 1px 5px;
+        border-radius: 3px;
+        color: var(--text);
+      }
+
+      footer {
+        margin-top: 48px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        text-align: center;
+      }
+
+      /* ============ SVG ============ */
+      .grid-bg {
+        stroke: var(--grid);
+        stroke-width: 1;
+      }
+
+      .node-card {
+        fill: var(--surface);
+        stroke: var(--border-strong);
+        stroke-width: 1.2;
+      }
+
+      .node-card.accent {
+        stroke: var(--accent);
+      }
+
+      .node-card.ok {
+        stroke: var(--green);
+      }
+
+      .node-title {
+        font-family: "Inter", sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        fill: var(--text);
+      }
+
+      .node-meta {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        fill: var(--text-3);
+      }
+
+      .node-kpi {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .edge {
+        fill: none;
+        stroke: var(--border-strong);
+        stroke-width: 1.3;
+      }
+
+      .edge-dash {
+        stroke-dasharray: 4 3;
+      }
+
+      .claude-dot {
+        fill: var(--accent);
+      }
+      .claude-ring {
+        fill: var(--accent-soft);
+      }
+
+      .ok-dot {
+        fill: var(--green);
+      }
+      .ok-ring {
+        fill: var(--green-soft);
+      }
+
+      .hot {
+        fill: var(--red-soft);
+        stroke: var(--red);
+        stroke-width: 1;
+      }
+
+      .warm {
+        fill: var(--amber-soft);
+        stroke: var(--amber);
+        stroke-width: 1;
+      }
+
+      @media (max-width: 960px) {
+        .score-strip,
+        .findings {
+          grid-template-columns: 1fr;
+        }
+        .rule-row {
+          grid-template-columns: 24px 1fr 140px 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- =========== HEADER =========== -->
+      <header class="header">
+        <div>
+          <div class="eyebrow">레포지토리 감사 · AI 준비도 · v2 루브릭</div>
+          <h1>k8s-deploy-workflow — AI 준비도 지도</h1>
+          <div class="sub">
+            7개 카테고리 채점 · 구조 지도 · ROI 우선순위 액션
+          </div>
+        </div>
+        <div class="header-meta">
+          <div>점수 측정 <strong>2026-07-12</strong></div>
+          <div>브랜치 <strong>claude/ai-readiness-map-nkz6dr</strong></div>
+          <div>모듈 <strong>4</strong> · 컨텍스트 파일 <strong>9</strong></div>
+        </div>
+      </header>
+
+      <!-- =========== SCORE STRIP =========== -->
+      <section class="score-strip">
+        <div class="score-hero">
+          <div class="label">AI 준비도 지수</div>
+          <div class="value">
+            <span class="num">98</span><span class="denom">/ 100</span>
+          </div>
+          <div class="grade-row">
+            <span class="grade-badge">
+              <span class="grade-dot"></span> AI-Native · 에이전트 친화 최상위
+            </span>
+          </div>
+          <div class="desc">
+            7개 카테고리 · 가중치 차등 (A 15 · B 20 · C 20 · D 15 · E 15
+            · F 10 · G 5). 6개 카테고리 만점. 유일한 미완은
+            <strong>D 의존성 매핑 (13/15)</strong> — 남은 2점은 JS 모노레포
+            매니페스트 전용이라 Python 레포의 <strong>정직한 상한이 98</strong>.
+          </div>
+          <hr />
+          <div class="mini-stats">
+            <div class="mini-stat">
+              <div class="k">컨텍스트 보유 모듈</div>
+              <div class="v" style="color: var(--green)">4 / 4</div>
+            </div>
+            <div class="mini-stat">
+              <div class="k">잘못된 경로</div>
+              <div class="v" style="color: var(--green)">0</div>
+            </div>
+            <div class="mini-stat">
+              <div class="k">300줄 초과 파일</div>
+              <div class="v">10</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categories bar chart -->
+        <div class="rules">
+          <div class="rules-head">
+            <div>
+              <h2>7개 카테고리 — 카테고리별 점수</h2>
+            </div>
+            <div class="legend-inline">
+              <span><i style="background: var(--green)"></i> 75% 이상</span>
+              <span><i style="background: var(--amber)"></i> 50–74%</span>
+              <span><i style="background: var(--red)"></i> 50% 미만</span>
+            </div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">A</div>
+            <div>
+              <div class="title">AI 탐색 & 커버리지</div>
+              <div class="sub">
+                핵심 모듈 <code>src</code>·<code>tests</code>·<code>scripts</code>·<code>evals</code> 4/4 컨텍스트 보유
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">15/15</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">B</div>
+            <div>
+              <div class="title">컨텍스트 문서 품질</div>
+              <div class="sub">
+                9개 문서 전부 간결 · 명령 · 경로 · 마커 · 크로스링크 충족
+              </div>
+              <div class="subscores">
+                <span class="chip full">B1 간결성 4/4</span>
+                <span class="chip full">B2 명령 4/4</span>
+                <span class="chip full">B3 핵심파일 4/4</span>
+                <span class="chip full">B4 숨은규칙 4/4</span>
+                <span class="chip full">B5 크로스링크 4/4</span>
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">20/20</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">C</div>
+            <div>
+              <div class="title">암묵지 외부화</div>
+              <div class="sub">
+                Five-Question Q1–Q4 + ADR 저장소 전부 충족
+              </div>
+              <div class="subscores">
+                <span class="chip full">Q1 소유 4/4</span>
+                <span class="chip full">Q2 패턴 4/4</span>
+                <span class="chip full">Q3 비자명 4/4</span>
+                <span class="chip full">Q4 의존성 4/4</span>
+                <span class="chip full">Q5 저장소 4/4</span>
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">20/20</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">D</div>
+            <div>
+              <div class="title">모듈 간 의존성 매핑</div>
+              <div class="sub">
+                architecture.md + mermaid + 의존성 섹션 보유 · JS workspace 파일만 부재(-2)
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 87%"></span>
+            </div>
+            <div class="num">13/15</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">E</div>
+            <div>
+              <div class="title">검증 & 품질 게이트</div>
+              <div class="sub">
+                참조 정확 · CODEOWNERS·PR 템플릿 · CI/hook · evals 완비
+              </div>
+              <div class="subscores">
+                <span class="chip full">E1 참조정확 5/5</span>
+                <span class="chip full">E2 크리틱 4/4</span>
+                <span class="chip full">E3 태스크검증 4/4</span>
+                <span class="chip full">E4 프롬프트테스트 2/2</span>
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">15/15</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">F</div>
+            <div>
+              <div class="title">신선도 & 자가 유지보수</div>
+              <div class="sub">
+                drift 0 · CI 컨텍스트 검증 + pre-push path validation 가동
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">10/10</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">G</div>
+            <div>
+              <div class="title">에이전트 성과 측정</div>
+              <div class="sub">
+                evals/ + agent-results.json + telemetry 단서 보유
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">5/5</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========== MAP =========== -->
+      <section class="map-section">
+        <div class="map-head">
+          <div>
+            <h2>구조 지도</h2>
+            <div class="sub">
+              노드 = 디렉터리 · 카드 내부 수치는 파일 크기 · 초록 점 =
+              모듈 컨텍스트 보유
+            </div>
+          </div>
+          <div class="map-legend">
+            <span
+              ><span
+                class="legend-dot"
+                style="background: var(--green)"
+              ></span>
+              CLAUDE.md 보유</span
+            >
+            <span
+              ><span
+                class="legend-square"
+                style="background: var(--red-soft); border: 1px solid var(--red)"
+              ></span>
+              500줄 초과
+            </span>
+            <span
+              ><span
+                class="legend-square"
+                style="background: var(--amber-soft); border: 1px solid var(--amber)"
+              ></span>
+              300–500줄
+            </span>
+          </div>
+        </div>
+
+        <div class="map-body">
+          <svg viewBox="0 0 1180 560" xmlns="http://www.w3.org/2000/svg">
+            <!-- subtle grid -->
+            <g class="grid-bg">
+              <path d="M0,80 H1180" />
+              <path d="M0,160 H1180" />
+              <path d="M0,240 H1180" />
+              <path d="M0,320 H1180" />
+              <path d="M0,400 H1180" />
+              <path d="M0,480 H1180" />
+              <path d="M300,0 V560" />
+              <path d="M600,0 V560" />
+              <path d="M900,0 V560" />
+            </g>
+
+            <!-- Column headers -->
+            <text
+              x="300"
+              y="32"
+              text-anchor="middle"
+              class="node-meta"
+              style="font-size: 11px; fill: var(--text-2); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;"
+            >
+              소스 · src/preanalyzer
+            </text>
+            <text
+              x="890"
+              y="32"
+              text-anchor="middle"
+              class="node-meta"
+              style="font-size: 11px; fill: var(--text-2); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;"
+            >
+              테스트 · tests/unit
+            </text>
+
+            <!-- ============ ROOT context (top center) ============ -->
+            <g transform="translate(390,52)">
+              <rect
+                class="node-card accent"
+                width="400"
+                height="70"
+                rx="8"
+              />
+              <circle cx="24" cy="24" r="14" class="claude-ring" />
+              <circle cx="24" cy="24" r="6" class="claude-dot" />
+              <text x="48" y="28" class="node-title">
+                CLAUDE.md · AGENTS.md (root)
+              </text>
+              <text x="48" y="44" class="node-meta">
+                출력규칙 · mermaid 데이터흐름 · 모듈맵 · 검증 명령
+              </text>
+              <text x="48" y="60" class="node-meta" style="fill: var(--green)">
+                40줄 · 49줄 — 나침반 압축 완료 (상세는 docs/로 이관)
+              </text>
+              <text
+                x="384"
+                y="28"
+                text-anchor="end"
+                class="node-kpi"
+                style="fill: var(--accent)"
+              >
+                루트
+              </text>
+            </g>
+
+            <!-- ============ src column ============ -->
+            <!-- src module: HAS context -->
+            <g transform="translate(60,172)">
+              <rect class="node-card ok" width="480" height="60" rx="8" />
+              <circle cx="24" cy="22" r="12" class="ok-ring" />
+              <circle cx="24" cy="22" r="5" class="ok-dot" />
+              <text x="46" y="20" class="node-title">src/ · 38 code files</text>
+              <text x="46" y="38" class="node-meta" style="fill: var(--green); font-weight:600">
+                src/CLAUDE.md — Purpose · Patterns · Note · Dependencies
+              </text>
+              <text x="464" y="24" text-anchor="end" class="node-kpi" style="fill: var(--green)">
+                A: 1/1
+              </text>
+            </g>
+
+            <!-- analyzer -->
+            <g transform="translate(60,252)">
+              <rect class="node-card" width="480" height="150" rx="8" />
+              <text x="16" y="24" class="node-title">preanalyzer/analyzer</text>
+              <text x="16" y="40" class="node-meta">
+                runtime_command_resolver · parsers/compose · rule_inference · scanner
+              </text>
+
+              <g transform="translate(16,52)">
+                <rect class="hot" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--red); font-weight:600">
+                  analyzer/runtime_command_resolver.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--red); font-weight:600">
+                  684
+                </text>
+              </g>
+              <g transform="translate(16,74)">
+                <rect class="hot" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--red); font-weight:600">
+                  analyzer/parsers/compose.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--red); font-weight:600">
+                  570
+                </text>
+              </g>
+              <g transform="translate(16,96)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  analyzer/rule_inference.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  406
+                </text>
+              </g>
+              <g transform="translate(16,118)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  analyzer/scanner.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  338
+                </text>
+              </g>
+            </g>
+
+            <!-- semantic + models -->
+            <g transform="translate(60,422)">
+              <rect class="node-card" width="480" height="110" rx="8" />
+              <text x="16" y="24" class="node-title">preanalyzer/semantic &amp; models</text>
+              <text x="16" y="40" class="node-meta">
+                verifier · task_builder · models/semantic
+              </text>
+              <g transform="translate(16,52)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  semantic/verifier.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  488
+                </text>
+              </g>
+              <g transform="translate(16,74)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  models/semantic.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  337
+                </text>
+              </g>
+            </g>
+
+            <!-- ============ tests column ============ -->
+            <!-- tests module: HAS context -->
+            <g transform="translate(640,172)">
+              <rect class="node-card ok" width="480" height="60" rx="8" />
+              <circle cx="24" cy="22" r="12" class="ok-ring" />
+              <circle cx="24" cy="22" r="5" class="ok-dot" />
+              <text x="46" y="20" class="node-title">tests/ · 40 code files</text>
+              <text x="46" y="38" class="node-meta" style="fill: var(--green); font-weight:600">
+                tests/CLAUDE.md — unittest 규약 · fixture 주의 문서화
+              </text>
+              <text x="464" y="24" text-anchor="end" class="node-kpi" style="fill: var(--green)">
+                A: 1/1
+              </text>
+            </g>
+
+            <!-- tests/unit -->
+            <g transform="translate(640,252)">
+              <rect class="node-card" width="480" height="150" rx="8" />
+              <text x="16" y="24" class="node-title">tests/unit</text>
+              <text x="16" y="40" class="node-meta">
+                semantic_verifier · runtime_command_resolver · task_builder · hardening
+              </text>
+              <g transform="translate(16,52)">
+                <rect class="hot" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--red); font-weight:600">
+                  test_semantic_verifier.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--red); font-weight:600">
+                  555
+                </text>
+              </g>
+              <g transform="translate(16,74)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  test_runtime_command_resolver.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  414
+                </text>
+              </g>
+              <g transform="translate(16,96)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  test_semantic_task_builder.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  379
+                </text>
+              </g>
+              <g transform="translate(16,118)">
+                <rect class="warm" width="448" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  test_hardening_readiness.py
+                </text>
+                <text x="440" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">
+                  314
+                </text>
+              </g>
+            </g>
+
+            <!-- verification infra note -->
+            <g transform="translate(640,422)">
+              <rect class="node-card ok" width="480" height="60" rx="8" />
+              <circle cx="24" cy="30" r="10" class="ok-ring" />
+              <circle cx="24" cy="30" r="5" class="ok-dot" />
+              <text x="46" y="28" class="node-title">
+                검증 게이트 가동 (E·F·G 만점)
+              </text>
+              <text x="46" y="44" class="node-meta">
+                262 테스트 · CI + pre-push path 검증 · evals/ pass-rate 1.0
+              </text>
+            </g>
+
+            <!-- edges: root → modules -->
+            <path class="edge edge-dash" d="M470,122 C 470,150 300,150 300,172" />
+            <path class="edge edge-dash" d="M710,122 C 710,150 880,150 880,172" />
+          </svg>
+        </div>
+      </section>
+
+      <!-- =========== FINDINGS =========== -->
+      <div class="findings">
+        <section class="panel panel-strength">
+          <div class="panel-head">
+            <h3>강점</h3>
+            <span class="count">유지할 것들</span>
+          </div>
+          <ul class="panel-list">
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat A · 15/15</span>
+                4개 모듈 전부 CLAUDE.md 보유
+              </div>
+              <div class="note">
+                <code>src</code>·<code>tests</code>·<code>scripts</code>·<code>evals</code>
+                각각 진입점 문서 완비. 에이전트가 루트 문서에만 의존하지 않음.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat E · 15/15</span>
+                참조 정확도 100% · 검증 인프라 완비
+              </div>
+              <div class="note">
+                hallucinated path 0건 (Meta 기준 달성). CODEOWNERS · PR 템플릿 ·
+                CI · pre-push hook · evals 전부 가동.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat F · 10/10</span>
+                stale 참조 자동 차단
+              </div>
+              <div class="note">
+                <code>scripts/validate_context_paths.py</code> 가 CI +
+                pre-push 에서 없는 경로를 머지 전 차단. drift 0.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat G · 5/5</span>
+                에이전트 성과 정량화
+              </div>
+              <div class="note">
+                <code>evals/run_evals.py</code> 가 대표 task pass-rate 를
+                <code>agent-results.json</code> 에 기록 (실측 1.0). 회귀 측정 가능.
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <section class="panel panel-risk">
+          <div class="panel-head">
+            <h3>남은 여지</h3>
+            <span class="count">98 → 그 이상</span>
+          </div>
+          <ul class="panel-list">
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat D · —</span>
+                남은 2점은 의도적으로 포기
+              </div>
+              <div class="note">
+                D 의 마지막 2점은 <code>turbo.json</code>/<code>pnpm-workspace.yaml</code>
+                같은 JS 모노레포 매니페스트를 요구. 이 레포는 Python 이라
+                가짜 파일을 넣지 않았음 — <strong>정직한 상한 98</strong>.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat B · L</span>
+                god file 3개 분할 (>500줄, 선택)
+              </div>
+              <div class="note">
+                <strong>Effort ~7.5 hr · Impact 6/10.</strong>
+                <code>runtime_command_resolver.py</code>(684)·
+                <code>parsers/compose.py</code>(570)·
+                <code>test_semantic_verifier.py</code>(555). B 점수엔 영향
+                없으나 파일당 ~5K–10K 토큰 절감 + 편집 정확도 ↑.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">유지 · —</span>
+                문서-코드 동기화 습관
+              </div>
+              <div class="note">
+                코드 변경 시 해당 모듈 CLAUDE.md 를 함께 갱신하면 F(신선도)
+                점수와 drift 0 이 그대로 유지됨. PR 템플릿 체크리스트에 반영됨.
+              </div>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <footer>
+        k8s-deploy-workflow · AI-Readiness v2 · scored 2026-07-12
+      </footer>
     </div>
-    <div class="stat s-ready">
-      <div class="k">AI 안전 하네스</div>
-      <div class="v">4 / 4</div>
-      <div class="s">도구·예산·검증기·태스크 빌더</div>
-    </div>
-    <div class="stat s-gap">
-      <div class="k">LLM 실행부</div>
-      <div class="v">없음</div>
-      <div class="s">executor · provider · 저장</div>
-    </div>
-    <div class="stat s-idle">
-      <div class="k">다운스트림 (Step 7–15)</div>
-      <div class="v">0 / 9</div>
-      <div class="s">토폴로지 → 매니페스트 → 배포</div>
-    </div>
-  </div>
-
-  <!-- ===== PIPELINE SPINE ===== -->
-  <div class="sect-h">
-    <span class="n">MAP·1</span>
-    <h2>파이프라인 위의 AI 경계선</h2>
-  </div>
-  <p class="sect-sub">
-    Step 0–6은 의도적으로 LLM-free. LLM은 Step 9(불확실 값 질문 생성)에서 처음 등장하도록 설계됨.
-    그 경계 위쪽은 "확실한 사실만", 아래쪽은 "추론이 필요한 값".
-  </p>
-
-  <div class="spine">
-    <div class="row"><div class="rail"><div class="node done">0</div></div>
-      <div class="card"><div class="top"><span class="title">Repository Snapshot</span><span class="chip c-done">완료</span></div>
-      <div class="desc">재현성 기준(workspace / commit 모드) 확정 · 내용 해시 기록</div></div></div>
-    <div class="row"><div class="rail"><div class="node done">1</div></div>
-      <div class="card"><div class="top"><span class="title">Artifact Inventory</span><span class="chip c-done">완료</span></div>
-      <div class="desc">Dockerfile · compose · package.json 등 배포 관련 파일 탐지</div></div></div>
-    <div class="row"><div class="rail"><div class="node done">2</div></div>
-      <div class="card"><div class="top"><span class="title">기존 배포 파일 분석</span><span class="chip c-done">완료</span></div>
-      <div class="desc">Dockerfile / compose 파싱 · override 병합 · 추측 없이 unresolved 표시</div></div></div>
-    <div class="row"><div class="rail"><div class="node done">3</div></div>
-      <div class="card"><div class="top"><span class="title">Component / Service 탐지</span><span class="chip c-done">완료</span></div>
-      <div class="desc">compose service ∪ package 후보 reconcile · longest-prefix 귀속</div></div></div>
-    <div class="row"><div class="rail"><div class="node done">4</div></div>
-      <div class="card"><div class="top"><span class="title">언어 · 프레임워크 · 빌드</span><span class="chip c-done">완료</span></div>
-      <div class="desc">근거 기반 탐지</div></div></div>
-    <div class="row"><div class="rail"><div class="node done">5</div></div>
-      <div class="card"><div class="top"><span class="title">런타임 정보 추출</span><span class="chip c-done">완료</span></div>
-      <div class="desc">버전 · 포트 · 실행 커맨드 (FROM / EXPOSE / CMD 기반)</div></div></div>
-    <div class="row"><div class="rail"><div class="node done">6</div></div>
-      <div class="card"><div class="top"><span class="title">포트 · env · volume · 의존관계</span><span class="chip c-done">완료</span></div>
-      <div class="desc">Evidence Bundle 완성 → 여기까지가 "Phase 1"</div></div></div>
-
-    <div class="row"><div class="boundary">
-      <span class="lbl">▼ AI 경계 · 이 아래부터 LLM 개입 지점</span><span class="line"></span>
-    </div></div>
-
-    <div class="row"><div class="rail"><div class="node idle">7</div></div>
-      <div class="card"><div class="top"><span class="title">Application Topology Model</span><span class="chip c-idle">미착수</span></div>
-      <div class="desc">결정론 산출물을 최종 모델로 승격</div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">8</div></div>
-      <div class="card"><div class="top"><span class="title">Kubernetes Intent Model</span><span class="chip c-idle">미착수</span></div>
-      <div class="desc">매니페스트 직전 중간 모델</div></div></div>
-    <div class="row"><div class="rail"><div class="node gap">9</div></div>
-      <div class="card"><div class="top"><span class="title">불확실 값 질문 생성 — LLM 개입 시작점</span><span class="chip c-gap">하네스 O · 실행부 X</span></div>
-      <div class="desc">안전 하네스(도구·예산·검증기)는 이 지점을 위해 이미 준비됨. 그러나 이를 구동할 LLM 실행부가 없어 실제로는 돌지 않음</div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">10</div></div>
-      <div class="card"><div class="top"><span class="title">Deployment Profile 병합</span><span class="chip c-idle">미착수</span></div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">11</div></div>
-      <div class="card"><div class="top"><span class="title">템플릿 기반 매니페스트 렌더링</span><span class="chip c-idle">미착수</span></div>
-      <div class="desc">자유형 LLM YAML은 최종 산출물이 될 수 없음 (불변식)</div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">12</div></div>
-      <div class="card"><div class="top"><span class="title">Kubernetes 유효성 검증</span><span class="chip c-idle">미착수</span></div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">13</div></div>
-      <div class="card"><div class="top"><span class="title">배포 테스트</span><span class="chip c-idle">미착수</span></div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">14</div></div>
-      <div class="card"><div class="top"><span class="title">스모크 테스트</span><span class="chip c-idle">미착수</span></div></div></div>
-    <div class="row"><div class="rail"><div class="node idle">15</div></div>
-      <div class="card"><div class="top"><span class="title">리페어 루프</span><span class="chip c-idle">미착수</span></div></div></div>
-  </div>
-
-  <!-- ===== HARNESS vs GAP ===== -->
-  <div class="sect-h">
-    <span class="n">MAP·2</span>
-    <h2>AI 자리: 갖춰진 것 vs 비어 있는 것</h2>
-  </div>
-  <p class="sect-sub">
-    "AI를 꽂을 소켓"은 완성돼 있습니다. 소켓에 들어갈 "전구(LLM 실행부)"만 아직 없습니다.
-  </p>
-
-  <div class="panel-grid">
-    <section class="panel ready">
-      <header><h3>구축된 AI 안전 하네스</h3><span class="chip c-done">결정론 · 검증됨</span></header>
-      <ul>
-        <li><span class="mk">✓</span><div><b>Semantic Task 빌더</b> — 결정론이 "LLM이 필요한 지점"만 골라 태스크 생성. 한 태스크 = 한 필드.<span class="path">semantic/task_builder.py</span></div></li>
-        <li><span class="mk">✓</span><div><b>제한된 읽기 도구 4종</b> — search_code · read_source_range · inspect_entrypoint_script · find_command_target. 한 컴포넌트로 범위 한정.<span class="path">semantic/tools/</span></div></li>
-        <li><span class="mk">✓</span><div><b>예산 원장</b> — 호출 수 · 파일 수 · 소스 라인 · 재시도를 누적 강제. 한도 도달 시 이후 호출 거부, 직전 근거는 보존.<span class="path">semantic/budget.py · SemanticToolSession</span></div></li>
-        <li><span class="mk">✓</span><div><b>결정론적 검증기</b> — LLM 후보의 근거(grounding)·범위·Secret 유출을 검사해 수용 여부를 최종 결정.<span class="path">semantic/verifier.py</span></div></li>
-      </ul>
-    </section>
-
-    <section class="panel gap">
-      <header><h3>비어 있는 AI 실행부</h3><span class="chip c-gap">미구현</span></header>
-      <ul>
-        <li><span class="mk">✗</span><div><b>LLM Executor / 오케스트레이터</b> — 태스크를 받아 도구를 호출하는 상태기계. 하네스를 실제로 구동할 주체.<span class="path">docs/tasks · TASK-05 (계획만)</span></div></li>
-        <li><span class="mk">✗</span><div><b>OpenAI 호환 Qwen 프로바이더</b> — 온프렘 LLM 연결부.<span class="path">docs/tasks · TASK-06 (계획만)</span></div></li>
-        <li><span class="mk">✗</span><div><b>파이프라인 연결</b> — <code>pipeline.py</code>에 semantic 호출이 아예 없음. 하네스가 만들어졌지만 배선 미완.<span class="path">docs/tasks · TASK-07 (계획만)</span></div></li>
-        <li><span class="mk">✗</span><div><b>Semantic 산출물 저장</b> — 최종 의미분석 결과를 남기는 artifact 없음.</div></li>
-      </ul>
-    </section>
-  </div>
-
-  <!-- ===== GUARDRAILS ===== -->
-  <div class="sect-h">
-    <span class="n">MAP·3</span>
-    <h2>AI를 안전하게 만드는 불변식</h2>
-  </div>
-  <p class="sect-sub">
-    "AI-ready"의 진짜 의미 — LLM을 붙였을 때 통제 불능이 되지 않도록 미리 박아둔 규칙들. (AGENTS.md · Bounded Semantic Agent)
-  </p>
-
-  <div class="rails">
-    <div class="guard"><span class="lock">01</span><div><b>결정론이 호출 여부를 결정</b><span class="d">LLM은 스스로 개입 시점을 못 정한다</span></div></div>
-    <div class="guard"><span class="lock">02</span><div><b>한 태스크 = 한 target_field</b><span class="d">범위를 하나의 값으로 좁힘</span></div></div>
-    <div class="guard"><span class="lock">03</span><div><b>allowed_tools · 예산 강제</b><span class="d">허용 도구 밖 호출·초과 사용 차단</span></div></div>
-    <div class="guard"><span class="lock">04</span><div><b>전체 레포를 컨텍스트에 넣지 않음</b><span class="d">정제된 Evidence Bundle만 노출</span></div></div>
-    <div class="guard"><span class="lock">05</span><div><b>에이전트는 레포 수정·의존성 설치 불가</b><span class="d">읽기 전용</span></div></div>
-    <div class="guard"><span class="lock">06</span><div><b>LLM 신뢰도는 low / medium 상한</b><span class="d">classification = llm_semantic_inference</span></div></div>
-    <div class="guard"><span class="lock">07</span><div><b>검증기가 수용을 결정</b><span class="d">근거 없는 후보는 거부, 결정론 고신뢰 값을 못 덮음</span></div></div>
-    <div class="guard"><span class="lock">08</span><div><b>Secret 값은 LLM에 전달 금지</b><span class="d">이름·출처·분류만, 값은 산출물·로그에도 미유출</span></div></div>
-  </div>
-
-  <footer>
-    <span>생성일 2026-07-11 · Phase 1 (Step 0–6) 완료 · 브랜치 claude/ai-readiness-map-nkz6dr</span>
-    <span>결정론 우선 · LLM은 나중</span>
-  </footer>
-
-</div>
+  </body>
+</html>
