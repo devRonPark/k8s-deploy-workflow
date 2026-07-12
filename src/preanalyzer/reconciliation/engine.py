@@ -37,9 +37,11 @@ def _conf(name: str) -> Confidence:
 def reconcile(rules: RuleInferenceSet, evidence: EvidenceModel,
               accepted_commands: list[AcceptedSemanticCommand] | None = None) -> ReconciliationResult:
     accepted = {c.component_id: c for c in (accepted_commands or [])}
-    roles = {}
-    for rc in sorted(rules.role_candidates, key=lambda c: (c.component_id, c.role)):
-        roles.setdefault(rc.component_id, rc.role)  # first (sorted) wins deterministically
+    _conf_rank = {"high": 0, "medium": 1, "low": 2}
+    roles: dict[str, "RoleCandidate"] = {}
+    for rc in sorted(rules.role_candidates,
+                      key=lambda c: (c.component_id, _conf_rank.get(c.confidence, 3), c.role)):
+        roles.setdefault(rc.component_id, rc)  # best-confidence (then role name) wins deterministically
 
     components, runtimes, intents, questions = [], [], [], []
     comp_ids = sorted({c.component_id for c in rules.component_candidates})
@@ -50,10 +52,13 @@ def reconcile(rules: RuleInferenceSet, evidence: EvidenceModel,
     cmds_by_comp = {c.component_id: c for c in rules.runtime_command_candidates}
 
     for cid in comp_ids:
-        role = roles.get(cid, "application")
-        components.append(ComponentEntry(
-            component_id=cid,
-            role=Tracked(value=role, source="rule_inference", confidence=Confidence.HIGH, evidence_refs=[])))
+        rc = roles.get(cid)
+        role = rc.role if rc is not None else "application"
+        role_tracked = (
+            Tracked(value=rc.role, source=rc.source, confidence=_conf(rc.confidence), evidence_refs=list(rc.evidence_refs))
+            if rc is not None else
+            Tracked(value="application", source="rule_inference_default", confidence=Confidence.LOW, evidence_refs=[]))
+        components.append(ComponentEntry(component_id=cid, role=role_tracked))
 
         # port
         distinct_ports = sorted({p.port for p in ports_by_comp.get(cid, [])})

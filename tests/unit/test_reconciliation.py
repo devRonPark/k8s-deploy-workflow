@@ -54,6 +54,27 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(len(pq), 1)
         self.assertEqual(sorted(pq[0].candidates), ["8080", "8081"])
 
+    def test_role_tracked_keeps_candidate_evidence(self):
+        rules = _rules(
+            component_candidates=[ComponentCandidate("db", None, "compose", ["EV-9"])],
+            role_candidates=[RoleCandidate("db", "dependency", "infra_image_pattern", "high", ["EV-9"])])
+        r = reconcile(rules, EvidenceModel())
+        role_tracked = r.component_model.components[0].role
+        self.assertEqual(role_tracked.value, "dependency")
+        self.assertEqual(role_tracked.source, "infra_image_pattern")
+        self.assertEqual(role_tracked.evidence_refs, ["EV-9"])
+
+    def test_role_selection_picks_highest_confidence_not_alphabetical(self):
+        rules = _rules(
+            component_candidates=[ComponentCandidate("db", None, "compose", ["EV-1"])],
+            role_candidates=[
+                RoleCandidate("db", "application", "build_present", "medium", ["EV-1"]),
+                RoleCandidate("db", "dependency", "infra_image_pattern", "high", ["EV-9"])])
+        r = reconcile(rules, EvidenceModel())
+        ci = r.intent.components[0]
+        self.assertEqual(ci.role, "dependency")
+        self.assertIsNone(ci.workload)
+
     def test_accepted_semantic_command_flows_into_runtime(self):
         rules = _rules(
             component_candidates=[ComponentCandidate("backend", "backend", "compose", ["EV-1"])],
