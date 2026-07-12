@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from preanalyzer.models.evidence import EvidenceModel
 from preanalyzer.models.fields import Tracked, Confidence
-from preanalyzer.models.rule_inference import RuleInferenceSet
+from preanalyzer.models.rule_inference import RuleInferenceSet, RoleCandidate
 from preanalyzer.models.component import ComponentModel, ComponentEntry
 from preanalyzer.models.runtime import RuntimeModel, RuntimeEntry
 from preanalyzer.models.dependency import DependencyModel, DependencyEdge, EnvBinding
