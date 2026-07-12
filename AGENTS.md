@@ -35,6 +35,7 @@ src/preanalyzer/pipeline.py               # orchestration + YAML
 
 모듈 세부는 `src/CLAUDE.md`, `tests/CLAUDE.md`. 계층 간 책임을 편의로 옮기지 않는다.
 
+
 ## Completion
 
 완료 선언 전 `superpowers:verification-before-completion` 적용 후 최신 실행:

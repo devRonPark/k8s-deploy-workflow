@@ -2,12 +2,12 @@
   "meta": {
     "repo": "k8s-deploy-workflow",
     "path": "/Users/a1234/Documents/Claude/Projects/k8s-deploy-workflow",
-    "scored_at": "2026-07-11",
+    "scored_at": "2026-07-12",
     "git_branch": "claude/ai-readiness-map-nkz6dr",
     "rubric_version": "v2-100pt",
     "modules_total": 4,
     "context_files_total": 9,
-    "large_files_300plus": 10
+    "large_files_300plus": 15
   },
   "total": 98,
   "grade": "AI-Native",
@@ -32,7 +32,7 @@
       "max": 20,
       "evidence": {
         "context_files": 9,
-        "max_lines": 78,
+        "max_lines": 81,
         "min_lines": 23
       },
       "sub_scores": {
@@ -150,13 +150,13 @@
       "priority": 20.0
     },
     {
-      "title": "god file 3개 분할 (>500 lines): src/preanalyzer/analyzer/runtime_command_resolver.py (684), src/preanalyzer/analyzer/parsers/compose.py (570), tests/unit/test_semantic_verifier.py (555)",
+      "title": "god file 5개 분할 (>500 lines): src/preanalyzer/evaluation/runtime_command.py (691), src/preanalyzer/analyzer/runtime_command_resolver.py (684), src/preanalyzer/analyzer/parsers/compose.py (570)",
       "category": "B",
       "effort": "L",
-      "effort_hours": 7.5,
+      "effort_hours": 12.5,
       "impact": "파일당 ~5K-10K token 절감 + 편집 정확도 ↑",
       "impact_score": 6,
-      "priority": 0.8
+      "priority": 0.48
     }
   ],
   "extras": {
@@ -180,7 +180,7 @@
       {
         "path": "/Users/a1234/Documents/Claude/Projects/k8s-deploy-workflow/src",
         "rel": "src",
-        "code_files": 38,
+        "code_files": 45,
         "has_context": true,
         "context_file": "/Users/a1234/Documents/Claude/Projects/k8s-deploy-workflow/src/CLAUDE.md",
         "context_kind": "CLAUDE.md"
@@ -188,13 +188,17 @@
       {
         "path": "/Users/a1234/Documents/Claude/Projects/k8s-deploy-workflow/tests",
         "rel": "tests",
-        "code_files": 40,
+        "code_files": 48,
         "has_context": true,
         "context_file": "/Users/a1234/Documents/Claude/Projects/k8s-deploy-workflow/tests/CLAUDE.md",
         "context_kind": "CLAUDE.md"
       }
     ],
     "large_files": [
+      {
+        "path": "src/preanalyzer/evaluation/runtime_command.py",
+        "lines": 691
+      },
       {
         "path": "src/preanalyzer/analyzer/runtime_command_resolver.py",
         "lines": 684
@@ -208,8 +212,16 @@
         "lines": 555
       },
       {
+        "path": "tests/unit/test_runtime_command_evaluation.py",
+        "lines": 514
+      },
+      {
         "path": "src/preanalyzer/semantic/verifier.py",
         "lines": 488
+      },
+      {
+        "path": "src/preanalyzer/pipeline.py",
+        "lines": 434
       },
       {
         "path": "tests/unit/test_runtime_command_resolver.py",
@@ -217,11 +229,15 @@
       },
       {
         "path": "src/preanalyzer/analyzer/rule_inference.py",
-        "lines": 406
+        "lines": 408
       },
       {
         "path": "tests/unit/test_semantic_task_builder.py",
         "lines": 379
+      },
+      {
+        "path": "tests/unit/test_semantic_agent.py",
+        "lines": 354
       },
       {
         "path": "src/preanalyzer/analyzer/scanner.py",
@@ -230,6 +246,10 @@
       {
         "path": "src/preanalyzer/models/semantic.py",
         "lines": 337
+      },
+      {
+        "path": "src/preanalyzer/semantic/agent.py",
+        "lines": 324
       },
       {
         "path": "tests/unit/test_hardening_readiness.py",

@@ -31,6 +31,31 @@ Snapshot metadata에 `snapshot_mode`, `workspace_hash`, `workspace_dirty`, `modi
 
 - Semantic tool 호출은 `SemanticToolSession`을 통해 실행되며 task 단위 `BudgetLedger`가 tool call·distinct tool·unique file·source line·schema retry를 **누적 강제**한다. 한도 도달 시 이후 호출은 실행 없이 `budget_exhausted`로 거부되고, 직전까지의 evidence는 보존된다.
 
+## Semantic LLM provider
+
+실제 모델 연동은 OpenAI 호환 Chat Completions API와 OpenAI Python SDK를 사용한다.
+
+필요한 환경변수:
+
+```bash
+export SEMANTIC_LLM_BASE_URL="https://your-llm.example/v1"
+export SEMANTIC_LLM_MODEL="your-model"
+export SEMANTIC_LLM_API_KEY="..."
+export SEMANTIC_LLM_TIMEOUT_SECONDS="30"
+```
+
+`SEMANTIC_LLM_API_KEY` 값은 커밋하지 않는다. 실제 값은 `.env`처럼 git에서 제외되는 로컬 파일이나 실행 환경에만 둔다. `.env.example`은 이름과 예시 형식만 남긴다.
+
+Provider 생성:
+
+```python
+from preanalyzer.semantic import OpenAIChatDecisionProvider
+
+provider = OpenAIChatDecisionProvider.from_env()
+```
+
+이 provider는 `run_semantic_agent(...)`의 `decision_provider` 인자로 사용한다. 모델은 전체 repository가 아니라 한 task의 제한된 `SemanticDecisionContext`만 받는다. 도구 허용 목록·예산·component 범위·검증기는 기존 agent loop가 계속 강제한다.
+
 ## Python requirements
 
 - `requirements.txt`의 `-r`/`-c` include, index/`--hash` 옵션, editable/VCS/direct-URL 참조를 일반 package와 분리한다. VCS URL의 credential은 저장하지 않고 `#egg=` 이름만 남긴다.

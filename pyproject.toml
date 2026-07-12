@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.11"
 description = "Deterministic pre-analysis workflow for Kubernetes manifest generation"
 dependencies = [
+  "openai>=1.0",
   "PyYAML>=6.0",
   "pydantic>=2.8",
 ]

@@ -270,6 +270,8 @@ def _runtime_command_candidates(
     candidates: list[RuntimeCommandCandidate] = []
     for fact in evidence.facts_by_type("dockerfile_cmd"):
         component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
+        if component_id is None and not component_candidates:
+            component_id = "root"
         if component_id is not None:
             candidates.append(RuntimeCommandCandidate(component_id, str(fact.value), fact.source, "high", [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: candidate.component_id)

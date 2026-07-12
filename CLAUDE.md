@@ -4,6 +4,7 @@
 - 설명이랑 요약은 내가 물어볼 때만
 - 한 줄로 답 되면 한 줄로
 - 한국어로 답변할 것
+- 결과 보고 시 반드시: "Be direct and concrete. Show all intermediate states. Explain like I'm 12."
 
 # Codebase Navigation (에이전트 필독)
 

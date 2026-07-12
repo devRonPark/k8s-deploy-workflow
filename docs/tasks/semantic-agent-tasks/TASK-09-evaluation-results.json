@@ -1,0 +1,35 @@
+{
+  "task": "TASK-09",
+  "provider": "fake",
+  "model": "scripted-fake",
+  "repetitions": 3,
+  "fixture_count": 11,
+  "real_model_evaluation": {
+    "status": "not_run",
+    "reason": "environment_variables_not_configured"
+  },
+  "metrics": {
+    "average_agent_turns": 0.909091,
+    "average_tool_calls": 0.363636,
+    "budget_completion_rate": 1.0,
+    "correct_ambiguous_rate": 0.0,
+    "correct_insufficient_evidence_rate": 1.0,
+    "correct_tool_selection_rate": 0.909091,
+    "evidence_reference_accuracy": 0.909091,
+    "exact_command_accuracy": 0.636364,
+    "grounded_candidate_rate": 0.181818,
+    "hallucinated_candidate_rate": 0.181818,
+    "provider_error_rate": 0.0,
+    "repeat_consistency_rate": 1.0,
+    "runtime_command_resolution_rate": 0.363636,
+    "schema_first_try_success_rate": 1.0,
+    "schema_success_after_retry_rate": 1.0,
+    "task_generation_accuracy": 0.909091
+  },
+  "optimization_decision": {
+    "prompt_changes_retained": [],
+    "tool_contract_changes_retained": [],
+    "decision_context_changes_retained": [],
+    "reason": "No actual on-premise model evaluation was available; Fake baseline does not justify prompt or tool-contract optimization."
+  }
+}

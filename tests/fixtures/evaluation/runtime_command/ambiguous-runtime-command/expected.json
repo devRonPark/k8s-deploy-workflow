@@ -1,0 +1,1 @@
+{"allowed_commands":["uvicorn main:app --host 0.0.0.0","gunicorn main:app"],"expected_command":null,"expected_evidence_paths":["entrypoint.sh"],"expected_status":"ambiguous","expected_tool_names":["inspect_entrypoint_script"],"max_tool_calls":2}
