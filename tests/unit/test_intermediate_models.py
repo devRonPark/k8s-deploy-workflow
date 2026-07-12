@@ -1,9 +1,13 @@
 import unittest
+from pydantic import ValidationError
 from preanalyzer.models.fields import Tracked, Confidence
 from preanalyzer.models.component import ComponentModel, ComponentEntry
 from preanalyzer.models.runtime import RuntimeModel, RuntimeEntry
 from preanalyzer.models.dependency import DependencyModel, DependencyEdge, EnvBinding
 from preanalyzer.models.intent import KubernetesIntent, ComponentIntent, Workload, ServiceIntent
+from preanalyzer.models.questions import UnresolvedQuestions, UnresolvedQuestion
+from preanalyzer.models.profile import DeploymentProfile
+from preanalyzer.models.report import ValidationReport, StageResult
 
 
 class IntermediateModelTests(unittest.TestCase):
@@ -44,3 +48,23 @@ class IntentModelTests(unittest.TestCase):
         again = KubernetesIntent.model_validate(intent.model_dump())
         self.assertEqual(again.components[0].workload.port.value, 8000)
         self.assertEqual(again.components[0].workload.secret_env, ["POSTGRES_PASSWORD"])
+
+
+class QuestionProfileReportTests(unittest.TestCase):
+    def test_profile_rejects_unknown_key(self):
+        with self.assertRaises(ValidationError):
+            DeploymentProfile.model_validate({"registr": "r.io"})  # typo
+
+    def test_profile_defaults(self):
+        p = DeploymentProfile.model_validate({"registry": "r.io", "namespace": "demo"})
+        self.assertEqual(p.image_tag, "latest")
+
+    def test_question_roundtrip(self):
+        q = UnresolvedQuestions(questions=[UnresolvedQuestion(
+            id="Q-REG-001", field="image_registry", question="Which registry?", reason="no registry evidence",
+            answer_type="registry", blocking_level="application_runnable", profile_field="registry")])
+        self.assertEqual(UnresolvedQuestions.model_validate(q.model_dump()).questions[0].id, "Q-REG-001")
+
+    def test_report_levels(self):
+        r = ValidationReport(target_level=1, achieved_level=1, stages=[StageResult(stage="kubeconform", status="pass")])
+        self.assertEqual(r.achieved_level, 1)
