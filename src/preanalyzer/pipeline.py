@@ -30,6 +30,7 @@ from preanalyzer.models.inventory import ArtifactInventory
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
 from preanalyzer.models.semantic_agent import SemanticAgentRunResult
 from preanalyzer.models.snapshot import RepositorySnapshot
+from preanalyzer.reconciliation.engine import AcceptedSemanticCommand
 from preanalyzer.semantic.agent import AgentDecisionProvider, run_semantic_agent
 from preanalyzer.semantic.task_builder import build_runtime_command_semantic_tasks
 from preanalyzer.semantic.tools import build_semantic_tool_context
@@ -80,7 +81,7 @@ def run_phase1_analysis(
         evidence = build_evidence(inventory, parsed_artifacts)
         evidence = EvidenceModel(facts=evidence.facts, warnings=evidence.warnings + parse_warnings)
         rules = infer(evidence)
-        semantic_audit = _build_semantic_analysis_audit(
+        semantic_audit, _accepted_commands = _build_semantic_analysis_audit(
             repository_root=analysis_root,
             evidence=evidence,
             rules=rules,
@@ -112,7 +113,7 @@ def _build_semantic_analysis_audit(
     decision_provider: AgentDecisionProvider | None,
     semantic_model: str | None,
     semantic_task_max_tool_calls: int | None,
-) -> dict:
+) -> tuple[dict, list[AcceptedSemanticCommand]]:
     runtime_analysis = analyze_runtime_commands(evidence, rules)
     task_build_result = build_runtime_command_semantic_tasks(runtime_analysis)
     if semantic_task_max_tool_calls is not None:
@@ -145,17 +146,20 @@ def _build_semantic_analysis_audit(
             setup_statuses.append("provider_config_error")
 
     enabled = semantic_mode != "disabled"
+    accepted: list[AcceptedSemanticCommand] = []
     if enabled and provider is not None:
         for task in task_build_result.tasks:
-            runs.append(
-                _run_semantic_task_for_audit(
-                    repository_root=repository_root,
-                    task=task,
-                    rules=rules,
-                    evidence=evidence,
-                    decision_provider=provider,
-                )
+            run_audit, result = _run_semantic_task_for_audit(
+                repository_root=repository_root,
+                task=task,
+                rules=rules,
+                evidence=evidence,
+                decision_provider=provider,
             )
+            runs.append(run_audit)
+            accepted_command = _extract_accepted_command(result)
+            if accepted_command is not None:
+                accepted.append(accepted_command)
     elif enabled and task_build_result.tasks:
         setup_statuses.append("provider_unavailable")
 
@@ -168,7 +172,28 @@ def _build_semantic_analysis_audit(
         "task_build_result": task_build_result.model_dump(),
         "runs": runs,
         "summary": _semantic_summary(task_build_result, runs, setup_statuses),
-    }
+    }, accepted
+
+
+def _extract_accepted_command(result: SemanticAgentRunResult | None) -> AcceptedSemanticCommand | None:
+    if result is None or result.verification_result is None or result.resolution is None:
+        return None
+    if str(result.verification_result.status) != "accepted":
+        return None
+    recommended_id = result.resolution.recommended_candidate_id
+    if not recommended_id:
+        return None
+    candidate = next(
+        (c for c in result.resolution.candidates if c.candidate_id == recommended_id),
+        None,
+    )
+    if candidate is None or not isinstance(candidate.value, dict) or "command" not in candidate.value:
+        return None
+    return AcceptedSemanticCommand(
+        component_id=candidate.component_id,
+        command=str(candidate.value["command"]),
+        evidence_refs=list(candidate.evidence_refs),
+    )
 
 
 def _run_semantic_task_for_audit(
@@ -178,12 +203,12 @@ def _run_semantic_task_for_audit(
     rules: RuleInferenceSet,
     evidence: EvidenceModel,
     decision_provider: AgentDecisionProvider,
-) -> dict:
+) -> tuple[dict, SemanticAgentRunResult | None]:
     rules = _rules_with_implicit_root_if_needed(rules, task.component_id)
     try:
         tool_context = build_semantic_tool_context(repository_root, task, rules, evidence)
     except SemanticToolContextBuildError as exc:
-        return _empty_semantic_run_audit(task, "context_build_error", message=exc.code)
+        return _empty_semantic_run_audit(task, "context_build_error", message=exc.code), None
 
     try:
         result = run_semantic_agent(
@@ -193,8 +218,8 @@ def _run_semantic_task_for_audit(
             phase1_evidence=evidence,
         )
     except Exception:
-        return _empty_semantic_run_audit(task, "semantic_agent_error")
-    return _semantic_run_audit(task, result)
+        return _empty_semantic_run_audit(task, "semantic_agent_error"), None
+    return _semantic_run_audit(task, result), result
 
 
 def _rules_with_implicit_root_if_needed(rules: RuleInferenceSet, component_id: str) -> RuleInferenceSet:
