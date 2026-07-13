@@ -2,9 +2,9 @@
 
 ## Goal
 
-Make Kubernetes schema validation reproducible for generated manifests by adding a project-managed `kubeconform` binary setup path and wiring the validator to use it before falling back to the host `PATH`.
+Make Kubernetes schema validation a required part of the agent execution environment by adding a project-managed `kubeconform` binary setup path and wiring the validator to use it before falling back to the host `PATH`.
 
-The user-facing outcome is that sample repository pipeline runs can produce an actual `kubeconform: pass` or `kubeconform: fail` result instead of silently stopping at `skipped: tool_not_found` on machines that have not installed the tool globally.
+The user-facing outcome is that environment setup fails early when `kubeconform` cannot be installed or found, and normal sample repository pipeline runs produce an actual `kubeconform: pass` or `kubeconform: fail` result instead of stopping at `skipped: tool_not_found`.
 
 ## Scope
 
@@ -16,12 +16,13 @@ In scope:
   - Linux `aarch64` / `arm64`
   - Windows `x86_64` / `amd64`
 - Verify downloaded archives with pinned SHA256 checksums before installing.
-- Keep tool installation explicit: users, CI, or validation scripts run the setup script before analysis.
+- Make tool installation a required environment setup step before agent pipeline validation work.
+- Add a preflight command or rule that fails when `kubeconform` cannot be resolved after setup.
 - Update `ValidationPipeline` so it resolves `kubeconform` in this order:
   1. an explicit constructor argument;
   2. the project-managed `.tools` binary for the current platform;
   3. `PATH`.
-- Preserve the existing honest fallback: if no binary is available, record `kubeconform: skipped` with `tool_not_found`.
+- Preserve the existing honest fallback inside the validator: if no binary is available despite setup, record `kubeconform: skipped` with `tool_not_found` instead of pass.
 - Add focused tests for platform mapping, resolver precedence, subprocess arguments, checksum failure behavior, and missing-tool behavior.
 - Update documentation so sample-repo validation includes the setup step before running the pipeline.
 - Ensure `.tools/` is ignored by git.
@@ -51,7 +52,7 @@ dry_run: skipped (prior stage not pass)
 achieved_level: 0
 ```
 
-This is correct and honest, but it makes local and sample-repo validation environment-dependent.
+This is correct and honest as a validator fallback, but it is not acceptable as the normal agent execution environment. Environment setup must ensure `kubeconform` is installed before sample-repo validation or manifest verification tasks are reported as complete.
 
 ## Design
 
@@ -108,6 +109,23 @@ The script must not use shell pipelines, curl, tar, or PowerShell. It should use
 
 If the target binary already exists and matches the expected install path, the script exits successfully and prints the existing path. It does not re-download unless a `--force` flag is provided.
 
+### Required Environment Preflight
+
+Add an explicit preflight entry point for agent setup and CI, for example:
+
+```text
+python3 scripts/ensure_kubeconform.py --check
+```
+
+The exact flag name can change during implementation, but the behavior is fixed:
+
+- run platform detection;
+- ensure the managed binary exists or install it;
+- verify that the resolved binary can execute `kubeconform -v` or equivalent version output;
+- fail non-zero if installation, checksum verification, platform detection, or executable validation fails.
+
+Project setup documentation and agent-facing instructions must treat this preflight as required before running sample repository manifest validation. A validation report with `kubeconform: skipped (tool_not_found)` is still valid as an artifact, but it is not an acceptable completion state for agent-run sample validation.
+
 ### Validator Resolution
 
 Add a small resolver function, either in `src/preanalyzer/validator/pipeline.py` or a focused helper module:
@@ -161,7 +179,7 @@ The validator must never download during analysis and must never report an unexe
 Developer or CI flow:
 
 ```text
-python3 scripts/ensure_kubeconform.py
+python3 scripts/ensure_kubeconform.py --check
 preanalyzer analyze <repo> --profile <profile> --out <out>
 13-validation-report.yaml records kubeconform pass/fail/skipped
 ```
@@ -170,9 +188,10 @@ Sample repository validation flow:
 
 ```text
 model smoke test
-ensure kubeconform
+ensure kubeconform with required preflight
 run 5 sample repositories through run_analysis(...)
 summarize 00-15 outputs, including 13-validation-report.yaml
+fail the sample validation run if kubeconform is skipped
 ```
 
 ### Tests
@@ -185,6 +204,8 @@ Focused tests:
 - unsupported platform raises an explicit setup error;
 - managed path construction produces the expected `.tools/kubeconform/<version>/<target>/...` path;
 - checksum mismatch fails and does not install a binary;
+- required preflight exits non-zero when no managed or PATH binary can be resolved;
+- required preflight validates the executable with a version command;
 - `ValidationPipeline(kubeconform_path=...)` uses the explicit executable path;
 - managed path is preferred over `PATH`;
 - missing managed path and missing `PATH` preserves `kubeconform: skipped`;
@@ -195,10 +216,13 @@ Network-backed installation can be tested manually or in a dedicated integration
 ## Success Criteria
 
 - A supported Linux amd64, Linux arm64, or Windows amd64 machine can run one project script to install the pinned `kubeconform` binary under `.tools/`.
+- Agent environment setup requires this script/preflight before manifest validation tasks.
 - The setup script verifies the downloaded artifact checksum before installing.
+- The preflight fails when `kubeconform` cannot be installed, found, or executed.
 - `ValidationPipeline` uses the managed binary automatically when it exists.
 - Existing behavior remains honest when the tool is absent: skipped, not pass.
-- Sample repository pipeline runs can produce real kubeconform pass/fail results after the setup script is run.
+- Sample repository validation is not reported complete when kubeconform is skipped.
+- Sample repository pipeline runs produce real kubeconform pass/fail results after required setup.
 - The implementation is covered by deterministic unit tests that do not require external network access.
 
 ## Verification
