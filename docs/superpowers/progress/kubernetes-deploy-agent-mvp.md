@@ -259,10 +259,25 @@
   - multi-document YAML을 internal validator와 syntax stage가 동일하게 처리하도록 정합성 보강
   - 보안 단위 테스트와 canary 기반 audit trail acceptance 추가
 
+### Task 20: 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
+
+- 상태: 완료
+- commit: `1d1151bfbe7d09e7fd41f215ad3383e61e20f89e`
+- commit message: `test: enforce kubernetes deploy agent mvp criteria`
+- 변경:
+  - 10개 MVP fixture matrix와 80% 이상 `READY` acceptance 추가
+  - READY fixture 8개 반복 실행 byte-identical manifest bundle 검증 추가
+  - CLI exit code matrix 추가: success `0`, usage `2`, answer/drift class `3`, policy block `4`, non-resumable/internal class `8`
+  - Java, Python/FastAPI, frontend/backend monorepo, compose multi-service, Secret candidate, no-Dockerfile, corrupt package, persistent storage fixture 추가
+  - non-interactive answers file을 실제 question set과 profile decision에 연결
+  - renderer가 Agent intent/profile field path alias를 읽도록 보강
+  - README에 Agent CLI `prepare`, `resume`, `status`, `explain`, `export`, `analyze`, `plan`, `generate`, `validate` 사용법 추가
+  - `docs/testing/agent-mvp-test-matrix.md`에 CI matrix와 fixture 기대 상태 문서화
+
 ## 현재 Task
 
-- 현재 Task: Task 20 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
-- 다음 Task: Task 20 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
+- 현재 Task: 완료
+- 다음 Task: 없음
 
 ## 실행한 테스트와 결과
 
@@ -463,6 +478,16 @@
   - 결과: 통과, `Ran 1 test in 0.032s`, `OK`
   - validation 정합성 보강 후 영향 범위 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_audit_trail tests.acceptance.test_manifest_validation tests.unit.test_validator -v`
   - 결과: 통과, `Ran 11 tests in 3.102s`, `OK`
+- Task 20 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_mvp_fixture_matrix tests.acceptance.test_manifest_reproducibility_matrix tests.cli.test_exit_code_matrix -v`
+  - 결과: 기대한 실패. answers file이 실제 profile decision에 연결되지 않아 READY fixture가 `WAITING_FOR_USER`로 남고, CLI success matrix가 `QST-201` unknown question으로 실패.
+- Task 20 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_mvp_fixture_matrix tests.acceptance.test_manifest_reproducibility_matrix tests.cli.test_exit_code_matrix -v`
+  - 결과: 통과, `Ran 7 tests in 3.682s`, `OK`
+  - non-interactive/prepare 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.cli.test_non_interactive_questions tests.cli.test_prepare_black_box tests.acceptance.test_prepare_end_to_end tests.acceptance.test_mvp_fixture_matrix tests.acceptance.test_manifest_reproducibility_matrix tests.cli.test_exit_code_matrix -v`
+  - 결과: 통과, `Ran 13 tests in 6.009s`, `OK`
+  - kubeconform preflight: `python3 scripts/ensure_kubeconform.py --check`
+  - 결과: 통과, `.tools/kubeconform/v0.8.0/linux-amd64/kubeconform`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -485,6 +510,9 @@
 - Task 19 완료 시 전체 테스트를 실행했다. 이유: 공통 Source, LLM redaction, subprocess audit, validation, event serialization 경계를 변경함.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
   - 결과: 통과, `Ran 460 tests in 69.376s`, `OK (skipped=1)`
+- Task 20 완료 시 전체 테스트를 실행했다. 이유: MVP 완료와 커밋 전 최종 release gate임.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 467 tests in 73.962s`, `OK (skipped=1)`
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -514,6 +542,9 @@
 - Task 18 stage commands는 Run state를 강제로 READY/FAILED로 전환하지 않고 산출물과 event를 갱신한다. 최종 readiness state 전이는 prepare/resume 오케스트레이션과 Task 20 acceptance에서 보강한다.
 - Task 19 command audit는 명령 실행 원문 대신 정제된 argv 문자열, env key 목록, exit code만 event details에 남긴다. 값이 필요한 재현은 기존 deterministic source metadata와 별도 artifact로 추적한다.
 - Task 19 manifest security policy는 생성 단계에서 위험 리소스를 만들지 않는 계약에 더해 validation 단계에서 privileged, hostPath, cluster-wide resource를 fail finding으로 차단한다.
+- Task 20 non-interactive answers는 bootstrap acknowledgement가 아니라 실제 `agent/questions.yaml`의 stable question ID를 입력으로 받는다.
+- Task 20 renderer alias는 기존 hand-authored profile path와 Agent intent path를 둘 다 읽는다. Intent/Profile 모델은 유지하고 renderer 소비 경계에서 호환성을 처리했다.
+- Task 20 matrix는 `fastapi-fullstack-like`와 `port-conflict-node`를 non-ready 기준으로 둔다. 각각 stateful dependency review와 conflicting runtime command 질문을 남기는 것이 성공 조건이다.
 
 ## Blocker
 
@@ -521,4 +552,4 @@
 
 ## 다음 Task
 
-- Task 20: 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
+- 없음.
