@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from k8s_agent.agent.orchestrator import AgentOrchestrator, RunOutcome
 from k8s_agent.cli import PrepareRequest
 from k8s_agent.models.run import RunState
 from k8s_agent.models.source import AcquiredSource, RepositorySource
@@ -15,12 +15,7 @@ from k8s_agent.source.local import LocalSourceResolver
 from k8s_agent.source.workspace import WorkspaceManager
 
 
-@dataclass(frozen=True)
-class PrepareOutcome:
-    run_id: str
-    run_root: Path
-    target: str
-    source_kind: str
+PrepareOutcome = RunOutcome
 
 
 class AgentApplication:
@@ -38,14 +33,13 @@ class AgentApplication:
     def prepare(self, request: PrepareRequest) -> PrepareOutcome:
         run = self.run_manager.create(request)
         self.run_manager.transition(run.run_id, RunState.ACQUIRING_SOURCE, "source acquisition started")
-        source = self._acquire_source(request, run.run_id)
-        self.store.save_yaml(run.run_id, "source.yaml", _source_payload(source))
-        return PrepareOutcome(
-            run_id=run.run_id,
-            run_root=self.store.run_path(run.run_id),
-            target=request.target,
-            source_kind=source.kind,
-        )
+        try:
+            source = self._acquire_source(request, run.run_id)
+            self.store.save_yaml(run.run_id, "source.yaml", _source_payload(source))
+        except Exception:
+            self.run_manager.transition(run.run_id, RunState.FAILED, "source acquisition failed")
+            raise
+        return AgentOrchestrator(run_manager=self.run_manager).run(run.run_id)
 
     def _acquire_source(self, request: PrepareRequest, run_id: str) -> RepositorySource:
         acquired_at = self.clock()

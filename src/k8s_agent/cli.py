@@ -154,9 +154,10 @@ def _run_prepare(args: argparse.Namespace) -> int:
     outcome = AgentApplication().prepare(request)
     print(
         f"prepare created run_id={outcome.run_id} "
-        f"target={outcome.target} source={outcome.source_kind} run_root={outcome.run_root}"
+        f"target={outcome.target} source={outcome.source_kind} state={outcome.state.value} "
+        f"run_root={outcome.run_root} next={outcome.message}"
     )
-    return 0
+    return outcome.exit_code
 
 
 def _run_skeleton(command: str) -> int:
