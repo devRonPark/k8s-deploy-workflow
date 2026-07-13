@@ -12,10 +12,28 @@ from preanalyzer.pipeline import run_analysis
 
 FIXED = datetime(2026, 7, 12, 9, 0, 0, tzinfo=timezone.utc)
 PROFILE = Path("tests/fixtures/profiles/dev-profile.yaml")
+INVALID_MANIFEST_PORT_MARKERS = ("number: None", 'number: "None"', "__UNRESOLVED__")
 
 
 def clock():
     return FIXED
+
+
+def _validation_holds(output_dir: Path) -> list[dict]:
+    report = yaml.safe_load((output_dir / "13-validation-report.yaml").read_text(encoding="utf-8"))
+    return report["validation_report"].get("generation_holds", [])
+
+
+def _ready_for_level2(output_dir: Path) -> bool:
+    report = yaml.safe_load((output_dir / "05-reconciliation-report.yaml").read_text(encoding="utf-8"))
+    return report["reconciliation_report"]["ready_for_level2"]
+
+
+def _assert_generated_manifests_do_not_contain_invalid_port_markers(test_case: unittest.TestCase, output_dir: Path) -> None:
+    for path in (output_dir / "12-generated-manifests").rglob("*.yaml"):
+        text = path.read_text(encoding="utf-8")
+        for marker in INVALID_MANIFEST_PORT_MARKERS:
+            test_case.assertNotIn(marker, text, str(path))
 
 
 class _ResolveShellEntrypoint:
@@ -90,9 +108,13 @@ class PortConflictTests(unittest.TestCase):
                 ref=None,
                 clock=clock,
                 semantic_mode="disabled",
+                profile_path=PROFILE,
             )
             questions = yaml.safe_load((output_dir / "10-unresolved-questions.yaml").read_text())
             runtime = yaml.safe_load((output_dir / "07-runtime-model.yaml").read_text())
+            holds = _validation_holds(output_dir)
+            ready_for_level2 = _ready_for_level2(output_dir)
+            _assert_generated_manifests_do_not_contain_invalid_port_markers(self, output_dir)
 
         port_questions = [
             question
@@ -103,6 +125,24 @@ class PortConflictTests(unittest.TestCase):
         self.assertEqual(sorted(port_questions[0]["candidates"]), ["8080", "8081"])
         web = next(entry for entry in runtime["runtime_model"]["runtimes"] if entry["component_id"] == "web")
         self.assertIsNone(web["port"])
+        ingress_holds = [
+            hold
+            for hold in holds
+            if hold["component_id"] == "web"
+            and hold["resource"]["kind"] == "Ingress"
+            and hold["reason"]["code"] == "unresolved_service_port"
+        ]
+        self.assertEqual(len(ingress_holds), 1)
+        self.assertEqual(ingress_holds[0]["display_status"], "생성 보류")
+        self.assertEqual(ingress_holds[0]["resource"]["intended_path"], "web/ingress.yaml")
+        self.assertEqual(ingress_holds[0]["reason"]["missing_field"], "service.port")
+        self.assertEqual(ingress_holds[0]["resolution"]["status"], "unresolved")
+        self.assertEqual(ingress_holds[0]["resolution"]["question_id"], port_questions[0]["id"])
+        self.assertEqual(
+            sorted(str(candidate["value"]) for candidate in ingress_holds[0]["reason"]["candidates"]),
+            ["8080", "8081"],
+        )
+        self.assertFalse(ready_for_level2)
 
 
 class DemoSpectrumTests(unittest.TestCase):
@@ -144,6 +184,29 @@ class DemoSpectrumTests(unittest.TestCase):
         self.assertFalse(
             any(path.name == "deployment.yaml" for path in (output_dir / "12-generated-manifests").rglob("*.yaml"))
         )
+
+    def test_jpetstore_ingress_without_service_port_is_held(self):
+        output_dir = self._run(
+            "tests/fixtures/repos/jpetstore-like",
+            semantic_mode="disabled",
+            profile_path=PROFILE,
+        )
+
+        ingress_holds = [
+            hold
+            for hold in _validation_holds(output_dir)
+            if hold["component_id"] == "root"
+            and hold["resource"]["kind"] == "Ingress"
+            and hold["reason"]["code"] == "unresolved_service_port"
+        ]
+        self.assertEqual(len(ingress_holds), 1)
+        self.assertEqual(ingress_holds[0]["display_status"], "생성 보류")
+        self.assertEqual(ingress_holds[0]["resource"]["intended_path"], "root/ingress.yaml")
+        self.assertEqual(ingress_holds[0]["reason"]["missing_field"], "service.port")
+        self.assertEqual(ingress_holds[0]["resolution"]["status"], "unresolved")
+        self.assertIsNotNone(ingress_holds[0]["resolution"]["profile_field"])
+        self.assertFalse(_ready_for_level2(output_dir))
+        _assert_generated_manifests_do_not_contain_invalid_port_markers(self, output_dir)
 
     def test_no_secret_value_leaks_anywhere(self):
         output_dir = self._run(
