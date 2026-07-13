@@ -165,3 +165,22 @@ def preflight_kubeconform(repo_root: Path, target: str | None = None, force: boo
         detail = (proc.stdout or proc.stderr).strip()
         raise KubeconformToolError(f"kubeconform preflight failed: {detail[:200]}")
     return path
+
+
+def _is_executable(path: Path) -> bool:
+    return path.is_file() and (os.name == "nt" or os.access(path, os.X_OK))
+
+
+def resolve_kubeconform(repo_root: Path, explicit_path: Path | None = None) -> str | None:
+    if explicit_path is not None and _is_executable(explicit_path):
+        return str(explicit_path)
+    try:
+        target = current_platform_target()
+    except KubeconformToolError:
+        target = None
+    if target is not None:
+        managed = managed_kubeconform_path(repo_root, target)
+        if _is_executable(managed):
+            return str(managed)
+    found = shutil.which("kubeconform")
+    return found

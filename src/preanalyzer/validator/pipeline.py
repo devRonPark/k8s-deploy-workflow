@@ -1,17 +1,24 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import yaml
 
 from preanalyzer.models.report import StageResult, ValidationReport
+from preanalyzer.validator.kubeconform_tool import resolve_kubeconform
 
 
 class ValidationPipeline:
-    def __init__(self, k8s_version: str = "1.29") -> None:
+    def __init__(
+        self,
+        k8s_version: str = "1.29",
+        kubeconform_path: Path | None = None,
+        repo_root: Path | None = None,
+    ) -> None:
         self._k8s_version = k8s_version
+        self._kubeconform_path = kubeconform_path
+        self._repo_root = repo_root or Path.cwd()
 
     def run(self, manifest_dir: Path, rendered_placeholders: bool = False) -> ValidationReport:
         stages: list[StageResult] = []
@@ -46,13 +53,14 @@ class ValidationPipeline:
         return True
 
     def _kubeconform(self, directory: Path, stages: list[StageResult]) -> str:
-        if shutil.which("kubeconform") is None:
+        kubeconform = resolve_kubeconform(self._repo_root, self._kubeconform_path)
+        if kubeconform is None:
             stages.append(StageResult(stage="kubeconform", status="skipped", detail="tool_not_found"))
             return "skipped"
 
         proc = subprocess.run(
             [
-                "kubeconform",
+                kubeconform,
                 "-strict",
                 "-summary",
                 "-kubernetes-version",
@@ -74,6 +82,8 @@ class ValidationPipeline:
         return status
 
     def _dry_run(self, directory: Path, stages: list[StageResult]) -> None:
+        import shutil
+
         if shutil.which("kubectl") is None:
             stages.append(StageResult(stage="dry_run", status="skipped", detail="tool_not_found"))
             return
