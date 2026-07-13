@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ name }}
+{% if namespace %}
+  namespace: {{ namespace }}
+{% endif %}
+  labels:
+{% for key, value in labels.items() %}
+    {{ key }}: {{ value }}
+{% endfor %}
+spec:
+  rules:
+    - host: {{ host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ name }}
+                port:
+                  number: {{ service_port }}
