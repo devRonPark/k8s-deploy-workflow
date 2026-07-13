@@ -126,6 +126,20 @@
   - 결과: 통과, `Ran 7 tests in 0.012s`, `OK`
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
   - 결과: 통과, `Ran 13 tests in 0.068s`, `OK`
+- Milestone 1 Re-review:
+  - reviewer: subagent `Anscombe`
+  - range: `9252b708a5b6e71ac1145872d0cd96076c532524..2285f02c9f1473797d7844fdd62d3cd0b7b569ba`
+  - 결과: Critical 없음. Important 1건: `GitRunner`가 inherited Git/SSH execution env를 scrub하지 않음.
+- Milestone 1 Re-review Fix:
+  - 변경: `GitRunner` 기본 subprocess 환경을 allowlist로 제한하고 caller-provided hardening env만 추가.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.source.test_git_runner -v`
+  - 결과: 통과, `Ran 1 test in 0.002s`, `OK`
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.cli.test_prepare_arguments tests.unit.k8s_agent.test_errors -v`
+  - 결과: 통과, `Ran 10 tests in 0.702s`, `OK`
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/run -p 'test_*.py' -v`
+  - 결과: 통과, `Ran 7 tests in 0.023s`, `OK`
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
+  - 결과: 통과, `Ran 14 tests in 0.098s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -141,6 +155,7 @@
 - Task 3 fingerprint는 기존 `preanalyzer.path_safety`의 symlink boundary walk를 재사용하고 Agent state exclusion만 추가했다.
 - Task 4 실제 네트워크 GitHub 테스트는 opt-in으로 남겼고 unit 테스트는 fake Git runner로 command construction과 Secret masking을 검증했다.
 - Milestone 1 review 후 다음을 보강했다: local Git metadata 조회에 `GIT_OPTIONAL_LOCKS=0`, remote Git hardening env/config, run id traversal guard, credential URL variant sanitization, sensitive file fingerprint exclusion, valid local `prepare`의 run/source.yaml persistence.
+- Milestone 1 re-review 후 `GitRunner`가 inherited `GIT_*`, askpass, SSH command, protocol override 환경변수를 전달하지 않도록 allowlist 환경으로 변경했다.
 
 ## Blocker
 

@@ -18,7 +18,7 @@ class GitRunner:
         self.timeout_seconds = timeout_seconds
 
     def run(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> GitResult:
-        process_env = os.environ.copy()
+        process_env = _base_environment()
         if env:
             process_env.update(env)
         try:
@@ -43,3 +43,20 @@ class GitRunner:
             return None
         output = result.stdout.strip()
         return output or None
+
+
+def _base_environment() -> dict[str, str]:
+    allowed = {
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "PATH",
+        "SYSTEMROOT",
+        "TMP",
+        "TMPDIR",
+        "TEMP",
+        "USERPROFILE",
+        "WINDIR",
+    }
+    return {key: value for key, value in os.environ.items() if key in allowed}
