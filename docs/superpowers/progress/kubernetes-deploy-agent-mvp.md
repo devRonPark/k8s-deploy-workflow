@@ -147,10 +147,24 @@
   - unanswered required intent와 blocked intent가 있으면 `renderable=False`로 렌더링 진입 차단
   - profile revision은 previous를 변경하지 않고 새 revision으로 증가, checksum은 동일 입력에서 안정적
 
+### Task 12: Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
+
+- 상태: 완료
+- commit: `ddfd2983f39e19d9abcce0529b99fb8c6d7114a4`
+- commit message: `feat(render): generate deterministic kubernetes bundles`
+- 변경:
+  - DNS-safe naming helper 추가
+  - Deployment/Service/Ingress/Kustomization dict resource builder 추가
+  - stable YAML serializer와 `ManifestRenderer.render(profile, destination)` 추가
+  - profile values만 입력으로 base/overlays bundle 생성
+  - Service selector와 Pod labels, targetPort와 containerPort 일치 검증
+  - external exposure가 `public`일 때만 Ingress 생성, Secret value는 렌더링하지 않음
+  - 동일 Profile의 byte-identical bundle checksum 검증
+
 ## 현재 Task
 
-- 현재 Task: Task 12 Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
-- 다음 Task: Task 12 Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
+- 현재 Task: Task 13 정적 검증 파이프라인과 manifest-ready 계산
+- 다음 Task: Task 13 정적 검증 파이프라인과 manifest-ready 계산
 
 ## 실행한 테스트와 결과
 
@@ -283,6 +297,12 @@
   - 전체 테스트 실행 이유: 공통 Decision/Profile 계약이 Phase 1 이후 전체 기능 묶음의 연결점이 됨.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
   - 결과: 통과, `Ran 428 tests in 2.548s`, `OK (skipped=1)`
+- Task 12 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/render -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_manifest_renderer tests.acceptance.test_manifest_reproducibility -v`
+  - 결과: 기대한 실패. `k8s_agent.render.names`와 `k8s_agent.render.resources` 미구현으로 실패.
+- Task 12 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/render -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_manifest_renderer tests.acceptance.test_manifest_reproducibility -v`
+  - 결과: 통과, unit `Ran 4 tests`, acceptance `Ran 3 tests`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -295,6 +315,7 @@
 - Task 9 완료 조건에는 전체 테스트가 필요하지 않았다. Planner 자체와 fixture별 plan만 검증한다.
 - Task 10 완료 조건에는 전체 테스트가 필요하지 않았다. 질문·답변 기능 묶음에 한정된다.
 - Task 11 완료 시 전체 테스트를 실행했다. 이유: 공통 Decision/Profile 계약이 Phase 1 이후 전체 기능 묶음의 연결점이 됨.
+- Task 12 완료 조건에는 전체 테스트가 필요하지 않았다. Profile 계약 이후의 독립 renderer 기능이다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -312,6 +333,7 @@
 - Task 9 planner는 manifest/profile/question 구현을 직접 수행하지 않고, 다음 task들이 소비할 action/이유/근거/완료조건만 결정론적으로 계획한다.
 - Task 10의 CLI non-interactive 검사는 Task 15 전체 orchestration 전까지 bootstrap 질문 세트를 사용해 answers file 계약과 BLOCKED exit code를 검증한다.
 - Task 11 profile은 아직 renderer 입력으로 필요한 최소 JSON-pointer values/holds/conflicts 계약만 보존하고, 구체 Kubernetes resource shape은 Task 12에서 생성한다.
+- Task 12 renderer는 Deployment Profile만 읽고, Evidence/Topology/Intent를 직접 조회하지 않는다.
 
 ## Blocker
 
@@ -319,4 +341,4 @@
 
 ## 다음 Task
 
-- Task 12: Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
+- Task 13: 정적 검증 파이프라인과 manifest-ready 계산
