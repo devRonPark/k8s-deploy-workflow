@@ -187,10 +187,24 @@
   - repair 후 `ValidationOrchestrator`로 전체 정적 검증 재실행
   - renderer/validator/profile 전체 회귀 확인 완료
 
+### Task 15: Observe–Decide–Act–Evaluate prepare 오케스트레이션
+
+- 상태: 완료
+- commit: `fcd33518e3a0e08de087d6beafdf8a636689a6c3`
+- commit message: `feat(agent): orchestrate prepare to manifest readiness`
+- 변경:
+  - `RunOutcome`, `OrchestrationResult`, `AgentOrchestrator.run(run_id)` 추가
+  - `prepare`가 source 확보 후 Phase 1, topology, intent, plan, questions, profile, render, validate, repair 경로를 호출하도록 연결
+  - run state를 `ANALYZING`, `WAITING_FOR_USER`, `BLOCKED`, `READY`, `FAILED`, `CANCELLED`로 명확히 전이
+  - terminal run에서는 pipeline을 재실행하지 않도록 guard 추가
+  - Ctrl+C cancellation, policy blocked exit `4`, validation failure exit `5`, internal error exit `8`, success exit `0` 계약 검증
+  - CLI prepare summary에 state와 next action message를 출력하고 outcome exit code를 반환
+  - 실제 fixture prepare가 analysis/intent/plan/questions/profile 산출물까지 생성하는 end-to-end 경로 검증
+
 ## 현재 Task
 
-- 현재 Task: Task 15 Observe–Decide–Act–Evaluate prepare 오케스트레이션
-- 다음 Task: Task 15 Observe–Decide–Act–Evaluate prepare 오케스트레이션
+- 현재 Task: Task 16 resume과 Source drift 처리
+- 다음 Task: Task 16 resume과 Source drift 처리
 
 ## 실행한 테스트와 결과
 
@@ -346,6 +360,15 @@
   - 전체 테스트 실행 이유: 리페어가 공통 생성물과 검증 결과를 변경하므로 기존 재현성과 정적 검증 회귀를 확인해야 함.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
   - 결과: 통과, `Ran 433 tests in 59.585s`, `OK (skipped=1)`
+- Task 15 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.agent.test_orchestrator tests.cli.test_prepare_black_box tests.acceptance.test_prepare_end_to_end -v`
+  - 결과: 기대한 실패. `k8s_agent.agent.orchestrator` 미구현, `PrepareOutcome.state` 부재, CLI가 prepare 상태/exit code를 반환하지 않아 실패.
+- Task 15 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.agent.test_orchestrator tests.cli.test_prepare_black_box tests.acceptance.test_prepare_end_to_end -v`
+  - 결과: 통과, `Ran 12 tests in 1.017s`, `OK`
+  - 전체 테스트 실행 이유: CLI부터 기존 Phase 1, semantic, Profile, renderer, validator, repair까지 전체 호출 경로가 연결됨.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 437 tests in 61.007s`, `OK (skipped=1)`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -361,6 +384,7 @@
 - Task 12 완료 조건에는 전체 테스트가 필요하지 않았다. Profile 계약 이후의 독립 renderer 기능이다.
 - Task 13 완료 조건에는 전체 테스트가 필요하지 않았다. Renderer 결과에 대한 검증 기능 묶음에 한정한다.
 - Task 14 완료 시 전체 테스트를 실행했다. 이유: 리페어가 공통 생성물과 검증 결과를 변경하므로 기존 재현성과 정적 검증 회귀를 확인해야 함.
+- Task 15 완료 시 전체 테스트를 실행했다. 이유: CLI부터 기존 Phase 1, semantic, Profile, renderer, validator, repair까지 전체 호출 경로가 연결됨.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -381,6 +405,8 @@
 - Task 12 renderer는 Deployment Profile만 읽고, Evidence/Topology/Intent를 직접 조회하지 않는다.
 - Task 13 external adapters는 실제 tool 실행 전 단계로 상태 정규화와 stage 계약을 고정했다.
 - Task 14 repair는 Source와 Profile을 수정하지 않고 ManifestBundle에 포함된 generated file만 변경한다.
+- Task 15 prepare orchestration은 아직 generated manifest로 진행 가능한 profile이 없으면 `WAITING_FOR_USER`를 성공 exit `0`으로 반환한다. non-interactive 실제 answer 재적용과 resume continuation은 Task 16 이후 범위에서 다룬다.
+- Task 15 validation은 기존 Task 13 기본값과 동일하게 `run_external=False` internal validation 경로를 사용한다. kubeconform pass/fail이 필요한 sample repo batch 검증은 Task 19/20 completion 범위에서 수행한다.
 
 ## Blocker
 
@@ -388,4 +414,4 @@
 
 ## 다음 Task
 
-- Task 15: Observe–Decide–Act–Evaluate prepare 오케스트레이션
+- Task 16: resume과 Source drift 처리
