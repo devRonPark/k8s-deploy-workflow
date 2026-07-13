@@ -230,10 +230,24 @@
   - `status`, `explain`, `export` application method와 CLI handler 연결
   - export는 generated manifest directory만 명시 경로로 복사하며 기존 출력 경로는 `--overwrite` 없이는 거부
 
+### Task 18: 고급 analyze, plan, generate, validate 단계 명령
+
+- 상태: 완료
+- commit: `89bacd7ac64262a102ca46ea1a68d7ffde03338d`
+- commit message: `feat(cli): expose safe stage-level agent commands`
+- 변경:
+  - `AgentApplication.analyze(request)`가 source 확보 후 Phase 1과 topology까지만 생성
+  - `AgentApplication.plan(run_id)`이 기존 topology에서 intent, questions, agent plan, deployment profile을 생성
+  - `AgentApplication.generate(run_id, profile_revision)`이 기존 renderable Deployment Profile만 입력으로 manifest bundle 생성
+  - `AgentApplication.validate(run_id)`가 기존 generated bundle과 profile을 읽어 정적 검증 재실행
+  - analyze/plan/generate/validate CLI handler와 stage summary 출력 추가
+  - plan 전 analysis, profile 전 generate, bundle 전 validate 선행조건 오류 `STAGE-101/201/301` 추가
+  - 단계별 완료 event에 command와 입력 revision/result metadata 기록
+
 ## 현재 Task
 
-- 현재 Task: Task 18 고급 analyze, plan, generate, validate 단계 명령
-- 다음 Task: Task 18 고급 analyze, plan, generate, validate 단계 명령
+- 현재 Task: Task 19 Trust boundary 보안 강화와 감사 추적
+- 다음 Task: Task 19 Trust boundary 보안 강화와 감사 추적
 
 ## 실행한 테스트와 결과
 
@@ -414,6 +428,14 @@
   - 결과: 통과, `Ran 6 tests in 2.100s`, `OK`
   - 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.reporting.test_final_report tests.cli.test_status_explain_export tests.cli.test_resume_black_box tests.cli.test_prepare_black_box tests.cli.test_prepare_arguments tests.cli.test_non_interactive_questions -v`
   - 결과: 통과, `Ran 20 tests in 6.871s`, `OK`
+- Task 18 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_stage_commands tests.cli.test_advanced_commands -v`
+  - 결과: 기대한 실패. `AgentApplication.analyze/plan/generate/validate` 미구현과 advanced command skeleton으로 실패.
+- Task 18 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_stage_commands tests.cli.test_advanced_commands -v`
+  - 결과: 통과, `Ran 9 tests in 3.439s`, `OK`
+  - 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_stage_commands tests.cli.test_advanced_commands tests.cli.test_prepare_arguments tests.cli.test_prepare_black_box tests.cli.test_resume_black_box tests.cli.test_status_explain_export tests.unit.k8s_agent.test_resume -v`
+  - 결과: 통과, `Ran 31 tests in 9.984s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -432,6 +454,7 @@
 - Task 15 완료 시 전체 테스트를 실행했다. 이유: CLI부터 기존 Phase 1, semantic, Profile, renderer, validator, repair까지 전체 호출 경로가 연결됨.
 - Task 16 완료 조건에는 전체 테스트가 필요하지 않았다. 기존 prepare 수직 경로는 인접 회귀 테스트로 확인하고 resume 분기에 한정했다.
 - Task 17 완료 조건에는 전체 테스트가 필요하지 않았다. read-only 조회와 generated manifest export 기능에 한정했다.
+- Task 18 완료 조건에는 전체 테스트가 필요하지 않았다. 기존 application action을 재사용하는 고급 진입점과 선행조건에 한정했다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -458,6 +481,7 @@
 - Task 16 `new-run`은 현재 drifted local source에서 새 run을 생성한다. GitHub source는 저장된 pinned workspace를 기본으로 하며 refetch하지 않는다.
 - Task 17 report는 기존 run artifact를 집계하는 read-only view로 구현했고, status 호출 시 최신 `final-report.yaml`을 함께 갱신한다.
 - Task 17 explain은 MVP 범위에서 profile decision/field와 generated resource refs를 연결한다. 더 깊은 line-level Evidence traversal은 기존 evidence refs를 보존해 후속 고도화 지점으로 남긴다.
+- Task 18 stage commands는 Run state를 강제로 READY/FAILED로 전환하지 않고 산출물과 event를 갱신한다. 최종 readiness state 전이는 prepare/resume 오케스트레이션과 Task 20 acceptance에서 보강한다.
 
 ## Blocker
 
@@ -465,4 +489,4 @@
 
 ## 다음 Task
 
-- Task 18: 고급 analyze, plan, generate, validate 단계 명령
+- Task 19: Trust boundary 보안 강화와 감사 추적
