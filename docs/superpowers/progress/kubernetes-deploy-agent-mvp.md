@@ -36,7 +36,9 @@
 
 ### Task 3: 로컬 Repository 확보와 재현 가능한 snapshot fingerprint
 
-- 상태: 완료, commit 예정: `feat(source): resolve local repositories and fingerprints`
+- 상태: 완료
+- commit: `834efc698bb5be90bfc5015c966e4b3656b29b71`
+- commit message: `feat(source): resolve local repositories and fingerprints`
 - 변경:
   - `RepositorySource`, `GitMetadata`, `SourceFingerprint`, `ScanLimits` 모델 추가
   - `LocalSourceResolver.resolve(path, acquired_at)` 추가
@@ -44,10 +46,21 @@
   - tracked/untracked 현재 파일 내용 기반 deterministic fingerprint 추가
   - `.git`, `.k8s-agent`, binary, oversized, source 밖 symlink 제외 처리 추가
 
+### Task 4: GitHub Repository ref 고정과 격리 Workspace
+
+- 상태: 완료, commit 예정: `feat(source): pin github refs in isolated workspaces`
+- 변경:
+  - `GitHubSourceResolver.acquire()` 추가
+  - GitHub HTTPS/SSH URL normalization과 embedded credential 제거 추가
+  - `git init`, sanitized remote, depth-1 fetch, detached checkout 흐름 추가
+  - `requested_ref`와 `resolved_commit`을 `AcquiredSource`로 기록
+  - `WorkspaceManager`로 source/generated workspace 분리 및 cleanup 추가
+  - Git 실행 시 `shell=False`, argument list, LFS smudge/prompt 비활성 env 적용
+
 ## 현재 Task
 
-- 현재 Task: Task 3 검증 및 커밋
-- 다음 Task: Task 4 GitHub Repository ref 고정과 격리 Workspace
+- 현재 Task: Task 4 검증 및 커밋
+- 다음 Task: Task 5 기존 Phase 1 분석을 Run 산출물 체계에 통합
 
 ## 실행한 테스트와 결과
 
@@ -82,11 +95,20 @@
   - 결과: 통과, `Ran 2 tests in 0.004s`, `OK`
   - 패키지 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
   - 결과: 통과, `Ran 6 tests in 0.052s`, `OK`
+- Task 4 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.source.test_github tests.unit.k8s_agent.source.test_workspace -v`
+  - 결과: 기대한 실패. `k8s_agent.source.github`와 `k8s_agent.source.workspace` 미구현으로 실패.
+- Task 4 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.source.test_github tests.unit.k8s_agent.source.test_workspace -v`
+  - 결과: 통과, `Ran 4 tests in 0.003s`, `OK`
+  - 패키지 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
+  - 결과: 통과, `Ran 10 tests in 0.063s`, `OK`
+  - 선택적 실제 GitHub integration: 실행하지 않음. `K8S_AGENT_RUN_NETWORK_TESTS=1` opt-in 테스트이며 현재 Task 완료에 필수 아님.
 
 ## 전체 테스트 실행 이유와 결과
 
 - 시작 기준선에서만 전체 테스트를 실행했다.
-- Task 1, Task 2, Task 3 완료 조건에는 전체 테스트가 필요하지 않다. 신규 Agent 애플리케이션 패키지 내부 변경이며 기존 분석 코어를 변경하지 않았다.
+- Task 1~4 완료 조건에는 전체 테스트가 필요하지 않다. 신규 Agent 애플리케이션 패키지 내부 변경이며 기존 분석 코어를 변경하지 않았다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -95,6 +117,7 @@
 - 구현 계획 파일은 현재 worktree에서 처음 추적되는 기준 문서로 함께 보존한다.
 - Run 저장소 테스트에서는 temp directory를 Run root로 주입한다. 기본 `${K8S_AGENT_HOME}` 정책은 Task 15 application orchestration에서 연결한다.
 - Task 3 fingerprint는 기존 `preanalyzer.path_safety`의 symlink boundary walk를 재사용하고 Agent state exclusion만 추가했다.
+- Task 4 실제 네트워크 GitHub 테스트는 opt-in으로 남겼고 unit 테스트는 fake Git runner로 command construction과 Secret masking을 검증했다.
 
 ## Blocker
 
@@ -102,4 +125,4 @@
 
 ## 다음 Task
 
-- Task 4: GitHub Repository ref 고정과 격리 Workspace
+- Task 5: 기존 Phase 1 분석을 Run 산출물 체계에 통합

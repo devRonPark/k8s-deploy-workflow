@@ -40,3 +40,20 @@ class RepositorySource(BaseModel):
     acquired_at: datetime
     git: GitMetadata
     fingerprint: SourceFingerprint
+
+
+class Workspace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    root: Path
+    source_path: Path
+    generated_path: Path
+
+
+class AcquiredSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: RepositorySource
+    requested_ref: str | None
+    resolved_commit: str

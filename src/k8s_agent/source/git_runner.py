@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +14,10 @@ class GitResult:
 
 
 class GitRunner:
-    def run(self, cwd: Path, args: list[str]) -> GitResult:
+    def run(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> GitResult:
+        process_env = os.environ.copy()
+        if env:
+            process_env.update(env)
         try:
             result = subprocess.run(
                 ["git", "-C", str(cwd), *args],
@@ -21,6 +25,7 @@ class GitRunner:
                 capture_output=True,
                 text=True,
                 shell=False,
+                env=process_env,
             )
         except OSError as exc:
             return GitResult(returncode=127, stdout="", stderr=str(exc))
