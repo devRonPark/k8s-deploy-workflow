@@ -64,7 +64,10 @@ class AgentApplication:
         except Exception:
             self.run_manager.transition(run.run_id, RunState.FAILED, "source acquisition failed")
             raise
-        return AgentOrchestrator(run_manager=self.run_manager).run(run.run_id)
+        return AgentOrchestrator(
+            run_manager=self.run_manager,
+            answers_file=request.answers_file if request.non_interactive else None,
+        ).run(run.run_id)
 
     def analyze(self, request: PrepareRequest) -> RunOutcome:
         run = self.run_manager.create(request)

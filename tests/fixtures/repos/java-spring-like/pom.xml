@@ -1,0 +1,7 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>example</groupId>
+  <artifactId>java-spring-like</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+</project>

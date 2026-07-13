@@ -107,8 +107,29 @@ def _resources_for_component(profile: DeploymentProfile, component_id: str) -> l
 
 
 def _value(profile: DeploymentProfile, component_id: str, field: str):
-    item = profile.values.get(f"/components/{component_id}/{field}")
-    return item.value if item is not None else None
+    for path in _field_paths(component_id, field):
+        item = profile.values.get(path)
+        if item is not None:
+            return item.value
+    if field == "secret_ref":
+        prefix = f"/components/{component_id}/secrets/"
+        for path, item in sorted(profile.values.items()):
+            if path.startswith(prefix):
+                return item.value
+    return None
+
+
+def _field_paths(component_id: str, field: str) -> list[str]:
+    aliases = {
+        "replicas": "workload/replicas",
+        "service": "service/port",
+        "runtime_command": "workload/command",
+        "external_exposure": "network/external_exposure",
+    }
+    paths = [f"/components/{component_id}/{field}"]
+    if field in aliases:
+        paths.append(f"/components/{component_id}/{aliases[field]}")
+    return paths
 
 
 def _generated_files(destination: Path) -> list[GeneratedFile]:

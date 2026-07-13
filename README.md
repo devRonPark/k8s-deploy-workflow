@@ -61,6 +61,47 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 
 명령은 `achieved_level=<level> out=out/node-express-like` 형식의 요약을 출력하고, `out/node-express-like/` 아래에 분석 산출물을 씁니다.
 
+Kubernetes Deploy Agent MVP CLI는 같은 editable install에서 `k8s-agent` 모듈로 실행할 수 있습니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli prepare \
+  --local-path tests/fixtures/repos/node-express-like \
+  --target development
+```
+
+`prepare`는 source snapshot, analysis, intent, plan, questions, deployment profile, manifest render, validation을 가능한 곳까지 진행합니다. 확인이 필요한 값이 있으면 `agent/questions.yaml`에 질문을 남기고 `WAITING_FOR_USER` 상태로 끝납니다. 자동 실행에서는 먼저 질문 파일을 확인한 뒤 answers file을 넣습니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli prepare \
+  --local-path tests/fixtures/repos/node-express-like \
+  --target development \
+  --non-interactive \
+  --answers-file answers.yaml
+```
+
+중단된 run은 source drift 정책을 명시해 재개할 수 있습니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli resume <run-id> --drift-policy replan
+```
+
+준비된 run은 상태 확인, 결정 근거 설명, manifest export를 지원합니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli status <run-id>
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli explain <run-id> <decision-or-field>
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli export <run-id> --output out/manifests --overwrite
+```
+
+고급 단계별 명령은 같은 run artifact를 기준으로 분석, 계획, 생성, 검증을 분리해 실행합니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli analyze --local-path ./my-repo --target development
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli plan <run-id>
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli generate <run-id> --profile-revision 1
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli validate <run-id>
+```
+
 ## Run on your repository
 
 샘플 실행 후에는 자신의 저장소 경로를 넘겨 실행합니다.
@@ -158,6 +199,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover 
 
 - [docs/pipeline-details.md](./docs/pipeline-details.md): 기능별 세부 규칙
 - [docs/architecture.md](./docs/architecture.md): 구현 상태와 아키텍처 경계
+- [docs/testing/agent-mvp-test-matrix.md](./docs/testing/agent-mvp-test-matrix.md): Agent MVP fixture matrix와 CI 검증 명령
 - [onprem-llm-k8s-manifest-preanalysis-workflow.md](./onprem-llm-k8s-manifest-preanalysis-workflow.md): 전체 워크플로우 설계
 
 ## Project structure

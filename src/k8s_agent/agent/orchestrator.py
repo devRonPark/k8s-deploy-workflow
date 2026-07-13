@@ -16,6 +16,7 @@ from k8s_agent.errors import AgentError
 from k8s_agent.models.run import RunRecord, RunState, TERMINAL_STATES
 from k8s_agent.models.source import RepositorySource
 from k8s_agent.profile.builder import DeploymentProfileBuilder, ProfileInputs
+from k8s_agent.questions.answers import AnswerLoader
 from k8s_agent.questions.manager import QuestionManager
 from k8s_agent.render.renderer import ManifestRenderer
 from k8s_agent.repair.controller import RepairController, RepairResult
@@ -63,11 +64,13 @@ class AgentOrchestrator:
         run_manager: RunManager,
         pipeline: Callable[[str], OrchestrationResult] | None = None,
         reuse_completed_analysis: bool = False,
+        answers_file: Path | None = None,
     ) -> None:
         self.run_manager = run_manager
         self.store = run_manager.store
         self.pipeline = pipeline or self._run_default_pipeline
         self.reuse_completed_analysis = reuse_completed_analysis
+        self.answers_file = answers_file
 
     def run(self, run_id: str) -> RunOutcome:
         record = self.store.load(run_id)
@@ -93,7 +96,7 @@ class AgentOrchestrator:
             return _outcome(record, 130, "run cancelled by user")
         except AgentError as exc:
             record = self.run_manager.transition(run_id, RunState.FAILED, exc.message)
-            return _outcome(record, exc.exit_code, exc.message)
+            return _outcome(record, exc.exit_code, f"[{exc.code}] {exc.message}")
         except Exception as exc:
             record = self.run_manager.transition(run_id, RunState.FAILED, "unexpected internal error")
             return _outcome(record, 8, f"unexpected internal error: {type(exc).__name__}")
@@ -107,8 +110,13 @@ class AgentOrchestrator:
         topology = TopologyBuilder().build(phase1)
         intent = IntentBuilder(output_dir=phase1.analysis_dir).build(topology, record.target)
         plan = AgentPlanner().plan(PlanningContext(topology=topology, intent=intent))
-        questions = QuestionManager().build(intent, plan)
-        profile = DeploymentProfileBuilder().build(ProfileInputs(intent=intent, decisions=[]))
+        question_manager = QuestionManager()
+        questions = question_manager.build(intent, plan)
+        decisions = []
+        if self.answers_file is not None:
+            answers = AnswerLoader().load(self.answers_file, questions)
+            decisions = question_manager.to_decisions(answers)
+        profile = DeploymentProfileBuilder().build(ProfileInputs(intent=intent, decisions=decisions))
 
         artifacts: dict[str, dict[str, Any]] = {
             "agent/runtime-metadata.yaml": {"tool_versions": TOOL_VERSIONS},

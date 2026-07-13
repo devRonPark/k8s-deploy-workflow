@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from k8s_agent.questions.manager import QuestionManager
+import yaml
+
 from tests.cli.test_prepare_arguments import run_agent
 
 
@@ -31,10 +32,25 @@ class NonInteractiveQuestionTests(unittest.TestCase):
         self.assertIn("BLOCKED", text)
 
     def test_non_interactive_prepare_accepts_explicit_required_answer(self):
-        question = QuestionManager.bootstrap_questions().questions[0]
         with tempfile.TemporaryDirectory() as tmp:
+            probe = run_agent(
+                "prepare",
+                "--local-path",
+                "tests/fixtures/repos/node-express-like",
+                "--target",
+                "development",
+                extra_env={"K8S_AGENT_HOME": tmp},
+            )
+            self.assertEqual(probe.returncode, 0, probe.stdout + probe.stderr)
+            run_id = probe.stdout.split("run_id=", 1)[1].split()[0]
+            questions_path = Path(tmp) / "runs" / run_id / "agent" / "questions.yaml"
+            question_set = yaml.safe_load(questions_path.read_text(encoding="utf-8"))
+            answers_payload = {
+                question["question_id"]: question.get("recommended_option") or "confirm"
+                for question in question_set["question_set"]["questions"]
+            }
             answers = Path(tmp) / "answers.yaml"
-            answers.write_text(f"answers:\n  {question.question_id}: acknowledge\n", encoding="utf-8")
+            answers.write_text(yaml.safe_dump({"answers": answers_payload}, sort_keys=True), encoding="utf-8")
             result = run_agent(
                 "prepare",
                 "--local-path",

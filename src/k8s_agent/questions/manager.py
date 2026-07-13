@@ -34,6 +34,7 @@ class Question(BaseModel):
     skip_impact: str
     required: bool = True
     affected_resources: list[str] = Field(default_factory=list)
+    candidate_value: Any | None = None
 
 
 class QuestionSet(BaseModel):
@@ -69,6 +70,7 @@ class QuestionManager:
                         impact="Controls the container command in generated manifests.",
                         skip_impact="Manifest generation remains blocked for this component.",
                         affected_resources=["Deployment"],
+                        candidate_value=None,
                     )
                 )
         return QuestionSet(questions=_dedupe_sorted(questions))
@@ -88,6 +90,7 @@ class QuestionManager:
                     impact="Allows the run to proceed without interactive prompts.",
                     skip_impact="The run is BLOCKED until required answers are supplied.",
                     affected_resources=[],
+                    candidate_value=None,
                 )
             ]
         )
@@ -101,7 +104,7 @@ class QuestionManager:
                     decision_id=_stable_id("D", {"question_id": question.question_id, "value": answer.normalized_value}),
                     question_id=question.question_id,
                     target_field=question.target_field,
-                    value=answer.normalized_value,
+                    value=_answer_value(question, answer.normalized_value),
                     raw_value=answer.raw_value,
                     normalized_value=answer.normalized_value,
                     classification="user_answer",
@@ -130,6 +133,7 @@ def _question_from_candidate(candidate: IntentCandidate) -> Question:
         impact=_impact_for(candidate.kind),
         skip_impact=_skip_impact_for(candidate.kind),
         affected_resources=_resources_for(candidate.kind),
+        candidate_value=candidate.value,
     )
 
 
@@ -145,6 +149,7 @@ def _question(
     impact: str,
     skip_impact: str,
     affected_resources: list[str],
+    candidate_value: Any | None = None,
 ) -> Question:
     option_models = [QuestionOption(value=value, label=label, description=description) for value, label, description in options]
     payload = {
@@ -166,6 +171,7 @@ def _question(
         impact=impact,
         skip_impact=skip_impact,
         affected_resources=affected_resources,
+        candidate_value=candidate_value,
     )
 
 
@@ -230,3 +236,13 @@ def _dedupe_sorted(questions: list[Question]) -> list[Question]:
 def _stable_id(prefix: str, payload: dict[str, Any]) -> str:
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:12]
     return f"{prefix}-{digest.upper()}"
+
+
+def _answer_value(question: Question, normalized: str) -> Any:
+    if normalized == "confirm" and question.candidate_value is not None:
+        return question.candidate_value
+    if normalized == "existing_secret" and question.candidate_value is not None:
+        return question.candidate_value
+    if normalized == "1Gi":
+        return {"size": "1Gi"}
+    return normalized

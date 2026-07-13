@@ -160,11 +160,6 @@ def _validate_source_target(
 
 def _run_prepare(args: argparse.Namespace) -> int:
     request = _validate_prepare(args)
-    if request.non_interactive:
-        from k8s_agent.questions.answers import AnswerLoader
-        from k8s_agent.questions.manager import QuestionManager
-
-        AnswerLoader().load(request.answers_file, QuestionManager.bootstrap_questions())
     from k8s_agent.application import AgentApplication
 
     outcome = AgentApplication().prepare(request)
