@@ -29,6 +29,7 @@ from preanalyzer.analyzer.scanner import build_inventory, snapshot
 from preanalyzer.models.evidence import EvidenceModel
 from preanalyzer.models.inventory import ArtifactInventory
 from preanalyzer.models.profile import DeploymentProfile
+from preanalyzer.models.questions import UnresolvedQuestion, UnresolvedQuestions
 from preanalyzer.models.report import GenerationHold, ValidationReport
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
 from preanalyzer.models.semantic_agent import SemanticAgentRunResult
@@ -206,7 +207,7 @@ def run_analysis(
         report = ValidationPipeline().run(
             manifest_dir,
             rendered_placeholders=render.achieved_level_cap == 0,
-            generation_holds=_generation_holds_for_report(render.generation_holds),
+            generation_holds=_generation_holds_for_report(render.generation_holds, questions),
         )
         _write_yaml(output_dir / "13-validation-report.yaml", {"validation_report": report.model_dump()})
         _write_readiness_checklist(output_dir / "14-deployment-readiness-checklist.md", questions.questions)
@@ -250,8 +251,44 @@ def _write_extended_outputs(
     )
 
 
-def _generation_holds_for_report(generation_holds: list) -> list[GenerationHold]:
-    return [GenerationHold.model_validate(asdict(hold)) for hold in generation_holds]
+def _generation_holds_for_report(generation_holds: list, questions: UnresolvedQuestions) -> list[GenerationHold]:
+    port_questions = {
+        question.id.removeprefix("Q-PORT-"): question
+        for question in questions.questions
+        if question.answer_type == "port" and question.id.startswith("Q-PORT-")
+    }
+    return [
+        GenerationHold.model_validate(_generation_hold_payload(asdict(hold), port_questions))
+        for hold in generation_holds
+    ]
+
+
+def _generation_hold_payload(hold: dict, port_questions: dict[str, UnresolvedQuestion]) -> dict:
+    if hold.get("reason", {}).get("code") != "unresolved_service_port":
+        return hold
+
+    component_id = hold.get("component_id")
+    question = port_questions.get(component_id)
+    reason = dict(hold.get("reason") or {})
+    if question is not None:
+        reason["candidates"] = [
+            {
+                "value": candidate,
+                "source": "unresolved_question",
+                "confidence": None,
+                "classification": question.reason,
+                "evidence_refs": [],
+            }
+            for candidate in question.candidates
+        ]
+    hold["reason"] = reason
+    profile_field = question.profile_field if question is not None and question.profile_field else None
+    hold["resolution"] = {
+        "status": "unresolved",
+        "profile_field": profile_field or f"components.{component_id}.service.port",
+        "question_id": question.id if question is not None else None,
+    }
+    return hold
 
 
 def _write_readiness_checklist(path: Path, questions) -> None:

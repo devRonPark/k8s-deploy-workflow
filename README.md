@@ -127,7 +127,7 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 - `10-unresolved-questions.yaml`: 도구가 안전하게 결정하지 못한 값
 - `11-deployment-profile.yaml`: 실행에 사용된 deployment profile 값. profile을 주지 않으면 `null`
 - `12-generated-manifests/`: Intent Model과 템플릿에서 렌더링된 Kubernetes 리소스 파일
-- `13-validation-report.yaml`: YAML, kubeconform, kubectl dry-run 검증 결과
+- `13-validation-report.yaml`: YAML, kubeconform, kubectl dry-run 검증 결과. `generation_holds`는 안전하게 만들 수 없어 `생성 보류`된 리소스와 필요한 해소 값을 보여줍니다.
 
 전체 파이프라인은 `00-repository-snapshot.yaml`부터 `15-smoke-test-plan.yaml`까지의 산출물을 만들 수 있습니다.
 
