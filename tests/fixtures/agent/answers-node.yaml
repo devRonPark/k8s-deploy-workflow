@@ -1,0 +1,6 @@
+answers:
+  namespace: demo
+  components.root.workload.image.registry: registry.example.com:5000
+  components.root.workload.image.tag: "1.0.0"
+  components.root.service.port: 3000
+  components.root.workload.container_port: 3000
