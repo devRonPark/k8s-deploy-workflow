@@ -121,10 +121,23 @@
   - completed task ID를 반영해 재계획 시 다음 action이 완료 task를 건너뜀
   - fixture별 저장소 shape에 따라 다른 plan task가 생성됨을 검증
 
+### Task 10: 사용자 질문, answers file과 non-interactive 차단
+
+- 상태: 완료
+- commit: `5923de39c1ea00fc13b4e9acdb1c8aa8b5a46046`
+- commit message: `feat(questions): collect explicit deployment decisions`
+- 변경:
+  - `Question`, `QuestionSet`, `QuestionOption`, `AnswerSet`, `Decision` 모델 추가
+  - `QuestionManager.build(intent, plan)`가 external exposure, hostname, Secret, PVC, Stateful, command conflict 질문을 생성
+  - stable question ID, evidence refs, options, recommendation, impact, skip impact 보존
+  - `AnswerLoader.load(path, questions)`가 unknown question, invalid option, missing required answer를 exit code 3 `QST-201`로 차단
+  - `QuestionManager.to_decisions()`가 raw/normalized user answer를 explicit user Decision으로 변환
+  - `prepare --non-interactive --answers-file`에서 required bootstrap answer가 없으면 `BLOCKED`로 종료
+
 ## 현재 Task
 
-- 현재 Task: Task 10 사용자 질문, answers file과 non-interactive 차단
-- 다음 Task: Task 10 사용자 질문, answers file과 non-interactive 차단
+- 현재 Task: Task 11 추적 가능한 Decision 병합과 immutable Deployment Profile
+- 다음 Task: Task 11 추적 가능한 Decision 병합과 immutable Deployment Profile
 
 ## 실행한 테스트와 결과
 
@@ -242,6 +255,12 @@
 - Task 9 Green:
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.agent.test_planner tests.acceptance.test_repository_specific_plans -v`
   - 결과: 통과, `Ran 9 tests in 0.083s`, `OK`
+- Task 10 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.questions.test_manager tests.unit.k8s_agent.questions.test_answers tests.cli.test_non_interactive_questions -v`
+  - 결과: 기대한 실패. `k8s_agent.models.decision`과 `k8s_agent.questions` 미구현으로 실패.
+- Task 10 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.questions.test_manager tests.unit.k8s_agent.questions.test_answers tests.cli.test_non_interactive_questions -v`
+  - 결과: 통과, `Ran 7 tests in 0.460s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -252,6 +271,7 @@
 - Task 7 완료 시 전체 테스트를 실행했다. 이유: 기존 semantic task routing과 verifier의 public interface가 Agent에서 직접 사용됨.
 - Task 8 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 정책과 Intent 경계에 한정된다.
 - Task 9 완료 조건에는 전체 테스트가 필요하지 않았다. Planner 자체와 fixture별 plan만 검증한다.
+- Task 10 완료 조건에는 전체 테스트가 필요하지 않았다. 질문·답변 기능 묶음에 한정된다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -267,6 +287,7 @@
 - Task 7은 기존 `preanalyzer.semantic.agent`를 실행 엔진으로 재사용하고 Agent 패키지에는 redaction, provider transport, metadata wrapping, action executor 경계만 추가했다.
 - Task 8은 기존 `preanalyzer.models.intent`를 변경하지 않고 Agent-owned intent model을 별도로 추가했다.
 - Task 9 planner는 manifest/profile/question 구현을 직접 수행하지 않고, 다음 task들이 소비할 action/이유/근거/완료조건만 결정론적으로 계획한다.
+- Task 10의 CLI non-interactive 검사는 Task 15 전체 orchestration 전까지 bootstrap 질문 세트를 사용해 answers file 계약과 BLOCKED exit code를 검증한다.
 
 ## Blocker
 
@@ -274,4 +295,4 @@
 
 ## 다음 Task
 
-- Task 10: 사용자 질문, answers file과 non-interactive 차단
+- Task 11: 추적 가능한 Decision 병합과 immutable Deployment Profile
