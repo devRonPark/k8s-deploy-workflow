@@ -36,6 +36,13 @@ class AgentErrorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             AgentError(code="CLI-101", exit_code=2, message="message", resolution="")
 
+    def test_agent_error_can_propagate_with_traceback_metadata(self):
+        try:
+            raise AgentError(code="RUN-201", exit_code=8, message="bad transition", resolution="resume")
+        except AgentError as exc:
+            self.assertIsNotNone(exc.__traceback__)
+            exc.__traceback__ = exc.__traceback__
+
 
 if __name__ == "__main__":
     unittest.main()

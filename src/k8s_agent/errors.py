@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass(frozen=True)
+@dataclass
 class AgentError(Exception):
     code: str
     exit_code: int
@@ -21,8 +21,8 @@ class AgentError(Exception):
         if not self.resolution:
             raise ValueError("AgentError.resolution is required")
         normalized = {str(key): str(value) for key, value in self.context.items()}
-        object.__setattr__(self, "context", normalized)
-        Exception.__init__(self, self.message)
+        self.context = normalized
+        Exception.__init__(self, f"[{self.code}] {self.message}")
 
 
 def format_agent_error(error: AgentError) -> str:
