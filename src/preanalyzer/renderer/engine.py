@@ -22,11 +22,13 @@ class DeferredResource:
 @dataclass(frozen=True)
 class HeldResource:
     kind: str
+    intended_path: str | None = None
 
 
 @dataclass(frozen=True)
 class HoldReason:
     code: str
+    missing_field: str | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,6 @@ class TemplateRenderer:
     def _hold_ingress(self, component_id: str) -> GenerationHold:
         return GenerationHold(
             component_id=component_id,
-            resource=HeldResource(kind="Ingress"),
-            reason=HoldReason(code="unresolved_service_port"),
+            resource=HeldResource(kind="Ingress", intended_path=f"{component_id}/ingress.yaml"),
+            reason=HoldReason(code="unresolved_service_port", missing_field="service.port"),
         )

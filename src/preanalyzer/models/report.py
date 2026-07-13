@@ -21,12 +21,14 @@ class GenerationHoldCandidate(BaseModel):
 class GenerationHoldReason(BaseModel):
     code: str
     detail: str | None = None
+    missing_field: str | None = None
     candidates: list[GenerationHoldCandidate] = Field(default_factory=list)
 
 
 class GenerationHoldResource(BaseModel):
     kind: str
     name: str | None = None
+    intended_path: str | None = None
 
 
 class GenerationHoldResolution(BaseModel):

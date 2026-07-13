@@ -188,6 +188,8 @@ def run_analysis(
 
         render = TemplateRenderer(repo_snapshot.commit_sha, RULES_VERSION).render(intent)
         manifest_dir = output_dir / "12-generated-manifests"
+        if manifest_dir.exists():
+            shutil.rmtree(manifest_dir)
         manifest_dir.mkdir(parents=True, exist_ok=True)
         for relative_path, text in render.files.items():
             target = manifest_dir / relative_path

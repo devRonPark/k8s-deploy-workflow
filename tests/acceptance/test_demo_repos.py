@@ -134,6 +134,8 @@ class PortConflictTests(unittest.TestCase):
         ]
         self.assertEqual(len(ingress_holds), 1)
         self.assertEqual(ingress_holds[0]["display_status"], "생성 보류")
+        self.assertEqual(ingress_holds[0]["resource"]["intended_path"], "web/ingress.yaml")
+        self.assertEqual(ingress_holds[0]["reason"]["missing_field"], "service.port")
         self.assertEqual(ingress_holds[0]["resolution"]["status"], "unresolved")
         self.assertEqual(ingress_holds[0]["resolution"]["question_id"], port_questions[0]["id"])
         self.assertEqual(
@@ -199,6 +201,8 @@ class DemoSpectrumTests(unittest.TestCase):
         ]
         self.assertEqual(len(ingress_holds), 1)
         self.assertEqual(ingress_holds[0]["display_status"], "생성 보류")
+        self.assertEqual(ingress_holds[0]["resource"]["intended_path"], "root/ingress.yaml")
+        self.assertEqual(ingress_holds[0]["reason"]["missing_field"], "service.port")
         self.assertEqual(ingress_holds[0]["resolution"]["status"], "unresolved")
         self.assertIsNotNone(ingress_holds[0]["resolution"]["profile_field"])
         self.assertFalse(_ready_for_level2(output_dir))

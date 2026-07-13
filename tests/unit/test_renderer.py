@@ -87,7 +87,9 @@ class RendererTests(unittest.TestCase):
         )
         self.assertEqual(hold.status, "generation_held")
         self.assertEqual(hold.display_status, "생성 보류")
+        self.assertEqual(hold.resource.intended_path, "backend/ingress.yaml")
         self.assertEqual(hold.reason.code, "unresolved_service_port")
+        self.assertEqual(hold.reason.missing_field, "service.port")
 
     def test_renders_ingress_with_service_port(self):
         result = TemplateRenderer("abc", "2026.07").render(_app_intent(ingress_host="app.example.com"))

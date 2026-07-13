@@ -58,8 +58,8 @@ class ValidatorTests(unittest.TestCase):
             generation_holds = [
                 {
                     "component_id": "api",
-                    "resource": {"kind": "Ingress"},
-                    "reason": {"code": "unresolved_service_port"},
+                    "resource": {"kind": "Ingress", "intended_path": "api/ingress.yaml"},
+                    "reason": {"code": "unresolved_service_port", "missing_field": "service.port"},
                     "status": "generation_held",
                     "display_status": "생성 보류",
                 }
@@ -74,6 +74,8 @@ class ValidatorTests(unittest.TestCase):
         stages = {stage.stage: stage.status for stage in report.stages}
         self.assertEqual(stages["kubeconform"], "pass")
         self.assertEqual(report.generation_holds[0].display_status, "생성 보류")
+        self.assertEqual(report.generation_holds[0].resource.intended_path, "api/ingress.yaml")
+        self.assertEqual(report.generation_holds[0].reason.missing_field, "service.port")
 
 
 class KubeconformResolverTests(unittest.TestCase):
