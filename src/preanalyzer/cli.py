@@ -42,7 +42,15 @@ def main(argv: list[str] | None = None) -> int:
         semantic_mode=semantic_mode,
         profile_path=Path(args.profile) if args.profile else None,
     )
-    print(f"achieved_level={report.achieved_level} out={args.out}")
+    hold_summary = ""
+    if report.generation_holds:
+        first_hold = report.generation_holds[0]
+        path = first_hold.resource.intended_path or first_hold.resource.name or first_hold.resource.kind
+        hold_summary = f" hold_status={first_hold.display_status} first_hold={path}"
+    print(
+        f"achieved_level={report.achieved_level} "
+        f"generation_holds={len(report.generation_holds)} out={args.out}{hold_summary}"
+    )
     return 0
 
 
