@@ -49,13 +49,13 @@ The first section should explain:
 - It does not jump directly from repository contents to free-form YAML.
 - Unknown or conflicting values stay visible as questions or unresolved fields instead of being silently guessed.
 
-## LLM Requirement
+## LLM Integration
 
-The official README path must require an OpenAI-compatible semantic LLM provider.
+The official README path must not require an LLM for the first sample run.
 
-The README should not present `--no-llm` as the primary or recommended path. The project code still supports disabled semantic mode, but the external-user README should describe LLM-backed analysis as the expected way to use the tool.
+The README should describe the deterministic/default path first, then add a clear section for users who want to enable an OpenAI-compatible semantic LLM provider. The LLM-backed path is an optional enhancement for bounded semantic interpretation tasks, not a prerequisite for trying the tool.
 
-The Quick Start should include these environment variables:
+The LLM section should include these environment variables:
 
 ```bash
 export SEMANTIC_LLM_BASE_URL="https://your-llm.example/v1"
@@ -66,7 +66,25 @@ export SEMANTIC_LLM_TIMEOUT_SECONDS="30"
 
 The README must warn users not to commit real API keys or tokens.
 
-Current code requires `SEMANTIC_LLM_API_KEY` to be non-empty. If a local OpenAI-compatible endpoint does not require authentication, the README should instruct users to provide a non-secret placeholder value such as `none`, while making clear that this is only for unauthenticated local endpoints.
+The README should tell users to check the endpoint's real model id before running LLM-backed analysis:
+
+```bash
+curl "$SEMANTIC_LLM_BASE_URL/models"
+```
+
+Users should set `SEMANTIC_LLM_MODEL` to a model id returned by that endpoint instead of guessing one.
+
+Current code requires `SEMANTIC_LLM_API_KEY` to be non-empty. If a local OpenAI-compatible endpoint does not require authentication, the README should instruct users to provide a non-secret placeholder value such as `none`, while making clear that this is only for unauthenticated local endpoints that tolerate a placeholder key.
+
+The LLM-enabled command example should use:
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
+  tests/fixtures/repos/node-express-like \
+  --profile tests/fixtures/profiles/dev-profile.yaml \
+  --semantic-mode openai_compatible \
+  --out out/node-express-like-llm
+```
 
 ## Installation Design
 
@@ -89,13 +107,13 @@ The README must explain that `kubeconform: skipped` in `13-validation-report.yam
 
 ## Quick Start Design
 
-The first runnable example should analyze an included sample repository. It should use the LLM-backed mode:
+The first runnable example should analyze an included sample repository without requiring external LLM setup:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
   tests/fixtures/repos/node-express-like \
   --profile tests/fixtures/profiles/dev-profile.yaml \
-  --semantic-mode openai_compatible \
+  --no-llm \
   --out out/node-express-like
 ```
 
@@ -108,7 +126,7 @@ After the sample run, show the same flow for a user repository:
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
   ./my-repo \
-  --semantic-mode openai_compatible \
+  --no-llm \
   --out out/my-repo
 ```
 
@@ -142,7 +160,7 @@ The README must make these limits explicit:
 
 - This is not yet a one-command production deployment tool.
 - Step 13-15 deploy check, smoke test execution, and repair loop automation are not fully implemented.
-- The LLM is bounded to semantic interpretation tasks and must not be described as directly writing final free-form Kubernetes YAML.
+- If enabled, the LLM is bounded to semantic interpretation tasks and must not be described as directly writing final free-form Kubernetes YAML.
 - Missing values are not invented; users should expect unresolved questions and profile edits.
 - Kubernetes schema validation is incomplete when `kubeconform` is skipped.
 
@@ -163,7 +181,8 @@ The README update is acceptable when:
 
 - A new external user can identify the tool's purpose from the first section.
 - Installation includes all project dependencies through editable install rather than a partial manual dependency list.
-- Quick Start uses `--semantic-mode openai_compatible` and includes required `SEMANTIC_LLM_*` settings.
+- Quick Start can be run without external LLM setup.
+- A separate LLM integration section explains `--semantic-mode openai_compatible`, required `SEMANTIC_LLM_*` settings, and the unauthenticated local endpoint placeholder case.
 - A sample repository command and a user repository command are both present.
 - The main output files and practical use cases are easy to find.
 - Limitations prevent readers from mistaking the project for finished production deployment automation.
