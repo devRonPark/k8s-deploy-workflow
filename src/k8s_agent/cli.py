@@ -83,6 +83,21 @@ def _add_source_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
+    return _validate_source_target(
+        args,
+        command="prepare",
+        non_interactive=bool(args.non_interactive),
+        answers_file=Path(args.answers_file) if args.answers_file else None,
+    )
+
+
+def _validate_source_target(
+    args: argparse.Namespace,
+    *,
+    command: str,
+    non_interactive: bool = False,
+    answers_file: Path | None = None,
+) -> PrepareRequest:
     repo_url = args.repo_url
     local_path = Path(args.local_path) if args.local_path else None
     has_repo_url = bool(repo_url)
@@ -94,16 +109,16 @@ def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
             raise AgentError(
                 code="CLI-102",
                 exit_code=2,
-                message="prepare accepts exactly one source, but both --repo-url and --local-path were provided.",
-                resolution="Choose one source option. Example: k8s-agent prepare --repo-url https://github.com/org/app.git --target staging",
-                context={"command": "prepare"},
+                message=f"{command} accepts exactly one source, but both --repo-url and --local-path were provided.",
+                resolution=f"Choose one source option. Example: k8s-agent {command} --repo-url https://github.com/org/app.git --target staging",
+                context={"command": command},
             )
         raise AgentError(
             code="CLI-101",
             exit_code=2,
-            message="prepare requires an explicit source.",
-            resolution="Pass either --repo-url or --local-path. Example: " + example,
-            context={"command": "prepare"},
+            message=f"{command} requires an explicit source.",
+            resolution="Pass either --repo-url or --local-path. Example: " + example.replace("prepare", command, 1),
+            context={"command": command},
         )
 
     if local_path is not None and args.ref:
@@ -111,8 +126,8 @@ def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
             code="CLI-103",
             exit_code=2,
             message="--ref can only be used with --repo-url.",
-            resolution="Remove --ref for local sources. Example: " + example,
-            context={"command": "prepare"},
+            resolution="Remove --ref for local sources. Example: " + example.replace("prepare", command, 1),
+            context={"command": command},
         )
 
     if args.target not in TARGETS:
@@ -120,12 +135,11 @@ def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
             code="CLI-104",
             exit_code=2,
             message=f"unsupported target '{args.target}'.",
-            resolution="Use one of development, staging, or production. Example: " + example,
-            context={"command": "prepare", "target": args.target},
+            resolution="Use one of development, staging, or production. Example: " + example.replace("prepare", command, 1),
+            context={"command": command, "target": args.target},
         )
 
-    answers_file = Path(args.answers_file) if args.answers_file else None
-    if args.non_interactive and answers_file is None:
+    if non_interactive and answers_file is None:
         raise AgentError(
             code="CLI-105",
             exit_code=2,
@@ -139,7 +153,7 @@ def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
         local_path=local_path,
         ref=args.ref,
         target=args.target,
-        non_interactive=bool(args.non_interactive),
+        non_interactive=non_interactive,
         answers_file=answers_file,
     )
 
@@ -208,6 +222,42 @@ def _run_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_analyze(args: argparse.Namespace) -> int:
+    request = _validate_source_target(args, command="analyze")
+    from k8s_agent.application import AgentApplication
+
+    outcome = AgentApplication().analyze(request)
+    print(
+        f"analyze run_id={outcome.run_id} target={outcome.target} source={outcome.source_kind} "
+        f"state={outcome.state.value} run_root={outcome.run_root} next={outcome.message}"
+    )
+    return outcome.exit_code
+
+
+def _run_plan(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    plan = AgentApplication().plan(args.run_id)
+    print(f"plan run_id={args.run_id} tasks={len(plan.tasks)}")
+    return 0
+
+
+def _run_generate(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    bundle = AgentApplication().generate(args.run_id, profile_revision=args.profile_revision)
+    print(f"generate run_id={args.run_id} files={len(bundle.files)} resources={len(bundle.resource_refs)}")
+    return 0
+
+
+def _run_validate(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    report = AgentApplication().validate(args.run_id)
+    print(f"validate run_id={args.run_id} status={report.status} manifest_ready={report.manifest_ready}")
+    return 0
+
+
 def _run_skeleton(command: str) -> int:
     print(f"{command} accepted")
     return 0
@@ -239,6 +289,14 @@ def _main_impl(argv: Sequence[str] | None) -> int:
         return _run_explain(args)
     if args.command == "export":
         return _run_export(args)
+    if args.command == "analyze":
+        return _run_analyze(args)
+    if args.command == "plan":
+        return _run_plan(args)
+    if args.command == "generate":
+        return _run_generate(args)
+    if args.command == "validate":
+        return _run_validate(args)
     return _run_skeleton(args.command)
 
 
