@@ -27,13 +27,22 @@ from preanalyzer.analyzer.runtime_command_resolver import analyze_runtime_comman
 from preanalyzer.analyzer.scanner import build_inventory, snapshot
 from preanalyzer.models.evidence import EvidenceModel
 from preanalyzer.models.inventory import ArtifactInventory
+from preanalyzer.models.profile import DeploymentProfile
+from preanalyzer.models.report import ValidationReport
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
 from preanalyzer.models.semantic_agent import SemanticAgentRunResult
 from preanalyzer.models.snapshot import RepositorySnapshot
+from preanalyzer.reconciliation.engine import ReconciliationResult
+from preanalyzer.reconciliation.engine import AcceptedSemanticCommand
+from preanalyzer.reconciliation.engine import reconcile
+from preanalyzer.reconciliation.profile_merge import merge
+from preanalyzer.renderer.engine import TemplateRenderer
+from preanalyzer.rules_version import RULES_VERSION
 from preanalyzer.semantic.agent import AgentDecisionProvider, run_semantic_agent
 from preanalyzer.semantic.task_builder import build_runtime_command_semantic_tasks
 from preanalyzer.semantic.tools import build_semantic_tool_context
 from preanalyzer.semantic.tools.common import SemanticToolContextBuildError
+from preanalyzer.validator.pipeline import ValidationPipeline
 
 
 SNAPSHOT_MODES = {"workspace", "commit"}
@@ -80,7 +89,7 @@ def run_phase1_analysis(
         evidence = build_evidence(inventory, parsed_artifacts)
         evidence = EvidenceModel(facts=evidence.facts, warnings=evidence.warnings + parse_warnings)
         rules = infer(evidence)
-        semantic_audit = _build_semantic_analysis_audit(
+        semantic_audit, _accepted_commands = _build_semantic_analysis_audit(
             repository_root=analysis_root,
             evidence=evidence,
             rules=rules,
@@ -103,6 +112,151 @@ def run_phase1_analysis(
             shutil.rmtree(temp_tree, ignore_errors=True)
 
 
+def run_analysis(
+    repo: Path,
+    output_dir: Path,
+    url: str | None,
+    ref: str | None,
+    clock: Callable[[], datetime],
+    *,
+    mode: str = "workspace",
+    semantic_mode: str = "disabled",
+    semantic_decision_provider: AgentDecisionProvider | None = None,
+    semantic_model: str | None = None,
+    profile_path: Path | None = None,
+) -> ValidationReport:
+    if mode not in SNAPSHOT_MODES:
+        raise ValueError(f"unknown snapshot mode: {mode!r}")
+    if semantic_mode not in SEMANTIC_MODES:
+        raise ValueError(f"unknown semantic mode: {semantic_mode!r}")
+
+    output_dir = Path(output_dir)
+    git_repo = resolve_repository_path(repo)
+    analysis_root = git_repo
+    extra_warnings: list[str] = []
+    temp_tree: Path | None = None
+    if mode == "commit":
+        temp_tree = _extract_commit_tree(git_repo)
+        if temp_tree is not None:
+            analysis_root = temp_tree
+        else:
+            extra_warnings.append("commit snapshot unavailable; analyzed working tree")
+
+    try:
+        repo_snapshot = snapshot(repo=analysis_root, url=url, ref=ref, clock=clock, mode=mode, git_repo=git_repo)
+        if extra_warnings:
+            repo_snapshot = repo_snapshot.model_copy(
+                update={"warnings": sorted(repo_snapshot.warnings + extra_warnings)}
+            )
+        inventory = build_inventory(repo=analysis_root, snapshot=repo_snapshot)
+        parsed_artifacts, parse_warnings = _parse_inventory(analysis_root, inventory)
+        evidence = build_evidence(inventory, parsed_artifacts)
+        evidence = EvidenceModel(facts=evidence.facts, warnings=evidence.warnings + parse_warnings)
+        rules = infer(evidence)
+        semantic_audit, accepted_commands = _build_semantic_analysis_audit(
+            repository_root=analysis_root,
+            evidence=evidence,
+            rules=rules,
+            semantic_mode=semantic_mode,
+            decision_provider=semantic_decision_provider,
+            semantic_model=semantic_model,
+            semantic_task_max_tool_calls=None,
+        )
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _write_yaml(output_dir / "00-repository-snapshot.yaml", {"repository_snapshot": repo_snapshot.model_dump()})
+        _write_yaml(output_dir / "01-artifact-inventory.yaml", {"artifact_inventory": inventory.model_dump()})
+        _write_yaml(output_dir / "02-evidence-model.yaml", {"evidence_model": evidence.model_dump()})
+        _write_yaml(output_dir / "03-rule-inference.yaml", {"rule_inference": rules.model_dump()})
+        _write_yaml(output_dir / "04-semantic-analysis.yaml", {"semantic_analysis": semantic_audit})
+
+        result = reconcile(rules, evidence, accepted_commands)
+        intent = result.intent
+        questions = result.questions
+        ready_for_level2 = False
+        profile = None
+        if profile_path is not None:
+            profile = DeploymentProfile.model_validate(
+                yaml.safe_load(Path(profile_path).read_text(encoding="utf-8")) or {}
+            )
+            merged = merge(result, profile)
+            intent = merged.intent
+            questions = merged.questions
+            ready_for_level2 = merged.ready_for_level2
+
+        render = TemplateRenderer(repo_snapshot.commit_sha, RULES_VERSION).render(intent)
+        manifest_dir = output_dir / "12-generated-manifests"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        for relative_path, text in render.files.items():
+            target = manifest_dir / relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+
+        _write_extended_outputs(
+            output_dir=output_dir,
+            reconciliation=result,
+            intent=intent,
+            questions=questions,
+            profile=profile,
+            ready_for_level2=ready_for_level2,
+            render_deferred=[deferred.__dict__ for deferred in render.deferred],
+        )
+
+        report = ValidationPipeline().run(
+            manifest_dir,
+            rendered_placeholders=render.achieved_level_cap == 0,
+        )
+        _write_yaml(output_dir / "13-validation-report.yaml", {"validation_report": report.model_dump()})
+        _write_readiness_checklist(output_dir / "14-deployment-readiness-checklist.md", questions.questions)
+        _write_yaml(output_dir / "15-smoke-test-plan.yaml", {"smoke_test_plan": {"checks": []}})
+        return report
+    finally:
+        if temp_tree is not None:
+            shutil.rmtree(temp_tree, ignore_errors=True)
+
+
+def _write_extended_outputs(
+    *,
+    output_dir: Path,
+    reconciliation: ReconciliationResult,
+    intent,
+    questions,
+    profile: DeploymentProfile | None,
+    ready_for_level2: bool,
+    render_deferred: list[dict],
+) -> None:
+    _write_yaml(
+        output_dir / "05-reconciliation-report.yaml",
+        {
+            "reconciliation_report": {
+                "ready_for_level2": ready_for_level2,
+                "component_count": len(reconciliation.component_model.components),
+                "runtime_count": len(reconciliation.runtime_model.runtimes),
+                "dependency_edge_count": len(reconciliation.dependency_model.edges),
+                "deferred": render_deferred,
+            }
+        },
+    )
+    _write_yaml(output_dir / "06-component-model.yaml", {"component_model": reconciliation.component_model.model_dump()})
+    _write_yaml(output_dir / "07-runtime-model.yaml", {"runtime_model": reconciliation.runtime_model.model_dump()})
+    _write_yaml(output_dir / "08-dependency-model.yaml", {"dependency_model": reconciliation.dependency_model.model_dump()})
+    _write_yaml(output_dir / "09-kubernetes-intent.yaml", {"kubernetes_intent": intent.model_dump()})
+    _write_yaml(output_dir / "10-unresolved-questions.yaml", {"unresolved_questions": questions.model_dump()})
+    _write_yaml(
+        output_dir / "11-deployment-profile.yaml",
+        {"deployment_profile": profile.model_dump() if profile is not None else None},
+    )
+
+
+def _write_readiness_checklist(path: Path, questions) -> None:
+    lines = ["# Deployment Readiness", ""]
+    if questions:
+        lines.extend(f"- [ ] {question.id}: {question.question}" for question in questions)
+    else:
+        lines.append("- [x] No unresolved deployment questions.")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _build_semantic_analysis_audit(
     *,
     repository_root: Path,
@@ -112,7 +266,7 @@ def _build_semantic_analysis_audit(
     decision_provider: AgentDecisionProvider | None,
     semantic_model: str | None,
     semantic_task_max_tool_calls: int | None,
-) -> dict:
+) -> tuple[dict, list[AcceptedSemanticCommand]]:
     runtime_analysis = analyze_runtime_commands(evidence, rules)
     task_build_result = build_runtime_command_semantic_tasks(runtime_analysis)
     if semantic_task_max_tool_calls is not None:
@@ -145,17 +299,20 @@ def _build_semantic_analysis_audit(
             setup_statuses.append("provider_config_error")
 
     enabled = semantic_mode != "disabled"
+    accepted: list[AcceptedSemanticCommand] = []
     if enabled and provider is not None:
         for task in task_build_result.tasks:
-            runs.append(
-                _run_semantic_task_for_audit(
-                    repository_root=repository_root,
-                    task=task,
-                    rules=rules,
-                    evidence=evidence,
-                    decision_provider=provider,
-                )
+            run_audit, result = _run_semantic_task_for_audit(
+                repository_root=repository_root,
+                task=task,
+                rules=rules,
+                evidence=evidence,
+                decision_provider=provider,
             )
+            runs.append(run_audit)
+            accepted_command = _extract_accepted_command(result)
+            if accepted_command is not None:
+                accepted.append(accepted_command)
     elif enabled and task_build_result.tasks:
         setup_statuses.append("provider_unavailable")
 
@@ -168,7 +325,28 @@ def _build_semantic_analysis_audit(
         "task_build_result": task_build_result.model_dump(),
         "runs": runs,
         "summary": _semantic_summary(task_build_result, runs, setup_statuses),
-    }
+    }, accepted
+
+
+def _extract_accepted_command(result: SemanticAgentRunResult | None) -> AcceptedSemanticCommand | None:
+    if result is None or result.verification_result is None or result.resolution is None:
+        return None
+    if str(result.verification_result.status) != "accepted":
+        return None
+    recommended_id = result.resolution.recommended_candidate_id
+    if not recommended_id:
+        return None
+    candidate = next(
+        (c for c in result.resolution.candidates if c.candidate_id == recommended_id),
+        None,
+    )
+    if candidate is None or not isinstance(candidate.value, dict) or "command" not in candidate.value:
+        return None
+    return AcceptedSemanticCommand(
+        component_id=candidate.component_id,
+        command=str(candidate.value["command"]),
+        evidence_refs=list(candidate.evidence_refs),
+    )
 
 
 def _run_semantic_task_for_audit(
@@ -178,12 +356,12 @@ def _run_semantic_task_for_audit(
     rules: RuleInferenceSet,
     evidence: EvidenceModel,
     decision_provider: AgentDecisionProvider,
-) -> dict:
+) -> tuple[dict, SemanticAgentRunResult | None]:
     rules = _rules_with_implicit_root_if_needed(rules, task.component_id)
     try:
         tool_context = build_semantic_tool_context(repository_root, task, rules, evidence)
     except SemanticToolContextBuildError as exc:
-        return _empty_semantic_run_audit(task, "context_build_error", message=exc.code)
+        return _empty_semantic_run_audit(task, "context_build_error", message=exc.code), None
 
     try:
         result = run_semantic_agent(
@@ -193,8 +371,8 @@ def _run_semantic_task_for_audit(
             phase1_evidence=evidence,
         )
     except Exception:
-        return _empty_semantic_run_audit(task, "semantic_agent_error")
-    return _semantic_run_audit(task, result)
+        return _empty_semantic_run_audit(task, "semantic_agent_error"), None
+    return _semantic_run_audit(task, result), result
 
 
 def _rules_with_implicit_root_if_needed(rules: RuleInferenceSet, component_id: str) -> RuleInferenceSet:

@@ -1,0 +1,4 @@
+registry: reg.internal.demo
+namespace: demo
+ingress_host: app.demo.internal
+image_tag: v0

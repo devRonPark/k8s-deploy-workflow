@@ -35,6 +35,20 @@ def rules_for_fastapi():
     return infer(evidence)
 
 
+def rules_for_port_conflict():
+    repo = FIXTURES / "port-conflict-node"
+    inventory = build_inventory(repo, snapshot(repo, None, None, fixed_clock))
+    evidence = build_evidence(
+        inventory,
+        {
+            "docker-compose.yml": parse_compose(repo / "docker-compose.yml"),
+            "Dockerfile": parse_dockerfile(repo / "Dockerfile"),
+            "package.json": parse_nodejs(repo / "package.json"),
+        },
+    )
+    return infer(evidence)
+
+
 class RuleRuntimeCandidateTests(unittest.TestCase):
     def test_runtime_versions_promoted_from_dockerfile_base_images(self):
         rules = rules_for_fastapi()
@@ -88,6 +102,21 @@ class RuleRuntimeCandidateTests(unittest.TestCase):
                 "classification": "rule_inference",
             },
             [candidate.model_dump() for candidate in rules.runtime_command_candidates],
+        )
+
+    def test_compose_container_ports_promoted_to_runtime_port_candidates(self):
+        rules = rules_for_port_conflict()
+
+        self.assertIn(
+            {
+                "component_id": "web",
+                "port": 8081,
+                "source": "compose_ports",
+                "confidence": "medium",
+                "evidence_refs": ["F0009"],
+                "classification": "rule_inference",
+            },
+            [candidate.model_dump() for candidate in rules.runtime_port_candidates],
         )
 
 
