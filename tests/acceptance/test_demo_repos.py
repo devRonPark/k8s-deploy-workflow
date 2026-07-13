@@ -79,5 +79,31 @@ class ShellEntrypointTests(unittest.TestCase):
         self.assertEqual(backend["workload"]["command"]["source"], "llm_semantic_inference")
 
 
+class PortConflictTests(unittest.TestCase):
+    def test_conflicting_ports_route_question_and_no_port_guess(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            run_analysis(
+                Path("tests/fixtures/repos/port-conflict-node"),
+                output_dir,
+                url=None,
+                ref=None,
+                clock=clock,
+                semantic_mode="disabled",
+            )
+            questions = yaml.safe_load((output_dir / "10-unresolved-questions.yaml").read_text())
+            runtime = yaml.safe_load((output_dir / "07-runtime-model.yaml").read_text())
+
+        port_questions = [
+            question
+            for question in questions["unresolved_questions"]["questions"]
+            if question["answer_type"] == "port"
+        ]
+        self.assertEqual(len(port_questions), 1)
+        self.assertEqual(sorted(port_questions[0]["candidates"]), ["8080", "8081"])
+        web = next(entry for entry in runtime["runtime_model"]["runtimes"] if entry["component_id"] == "web")
+        self.assertIsNone(web["port"])
+
+
 if __name__ == "__main__":
     unittest.main()

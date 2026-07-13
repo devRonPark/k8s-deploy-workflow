@@ -256,10 +256,18 @@ def _runtime_port_candidates(
     component_candidates: list[ComponentCandidate],
 ) -> list[RuntimePortCandidate]:
     candidates: list[RuntimePortCandidate] = []
+    component_ids = {candidate.component_id for candidate in component_candidates}
     for fact in evidence.facts_by_type("dockerfile_expose"):
         component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
         if component_id is not None:
             candidates.append(RuntimePortCandidate(component_id, int(fact.value), fact.source, "high", [fact.evidence_id]))
+    for fact in evidence.facts_by_type("compose_port"):
+        service = fact.value.get("service")
+        container_port = fact.value.get("container_port")
+        if service in component_ids and isinstance(container_port, int):
+            candidates.append(
+                RuntimePortCandidate(service, container_port, fact.source, "medium", [fact.evidence_id])
+            )
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
 
 
