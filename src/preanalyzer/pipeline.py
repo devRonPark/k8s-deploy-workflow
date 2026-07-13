@@ -653,6 +653,6 @@ def _pair_compose_files(compose_files: list) -> list[tuple[str, str | None]]:
 
 def _write_yaml(path: Path, document: dict) -> None:
     path.write_text(
-        yaml.safe_dump(document, sort_keys=False, allow_unicode=False),
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )

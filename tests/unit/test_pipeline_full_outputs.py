@@ -91,12 +91,14 @@ class FullOutputTests(unittest.TestCase):
             report_yaml = yaml.safe_load(
                 (output_dir / "13-validation-report.yaml").read_text(encoding="utf-8")
             )
+            report_text = (output_dir / "13-validation-report.yaml").read_text(encoding="utf-8")
             reconciliation_yaml = yaml.safe_load(
                 (output_dir / "05-reconciliation-report.yaml").read_text(encoding="utf-8")
             )
 
         holds = report_yaml["validation_report"]["generation_holds"]
         self.assertEqual(holds[0]["display_status"], "생성 보류")
+        self.assertIn("생성 보류", report_text)
         self.assertEqual(holds[0]["resource"]["kind"], "Ingress")
         self.assertEqual(holds[0]["resource"]["intended_path"], "root/ingress.yaml")
         self.assertEqual(holds[0]["reason"]["code"], "unresolved_service_port")
