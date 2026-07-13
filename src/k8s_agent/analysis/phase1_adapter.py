@@ -27,6 +27,7 @@ PHASE1_ARTIFACTS = [
 class Phase1Result:
     run_id: str
     analysis_dir: Path
+    repository_root: Path
     checksums: dict[str, str]
     artifact_count: int
 
@@ -59,6 +60,7 @@ class Phase1Adapter:
         result = Phase1Result(
             run_id=run_id,
             analysis_dir=analysis_dir,
+            repository_root=source.path,
             checksums=checksums,
             artifact_count=len(PHASE1_ARTIFACTS),
         )
