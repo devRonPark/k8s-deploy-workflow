@@ -161,10 +161,23 @@
   - external exposure가 `public`일 때만 Ingress 생성, Secret value는 렌더링하지 않음
   - 동일 Profile의 byte-identical bundle checksum 검증
 
+### Task 13: 정적 검증 파이프라인과 manifest-ready 계산
+
+- 상태: 완료
+- commit: `f48e86e56c558c0b57c72876bd8ce39b76e2df62`
+- commit message: `feat(validation): calculate manifest readiness`
+- 변경:
+  - `ValidationFinding`, `ValidationStage`, `ValidationReport` 모델 추가
+  - YAML syntax, duplicate resource, Service selector, Service targetPort internal validation 추가
+  - kubeconform/kustomize adapter skeleton과 tool-missing/not-run 상태 정규화 추가
+  - `ValidationOrchestrator.validate(bundle, profile, destination)`가 stage 순서와 manifest-ready를 계산
+  - rendered bundle acceptance에서 internal validation ready 상태 검증
+  - project-managed kubeconform preflight 확인 완료
+
 ## 현재 Task
 
-- 현재 Task: Task 13 정적 검증 파이프라인과 manifest-ready 계산
-- 다음 Task: Task 13 정적 검증 파이프라인과 manifest-ready 계산
+- 현재 Task: Task 14 제한된 자동 리페어와 재검증 루프
+- 다음 Task: Task 14 제한된 자동 리페어와 재검증 루프
 
 ## 실행한 테스트와 결과
 
@@ -303,6 +316,14 @@
 - Task 12 Green:
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/render -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_manifest_renderer tests.acceptance.test_manifest_reproducibility -v`
   - 결과: 통과, unit `Ran 4 tests`, acceptance `Ran 3 tests`, `OK`
+- Task 13 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/validation -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_manifest_validation -v`
+  - 결과: 기대한 실패. `k8s_agent.validation.kubeconform`와 `k8s_agent.validation.internal` 미구현으로 실패.
+- Task 13 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/validation -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_manifest_validation -v`
+  - 결과: 통과, unit `Ran 4 tests`, acceptance `Ran 1 test`, `OK`
+  - kubeconform preflight: `python3 scripts/ensure_kubeconform.py --check`
+  - 결과: 통과, `.tools/kubeconform/v0.8.0/linux-amd64/kubeconform`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -316,6 +337,7 @@
 - Task 10 완료 조건에는 전체 테스트가 필요하지 않았다. 질문·답변 기능 묶음에 한정된다.
 - Task 11 완료 시 전체 테스트를 실행했다. 이유: 공통 Decision/Profile 계약이 Phase 1 이후 전체 기능 묶음의 연결점이 됨.
 - Task 12 완료 조건에는 전체 테스트가 필요하지 않았다. Profile 계약 이후의 독립 renderer 기능이다.
+- Task 13 완료 조건에는 전체 테스트가 필요하지 않았다. Renderer 결과에 대한 검증 기능 묶음에 한정한다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -334,6 +356,7 @@
 - Task 10의 CLI non-interactive 검사는 Task 15 전체 orchestration 전까지 bootstrap 질문 세트를 사용해 answers file 계약과 BLOCKED exit code를 검증한다.
 - Task 11 profile은 아직 renderer 입력으로 필요한 최소 JSON-pointer values/holds/conflicts 계약만 보존하고, 구체 Kubernetes resource shape은 Task 12에서 생성한다.
 - Task 12 renderer는 Deployment Profile만 읽고, Evidence/Topology/Intent를 직접 조회하지 않는다.
+- Task 13 external adapters는 실제 tool 실행 전 단계로 상태 정규화와 stage 계약을 고정했다.
 
 ## Blocker
 
@@ -341,4 +364,4 @@
 
 ## 다음 Task
 
-- Task 13: 정적 검증 파이프라인과 manifest-ready 계산
+- Task 14: 제한된 자동 리페어와 재검증 루프
