@@ -24,6 +24,11 @@ def _validation_holds(output_dir: Path) -> list[dict]:
     return report["validation_report"].get("generation_holds", [])
 
 
+def _ready_for_level2(output_dir: Path) -> bool:
+    report = yaml.safe_load((output_dir / "05-reconciliation-report.yaml").read_text(encoding="utf-8"))
+    return report["reconciliation_report"]["ready_for_level2"]
+
+
 def _assert_generated_manifests_do_not_contain_invalid_port_markers(test_case: unittest.TestCase, output_dir: Path) -> None:
     for path in (output_dir / "12-generated-manifests").rglob("*.yaml"):
         text = path.read_text(encoding="utf-8")
@@ -108,6 +113,7 @@ class PortConflictTests(unittest.TestCase):
             questions = yaml.safe_load((output_dir / "10-unresolved-questions.yaml").read_text())
             runtime = yaml.safe_load((output_dir / "07-runtime-model.yaml").read_text())
             holds = _validation_holds(output_dir)
+            ready_for_level2 = _ready_for_level2(output_dir)
             _assert_generated_manifests_do_not_contain_invalid_port_markers(self, output_dir)
 
         port_questions = [
@@ -134,6 +140,8 @@ class PortConflictTests(unittest.TestCase):
             sorted(str(candidate["value"]) for candidate in ingress_holds[0]["reason"]["candidates"]),
             ["8080", "8081"],
         )
+        self.assertFalse(ready_for_level2)
+
 
 class DemoSpectrumTests(unittest.TestCase):
     def _run(self, repo: str, **kwargs) -> Path:
@@ -193,6 +201,7 @@ class DemoSpectrumTests(unittest.TestCase):
         self.assertEqual(ingress_holds[0]["display_status"], "생성 보류")
         self.assertEqual(ingress_holds[0]["resolution"]["status"], "unresolved")
         self.assertIsNotNone(ingress_holds[0]["resolution"]["profile_field"])
+        self.assertFalse(_ready_for_level2(output_dir))
         _assert_generated_manifests_do_not_contain_invalid_port_markers(self, output_dir)
 
     def test_no_secret_value_leaks_anywhere(self):

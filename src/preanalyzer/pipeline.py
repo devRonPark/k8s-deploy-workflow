@@ -194,13 +194,14 @@ def run_analysis(
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8")
 
+        reported_ready_for_level2 = ready_for_level2 and not render.generation_holds
         _write_extended_outputs(
             output_dir=output_dir,
             reconciliation=result,
             intent=intent,
             questions=questions,
             profile=profile,
-            ready_for_level2=ready_for_level2,
+            ready_for_level2=reported_ready_for_level2,
             render_deferred=[deferred.__dict__ for deferred in render.deferred],
         )
 
