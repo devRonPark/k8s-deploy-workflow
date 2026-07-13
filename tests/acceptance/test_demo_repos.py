@@ -105,5 +105,77 @@ class PortConflictTests(unittest.TestCase):
         self.assertIsNone(web["port"])
 
 
+class DemoSpectrumTests(unittest.TestCase):
+    def _run(self, repo: str, **kwargs) -> Path:
+        output_dir = Path(tempfile.mkdtemp())
+        run_analysis(Path(repo), output_dir, url=None, ref=None, clock=clock, **kwargs)
+        return output_dir
+
+    def test_node_express_completes_manifests(self):
+        output_dir = self._run(
+            "tests/fixtures/repos/node-express-like",
+            semantic_mode="disabled",
+            profile_path=PROFILE,
+        )
+
+        manifests = list((output_dir / "12-generated-manifests").rglob("*.yaml"))
+        self.assertTrue(any(path.name == "deployment.yaml" for path in manifests))
+
+    def test_fastapi_multi_component_db_is_dependency(self):
+        output_dir = self._run(
+            "tests/fixtures/repos/fastapi-fullstack-like",
+            semantic_mode="disabled",
+            profile_path=PROFILE,
+        )
+        intent = yaml.safe_load((output_dir / "09-kubernetes-intent.yaml").read_text())
+
+        db = next(
+            component
+            for component in intent["kubernetes_intent"]["components"]
+            if component["component_id"] == "db"
+        )
+        self.assertIsNone(db["workload"])
+
+    def test_jpetstore_no_dockerfile_defers_and_flags_build(self):
+        output_dir = self._run("tests/fixtures/repos/jpetstore-like", semantic_mode="disabled")
+
+        rules_text = (output_dir / "03-rule-inference.yaml").read_text()
+        self.assertIn("dockerfile_needed", rules_text)
+        self.assertFalse(
+            any(path.name == "deployment.yaml" for path in (output_dir / "12-generated-manifests").rglob("*.yaml"))
+        )
+
+    def test_no_secret_value_leaks_anywhere(self):
+        output_dir = self._run(
+            "tests/fixtures/repos/fastapi-fullstack-like",
+            semantic_mode="disabled",
+            profile_path=PROFILE,
+        )
+
+        for path in output_dir.rglob("*"):
+            if path.is_file():
+                self.assertNotIn(
+                    "changethis",
+                    path.read_text(encoding="utf-8", errors="ignore"),
+                    str(path),
+                )
+
+    def test_determinism_full_tree(self):
+        first = self._run(
+            "tests/fixtures/repos/node-express-like",
+            semantic_mode="disabled",
+            profile_path=PROFILE,
+        )
+        second = self._run(
+            "tests/fixtures/repos/node-express-like",
+            semantic_mode="disabled",
+            profile_path=PROFILE,
+        )
+
+        names = [path.name for path in first.glob("0*.yaml")]
+        for name in names:
+            self.assertEqual((first / name).read_bytes(), (second / name).read_bytes(), name)
+
+
 if __name__ == "__main__":
     unittest.main()
