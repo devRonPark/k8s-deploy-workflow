@@ -108,6 +108,7 @@ class PortConflictTests(unittest.TestCase):
             questions = yaml.safe_load((output_dir / "10-unresolved-questions.yaml").read_text())
             runtime = yaml.safe_load((output_dir / "07-runtime-model.yaml").read_text())
             holds = _validation_holds(output_dir)
+            _assert_generated_manifests_do_not_contain_invalid_port_markers(self, output_dir)
 
         port_questions = [
             question
@@ -133,8 +134,6 @@ class PortConflictTests(unittest.TestCase):
             sorted(str(candidate["value"]) for candidate in ingress_holds[0]["reason"]["candidates"]),
             ["8080", "8081"],
         )
-        _assert_generated_manifests_do_not_contain_invalid_port_markers(self, output_dir)
-
 
 class DemoSpectrumTests(unittest.TestCase):
     def _run(self, repo: str, **kwargs) -> Path:
