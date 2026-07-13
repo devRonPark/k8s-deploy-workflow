@@ -174,10 +174,23 @@
   - rendered bundle acceptance에서 internal validation ready 상태 검증
   - project-managed kubeconform preflight 확인 완료
 
+### Task 14: 제한된 자동 리페어와 재검증 루프
+
+- 상태: 완료
+- commit: `94ac3eee57a347d42d389139a13a4438fc14d224`
+- commit message: `feat(repair): add bounded manifest repair loop`
+- 변경:
+  - allowlisted repair strategy map 추가
+  - Service selector/targetPort를 Deployment pod labels/containerPort에 맞추는 bounded repair 추가
+  - `RepairController.repair(bundle, profile, report)`가 generated file path guard와 repeated strategy suppression 적용
+  - 각 attempt를 `repairs/attempt-N.yaml`로 기록
+  - repair 후 `ValidationOrchestrator`로 전체 정적 검증 재실행
+  - renderer/validator/profile 전체 회귀 확인 완료
+
 ## 현재 Task
 
-- 현재 Task: Task 14 제한된 자동 리페어와 재검증 루프
-- 다음 Task: Task 14 제한된 자동 리페어와 재검증 루프
+- 현재 Task: Task 15 Observe–Decide–Act–Evaluate prepare 오케스트레이션
+- 다음 Task: Task 15 Observe–Decide–Act–Evaluate prepare 오케스트레이션
 
 ## 실행한 테스트와 결과
 
@@ -324,6 +337,15 @@
   - 결과: 통과, unit `Ran 4 tests`, acceptance `Ran 1 test`, `OK`
   - kubeconform preflight: `python3 scripts/ensure_kubeconform.py --check`
   - 결과: 통과, `.tools/kubeconform/v0.8.0/linux-amd64/kubeconform`
+- Task 14 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/repair -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_repair_loop -v`
+  - 결과: 기대한 실패. `k8s_agent.repair.controller`와 `k8s_agent.repair.strategies` 미구현으로 실패.
+- Task 14 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/repair -p 'test_*.py' -v && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_repair_loop -v`
+  - 결과: 통과, unit `Ran 4 tests`, acceptance `Ran 1 test`, `OK`
+  - 전체 테스트 실행 이유: 리페어가 공통 생성물과 검증 결과를 변경하므로 기존 재현성과 정적 검증 회귀를 확인해야 함.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 433 tests in 59.585s`, `OK (skipped=1)`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -338,6 +360,7 @@
 - Task 11 완료 시 전체 테스트를 실행했다. 이유: 공통 Decision/Profile 계약이 Phase 1 이후 전체 기능 묶음의 연결점이 됨.
 - Task 12 완료 조건에는 전체 테스트가 필요하지 않았다. Profile 계약 이후의 독립 renderer 기능이다.
 - Task 13 완료 조건에는 전체 테스트가 필요하지 않았다. Renderer 결과에 대한 검증 기능 묶음에 한정한다.
+- Task 14 완료 시 전체 테스트를 실행했다. 이유: 리페어가 공통 생성물과 검증 결과를 변경하므로 기존 재현성과 정적 검증 회귀를 확인해야 함.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -357,6 +380,7 @@
 - Task 11 profile은 아직 renderer 입력으로 필요한 최소 JSON-pointer values/holds/conflicts 계약만 보존하고, 구체 Kubernetes resource shape은 Task 12에서 생성한다.
 - Task 12 renderer는 Deployment Profile만 읽고, Evidence/Topology/Intent를 직접 조회하지 않는다.
 - Task 13 external adapters는 실제 tool 실행 전 단계로 상태 정규화와 stage 계약을 고정했다.
+- Task 14 repair는 Source와 Profile을 수정하지 않고 ManifestBundle에 포함된 generated file만 변경한다.
 
 ## Blocker
 
@@ -364,4 +388,4 @@
 
 ## 다음 Task
 
-- Task 14: 제한된 자동 리페어와 재검증 루프
+- Task 15: Observe–Decide–Act–Evaluate prepare 오케스트레이션
