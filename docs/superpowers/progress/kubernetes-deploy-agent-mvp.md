@@ -83,10 +83,22 @@
   - Secret은 이름과 사용 위치 메타데이터만 topology에 포함
   - `analysis/04-application-topology.yaml`을 안정적인 component/field ordering으로 생성
 
+### Task 7: 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
+
+- 상태: 완료
+- commit: `d26069e3ffa10a00d9fa977b4cc1dd2452fcc7b0`
+- commit message: `feat(llm): execute verified semantic runtime tasks`
+- 변경:
+  - Agent-owned LLM redaction boundary 추가
+  - OpenAI-compatible decision provider 추가: injectable transport, timeout retry, optional Authorization header
+  - `LLMGateway.execute(task, context)`가 기존 semantic agent/tool/verifier를 호출하고 provider/model/prompt metadata를 보존
+  - `SemanticActionExecutor.resolve_runtime_commands(topology, phase1)`가 Phase 1 산출물에서 runtime command semantic task를 만들고 검증 결과를 반환
+  - provider schema error retry, unavailable fallback, allowlist 밖 tool 차단, verifier rejection을 Agent 경계에서 검증
+
 ## 현재 Task
 
-- 현재 Task: Task 7 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
-- 다음 Task: Task 7 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
+- 현재 Task: Task 8 Target 정책을 적용한 Kubernetes Intent 생성
+- 다음 Task: Task 8 Target 정책을 적용한 Kubernetes Intent 생성
 
 ## 실행한 테스트와 결과
 
@@ -183,6 +195,15 @@
 - Task 6 Green:
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.analysis.test_topology_builder tests.acceptance.test_application_topology -v`
   - 결과: 통과, `Ran 4 tests in 0.115s`, `OK`
+- Task 7 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.llm.test_redaction tests.unit.k8s_agent.llm.test_gateway tests.unit.test_semantic_task_builder tests.unit.test_semantic_verifier tests.acceptance.test_runtime_command_semantic_resolution -v`
+  - 결과: 기대한 실패. `k8s_agent.llm`과 `k8s_agent.agent` 미구현으로 실패.
+- Task 7 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.llm.test_redaction tests.unit.k8s_agent.llm.test_gateway tests.unit.test_semantic_task_builder tests.unit.test_semantic_verifier tests.acceptance.test_runtime_command_semantic_resolution -v`
+  - 결과: 통과, `Ran 62 tests in 0.041s`, `OK`
+  - 전체 테스트 실행 이유: 기존 semantic task routing과 verifier의 public interface가 Agent에서 직접 사용됨.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 417 tests in 2.266s`, `OK (skipped=1)`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -190,6 +211,7 @@
 - Task 1~4 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 Agent 애플리케이션 패키지 내부 변경이며 기존 분석 코어를 변경하지 않았다.
 - Task 5 완료 시 전체 테스트를 실행했다. 이유: 기존 결정론적 분석 API와 Agent adapter의 경계가 모든 parser/fixture에 영향을 줄 수 있음.
 - Task 6 완료 조건에는 전체 테스트가 필요하지 않았다. Phase 1 모델은 소비만 하고 변경하지 않는다.
+- Task 7 완료 시 전체 테스트를 실행했다. 이유: 기존 semantic task routing과 verifier의 public interface가 Agent에서 직접 사용됨.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -202,6 +224,7 @@
 - Milestone 1 review 후 다음을 보강했다: local Git metadata 조회에 `GIT_OPTIONAL_LOCKS=0`, remote Git hardening env/config, run id traversal guard, credential URL variant sanitization, sensitive file fingerprint exclusion, valid local `prepare`의 run/source.yaml persistence.
 - Milestone 1 re-review 후 `GitRunner`가 inherited `GIT_*`, askpass, SSH command, protocol override 환경변수를 전달하지 않도록 allowlist 환경으로 변경했다.
 - Task 6 `TopologyBuilder.build_from_models()`는 pure merge 로직으로 유지하고, `TopologyBuilder.build()`만 Phase 1 파일 I/O와 `04-application-topology.yaml` 생성을 담당한다.
+- Task 7은 기존 `preanalyzer.semantic.agent`를 실행 엔진으로 재사용하고 Agent 패키지에는 redaction, provider transport, metadata wrapping, action executor 경계만 추가했다.
 
 ## Blocker
 
@@ -209,4 +232,4 @@
 
 ## 다음 Task
 
-- Task 7: 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
+- Task 8: Target 정책을 적용한 Kubernetes Intent 생성
