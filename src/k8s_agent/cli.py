@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     resume = subcommands.add_parser("resume")
     resume.add_argument("run_id")
+    resume.add_argument("--drift-policy", choices=["continue-pinned", "replan", "new-run"])
     resume.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
 
     status = subcommands.add_parser("status")
@@ -160,6 +161,19 @@ def _run_prepare(args: argparse.Namespace) -> int:
     return outcome.exit_code
 
 
+def _run_resume(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication, DriftPolicy
+
+    drift_policy = DriftPolicy(args.drift_policy) if args.drift_policy else None
+    outcome = AgentApplication().resume(args.run_id, drift_policy)
+    print(
+        f"resume run_id={outcome.run_id} "
+        f"target={outcome.target} source={outcome.source_kind} state={outcome.state.value} "
+        f"run_root={outcome.run_root} next={outcome.message}"
+    )
+    return outcome.exit_code
+
+
 def _run_skeleton(command: str) -> int:
     print(f"{command} accepted")
     return 0
@@ -183,6 +197,8 @@ def _main_impl(argv: Sequence[str] | None) -> int:
 
     if args.command == "prepare":
         return _run_prepare(args)
+    if args.command == "resume":
+        return _run_resume(args)
     return _run_skeleton(args.command)
 
 

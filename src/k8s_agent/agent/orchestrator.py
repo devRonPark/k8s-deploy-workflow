@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,7 +10,7 @@ import yaml
 
 from k8s_agent.agent.planner import AgentPlanner, PlanningContext
 from k8s_agent.analysis.intent_builder import IntentBuilder
-from k8s_agent.analysis.phase1_adapter import Phase1Adapter
+from k8s_agent.analysis.phase1_adapter import PHASE1_ARTIFACTS, Phase1Adapter, Phase1Result
 from k8s_agent.analysis.topology_builder import TopologyBuilder
 from k8s_agent.errors import AgentError
 from k8s_agent.models.run import RunRecord, RunState, TERMINAL_STATES
@@ -19,7 +20,21 @@ from k8s_agent.questions.manager import QuestionManager
 from k8s_agent.render.renderer import ManifestRenderer
 from k8s_agent.repair.controller import RepairController, RepairResult
 from k8s_agent.run.manager import RunManager
+from k8s_agent.versions import RENDERER_VERSION, TEMPLATE_VERSION
 from k8s_agent.validation.orchestrator import ValidationOrchestrator
+
+
+TOOL_VERSIONS = {
+    "phase1": "phase1-adapter/v1",
+    "topology": "topology-builder/v1",
+    "intent": "intent-builder/v1",
+    "planner": "agent-planner/v1",
+    "profile": "deployment-profile-builder/v1",
+    "renderer": RENDERER_VERSION,
+    "template": TEMPLATE_VERSION,
+    "validator": "validation-orchestrator/v1",
+    "repair": "repair-controller/v1",
+}
 
 
 @dataclass(frozen=True)
@@ -47,10 +62,12 @@ class AgentOrchestrator:
         *,
         run_manager: RunManager,
         pipeline: Callable[[str], OrchestrationResult] | None = None,
+        reuse_completed_analysis: bool = False,
     ) -> None:
         self.run_manager = run_manager
         self.store = run_manager.store
         self.pipeline = pipeline or self._run_default_pipeline
+        self.reuse_completed_analysis = reuse_completed_analysis
 
     def run(self, run_id: str) -> RunOutcome:
         record = self.store.load(run_id)
@@ -86,7 +103,7 @@ class AgentOrchestrator:
         run_root = self.store.run_path(run_id)
         source = _load_source(run_root / "source.yaml")
 
-        phase1 = Phase1Adapter(store=self.store, clock=self.run_manager.clock).run(source, run_id)
+        phase1 = self._phase1(source, run_id)
         topology = TopologyBuilder().build(phase1)
         intent = IntentBuilder(output_dir=phase1.analysis_dir).build(topology, record.target)
         plan = AgentPlanner().plan(PlanningContext(topology=topology, intent=intent))
@@ -94,6 +111,7 @@ class AgentOrchestrator:
         profile = DeploymentProfileBuilder().build(ProfileInputs(intent=intent, decisions=[]))
 
         artifacts: dict[str, dict[str, Any]] = {
+            "agent/runtime-metadata.yaml": {"tool_versions": TOOL_VERSIONS},
             "agent/plan.yaml": {"agent_plan": plan.model_dump(mode="json")},
             "agent/questions.yaml": {"question_set": questions.model_dump(mode="json")},
             "profile/deployment-profile.yaml": {"deployment_profile": profile.model_dump(mode="json")},
@@ -144,10 +162,48 @@ class AgentOrchestrator:
             artifacts=artifacts,
         )
 
+    def _phase1(self, source: RepositorySource, run_id: str) -> Phase1Result:
+        if self.reuse_completed_analysis:
+            reused = _existing_phase1(self.store.run_path(run_id), source)
+            if reused is not None:
+                self.run_manager.append_event(run_id, "phase1_reused", "completed phase1 artifacts reused")
+                return reused
+        return Phase1Adapter(store=self.store, clock=self.run_manager.clock).run(source, run_id)
+
 
 def _load_source(path: Path) -> RepositorySource:
     payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return RepositorySource.model_validate(payload)
+
+
+def _existing_phase1(run_root: Path, source: RepositorySource) -> Phase1Result | None:
+    if _runtime_metadata(run_root).get("tool_versions") != TOOL_VERSIONS:
+        return None
+    analysis_dir = run_root / "analysis"
+    checksums: dict[str, str] = {}
+    for name in PHASE1_ARTIFACTS:
+        path = analysis_dir / name
+        if not path.is_file():
+            return None
+        checksums[name] = _sha256(path)
+    return Phase1Result(
+        run_id=run_root.name,
+        analysis_dir=analysis_dir,
+        repository_root=source.path,
+        checksums=checksums,
+        artifact_count=len(PHASE1_ARTIFACTS),
+    )
+
+
+def _runtime_metadata(run_root: Path) -> dict:
+    path = run_root / "agent" / "runtime-metadata.yaml"
+    if not path.is_file():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def _sha256(path: Path) -> str:
+    return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
 
 
 def _outcome(record: RunRecord, exit_code: int, message: str) -> RunOutcome:

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from enum import StrEnum
 from pathlib import Path
+
+import yaml
 
 from k8s_agent.agent.orchestrator import AgentOrchestrator, RunOutcome
 from k8s_agent.cli import PrepareRequest
-from k8s_agent.models.run import RunState
+from k8s_agent.models.run import RunRecord, RunState
 from k8s_agent.models.source import AcquiredSource, RepositorySource
 from k8s_agent.run.manager import RunManager
 from k8s_agent.run.store import RunStore
@@ -16,6 +19,12 @@ from k8s_agent.source.workspace import WorkspaceManager
 
 
 PrepareOutcome = RunOutcome
+
+
+class DriftPolicy(StrEnum):
+    CONTINUE_PINNED = "continue-pinned"
+    REPLAN = "replan"
+    NEW_RUN = "new-run"
 
 
 class AgentApplication:
@@ -41,6 +50,41 @@ class AgentApplication:
             raise
         return AgentOrchestrator(run_manager=self.run_manager).run(run.run_id)
 
+    def resume(self, run_id: str, drift_policy: DriftPolicy | None = None) -> RunOutcome:
+        record = self.store.load(run_id)
+        if record.state in {RunState.READY, RunState.FAILED, RunState.BLOCKED, RunState.CANCELLED}:
+            return _resume_outcome(record, _terminal_resume_exit_code(record.state), f"run state {record.state.value} is not resumable")
+
+        source = _load_source(self.store.run_path(run_id) / "source.yaml")
+        drift = self._source_drift(source)
+        if drift and drift_policy is None:
+            self.store.save_yaml(run_id, "resume/source-drift.yaml", {"source_drift": drift})
+            self.run_manager.append_event(run_id, "resume_source_drift", "source drift detected", {"run_id": run_id})
+            return _resume_outcome(record, 3, "source drift detected; choose a drift policy before continuing")
+        if drift and drift_policy == DriftPolicy.NEW_RUN:
+            self.run_manager.append_event(run_id, "resume_source_drift", "source drift starts a new run", {"run_id": run_id})
+            return self.prepare(
+                PrepareRequest(
+                    repo_url=None,
+                    local_path=source.path,
+                    ref=None,
+                    target=record.target,
+                    non_interactive=False,
+                    answers_file=None,
+                )
+            )
+        if drift and drift_policy == DriftPolicy.REPLAN:
+            current = LocalSourceResolver().resolve(source.path, self.clock())
+            self.store.save_yaml(run_id, "source.yaml", _source_payload(current))
+            self.run_manager.append_event(run_id, "resume_source_replan", "source drift accepted for replan", {"run_id": run_id})
+            return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=False).run(run_id)
+        if drift and drift_policy == DriftPolicy.CONTINUE_PINNED:
+            self.run_manager.append_event(run_id, "resume_source_pinned", "source drift ignored for pinned resume", {"run_id": run_id})
+            return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True).run(run_id)
+
+        self.run_manager.append_event(run_id, "resume_source_check", "resume source unchanged", {"run_id": run_id})
+        return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True).run(run_id)
+
     def _acquire_source(self, request: PrepareRequest, run_id: str) -> RepositorySource:
         acquired_at = self.clock()
         if request.local_path is not None:
@@ -52,6 +96,21 @@ class AgentApplication:
             WorkspaceManager(self.state_home / "runs").cleanup(workspace)
             raise
         return _repository_source(acquired)
+
+    def _source_drift(self, source: RepositorySource) -> dict | None:
+        if source.kind == "github":
+            return None
+        current = LocalSourceResolver().resolve(source.path, self.clock())
+        drift: dict[str, str] = {}
+        if current.fingerprint.value != source.fingerprint.value:
+            drift["fingerprint"] = "changed"
+            drift["saved_fingerprint"] = source.fingerprint.value
+            drift["current_fingerprint"] = current.fingerprint.value
+        if source.git.head and current.git.head and current.git.head != source.git.head:
+            drift["git_head"] = "changed"
+            drift["saved_head"] = source.git.head
+            drift["current_head"] = current.git.head
+        return drift or None
 
 
 def _default_state_home() -> Path:
@@ -67,3 +126,26 @@ def _repository_source(acquired: AcquiredSource) -> RepositorySource:
 
 def _source_payload(source: RepositorySource) -> dict:
     return source.model_dump(mode="json")
+
+
+def _load_source(path: Path) -> RepositorySource:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return RepositorySource.model_validate(payload)
+
+
+def _resume_outcome(record: RunRecord, exit_code: int, message: str) -> RunOutcome:
+    return RunOutcome(
+        run_id=record.run_id,
+        run_root=record.run_root,
+        target=record.target,
+        source_kind=record.source.kind,
+        state=record.state,
+        exit_code=exit_code,
+        message=message,
+    )
+
+
+def _terminal_resume_exit_code(state: RunState) -> int:
+    if state == RunState.READY:
+        return 0
+    return 8

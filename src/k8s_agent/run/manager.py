@@ -93,6 +93,18 @@ class RunManager:
             )
             return saved
 
+    def append_event(self, run_id: str, event_type: str, summary: str, details: dict[str, str] | None = None) -> None:
+        self._events(run_id).append(
+            RunEvent(
+                event_id=self._event_id(),
+                run_id=run_id,
+                event_type=event_type,
+                created_at=self.clock(),
+                summary=summary,
+                details=details or {},
+            )
+        )
+
     def _events(self, run_id: str) -> EventLog:
         return EventLog(self.store.event_file(run_id))
 
