@@ -48,6 +48,10 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_validate(args, cfg, store)
         if args.command == "sessions":
             return _cmd_sessions(args, store)
+        if args.command == "start":
+            from k8sagent.interactive import run_start
+
+            return run_start(args, cfg)
         parser.print_usage()
         return 2
     except AgentError as exc:
@@ -271,4 +275,7 @@ def _parser() -> argparse.ArgumentParser:
     sessions_sub.add_parser("list")
     show = sessions_sub.add_parser("show")
     show.add_argument("session_id")
+    start = sub.add_parser("start")
+    start.add_argument("--session")
+    start.add_argument("--no-llm", action="store_true")
     return parser

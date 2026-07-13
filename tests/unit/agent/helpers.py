@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import io
 from pathlib import Path
 from typing import Any
 
@@ -73,3 +74,23 @@ class FakeLLM:
 
     def propose_correction(self, report_payload, intent, allowed_paths):
         return self._pop("propose_correction")
+
+
+class ScriptedConsole:
+    def __init__(self, inputs: list[str]) -> None:
+        self.inputs = list(inputs)
+        self.out = io.StringIO()
+
+    def ask(self, prompt: str) -> str:
+        self.out.write(prompt)
+        if not self.inputs:
+            raise AssertionError(f"no scripted input left for {prompt!r}")
+        value = self.inputs.pop(0)
+        self.out.write(value + "\n")
+        return value
+
+    def say(self, text: str) -> None:
+        self.out.write(text + "\n")
+
+    def confirm(self, prompt: str) -> bool:
+        return self.ask(prompt).strip().lower() in {"y", "yes"}
