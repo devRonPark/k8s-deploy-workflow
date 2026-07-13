@@ -87,7 +87,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 
 각 모듈을 책임 / 입력 / 출력 / 사용하면 안 되는 것 / LLM 사용 가능 여부 / 실패 시 동작으로 정의한다. "실패 시 동작"의 공통 원칙: **실패는 은폐되지 않고 산출물에 기록되며, 파이프라인은 가능한 한 계속 진행한다(fail-visible, not fail-silent).**
 
-> **구현 상태 범례** (2026-07-11, `src/` 기준): ✅ 구현·테스트 완료 · 🔌 컴포넌트 구축·파이프라인 미배선 · 📋 계획(코드 없음). 이 절의 설계 서술은 Step 0~15 전체 청사진이므로, 아래 각 모듈 제목의 마커가 코드의 현재 진실이다. 설계와 코드가 갈리면 마커를 따르라.
+> **구현 상태 범례** (2026-07-13, `src/` 기준): ✅ 구현·테스트 완료 · ◐ MVP 구현·파이프라인 배선됨(세부 정책/확장 기능 남음) · 🔌 컴포넌트 구축·제한적 배선 · 📋 계획(코드 없음). 이 절의 설계 서술은 Step 0~15 전체 청사진이므로, 아래 각 모듈 제목의 마커가 코드의 현재 진실이다. 설계와 코드가 갈리면 마커를 따르라.
 
 ## 2.1 Repository Scanner (Step 0~1) ✅
 
@@ -133,51 +133,51 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | 어떤 규칙에도 걸리지 않는 영역은 unresolved inference로 남긴다. 컴포넌트 0개여도 빈 후보 + 근거 부족 경고로 계속 |
 
-## 2.5 LLM Semantic Analyzer (Step 5~7) 🔌 (안전 하네스만 구축·미배선, LLM 실행부 없음)
+## 2.5 LLM Semantic Analyzer (Step 5~7) 🔌 (bounded agent와 OpenAI-compatible provider 경로 구축·runtime command 중심 배선)
 
 | 항목 | 정의 |
 |---|---|
 | 책임 | Evidence Bundle을 기반으로 Repository 의미를 해석한다. 주요 출력은 component boundary 분석, component role classification(application/dependency/infrastructure/tooling), runtime behavior, dependency semantic analysis, deployment intent 후보다. 각 판단은 `evidence_refs[]`, reasoning summary, confidence, uncertainty를 포함한다 |
 | 입력 | Context Selector가 만든 Evidence Bundle. Repository 전체 원문이 아니라 relevant artifact metadata, parsed facts, 짧은 source excerpts/hash, rule_inference summary만 포함 |
-| 출력 | `llm_interpretation` 목록(schema-constrained). 운영환경 값이 필요한 필드는 `needs_user_decision`으로만 표현 |
+| 출력 | `04-semantic-analysis.yaml` audit와 검증된 runtime command 후보. 전체 설계의 `llm_interpretation` 목록은 아직 확장 대상 |
 | 사용 금지 | Secret 생성·수신·기록, registry/namespace/DB host/Ingress host/resource 수치 생성, Kubernetes YAML 자유 생성, evidence_ref 없는 판단 반환, raw repository 전체 읽기 |
 | LLM 사용 | ⭕ 핵심 기능 — 단 Evidence Bundle 기반 semantic interpretation으로 제한 |
-| 실패 시 | schema 검증 실패 또는 evidence_ref 누락 → 해당 해석 폐기. LLM 장애 시 빈 `llm_interpretation`으로 Reconciliation 진행 |
+| 실패 시 | verifier rejected/ambiguous, provider 설정 실패, LLM 장애는 audit에 기록하고 빈 semantic 후보로 Reconciliation 진행 |
 
-## 2.6 Rule/LLM Reconciliation Engine (Step 8~9) 📋
+## 2.6 Rule/LLM Reconciliation Engine (Step 8~9) ◐
 
 | 항목 | 정의 |
 |---|---|
-| 책임 | `observed_fact`, `rule_inference`, `llm_interpretation`, `user_decision`을 교차 검증해 Intermediate Model을 만든다. 일치하면 채택, 충돌하면 source priority·confidence·evidence quality로 판정하거나 사용자 확인 질문으로 라우팅한다. 근거 없는 LLM 판단은 폐기하고, LLM만 주장한 값은 evidence가 충분해도 운영환경 값이면 unresolved로 둔다 |
+| 책임 | `observed_fact`, `rule_inference`, 검증 통과 semantic command를 바탕으로 Intermediate Model과 질문을 만든다. 현재 구현은 component/runtime/dependency/intent 생성과 port conflict 질문 라우팅까지 포함하며, 전체 설계의 source priority·evidence quality 기반 conflict report는 확장 대상 |
 | 입력 | Evidence Model, rule_inference, llm_interpretation, Deployment Profile 또는 사용자 수정 |
-| 출력 | `component_model.yaml`, `runtime_model.yaml`, `dependency_model.yaml`, `kubernetes_intent.yaml`, `unresolved_questions.yaml`, `deployment-profile.template.yaml` |
+| 출력 | `06-component-model.yaml`, `07-runtime-model.yaml`, `08-dependency-model.yaml`, `09-kubernetes-intent.yaml`, `10-unresolved-questions.yaml` |
 | 사용 금지 | LLM 결과의 직접 채택, evidence_ref 없는 판단 저장, 운영환경 값 생성, `role: dependency` 컴포넌트의 무조건 워크로드 의도 생성 |
 | LLM 사용 | ❌ 불허(이미 생성된 `llm_interpretation`을 입력으로만 사용) |
-| 실패 시 | reconciliation conflict는 `needs_user_decision` 질문으로 남긴다. 모든 리프 필드는 provenance classification과 Tracked 불변식(value↔source/confidence)을 통과해야 하며 위반은 버그(테스트로 강제) |
+| 실패 시 | conflicting port처럼 결정 불가한 값은 질문으로 남긴다. 모든 리프 필드는 Tracked 불변식(value↔source/confidence)을 통과해야 하며 위반은 버그(테스트로 강제) |
 
-## 2.7 Deployment Profile Merger (Step 10) 📋
+## 2.7 Deployment Profile Merger (Step 10) ◐
 
 | 항목 | 정의 |
 |---|---|
-| 책임 | 사용자가 채운 Profile을 JSON Schema로 검증한 뒤 Reconciliation Engine에 `user_decision`으로 공급한다. Profile 값이 unresolved 필드를 채우면 `resolved_by: deployment_profile` 기록, 질문 재계산, `blocking_level: application_runnable` 0건 여부(ready_for_level2) 판정 |
+| 책임 | 사용자가 채운 Profile을 모델로 검증한 뒤 registry, namespace, image tag, ingress host를 Intent에 병합한다. 질문 재계산과 `ready_for_level2` 판정은 구현되어 있으며, `user_decision` classification과 충돌 리포트는 확장 대상 |
 | 입력 | Reconciled Intermediate Model + questions + deployment_profile.yaml |
-| 출력 | 갱신된 Intermediate Model + 축소된 questions + MergeConflict 목록 |
+| 출력 | 갱신된 Intent + 축소된 questions + `ready_for_level2` |
 | 사용 금지 | 스키마 위반 Profile의 병합(병합 **전** 거부 — 오타 필드가 조용히 무시되는 사고 방지), high confidence 추론값과 모순되는 Profile 값의 **조용한** 덮어쓰기(덮어쓰되 충돌 경고를 report에 기록) |
 | LLM 사용 | ⭕ 제한적 — 충돌 **설명문** 생성만. 어느 값을 채택할지는 규칙(Profile 우선)과 사용자 결정이 정한다 |
 | 실패 시 | Profile 검증 실패는 명시적 오류로 반환(사용자가 수정 후 재실행). 병합 자체는 결정론이므로 실패 모드가 검증 실패뿐 |
 
-## 2.8 LLM Provider Interface 📋
+## 2.8 LLM Provider Interface 🔌
 
 | 항목 | 정의 |
 |---|---|
-| 책임 | LLM Semantic Analyzer와 사용자-facing 문안 생성이 아는 유일한 LLM 표면. 연산은 `analyze_semantics`, `generate_question_wording`, `explain_conflict`, `suggest_patch`, `summarize`로 고정하고, 뒤의 백엔드(local runtime / OpenAI-compatible / Null)를 설정으로 교체 가능하게 한다. 모든 응답을 용도별 JSON Schema로 검증한다 |
+| 책임 | bounded semantic agent의 decision provider 경계와 OpenAI-compatible chat provider를 제공한다. 전체 설계의 `analyze_semantics`, `generate_question_wording`, `explain_conflict`, `suggest_patch`, `summarize` 5개 연산 인터페이스는 아직 통합 확장 대상 |
 | 입력 | **Evidence Bundle 또는 정규화된 중간 모델 조각만**. 입력 계약 타입에 Secret 값 필드와 운영환경 값을 생성할 수 있는 필드가 존재하지 않는다 |
-| 출력 | schema 검증을 통과한 계약 타입(`SemanticInterpretation`, `QuestionWording` 등) 또는 `None`(폴백 신호) |
+| 출력 | semantic agent action/resolution 모델 또는 provider unavailable 상태. 질문 문안·충돌 설명·repair 계약은 아직 MVP 범위 밖 |
 | 사용 금지 | raw repository 전체·Secret 값의 전송(P9), evidence_ref 없는 semantic 판단, 충돌 값 채택 결정, YAML 텍스트 반환(patch_suggestion도 Intent/Profile 필드 경로 patch로 제한) |
 | LLM 사용 | — (이 모듈이 LLM 경계 그 자체) |
-| 실패 시 | schema 검증 실패 → 실패 사유 첨부 1회 재시도 → 재실패 시 `None` 반환. 호출측은 빈 semantic result 또는 기계 생성 기본 문구로 진행. endpoint 불달(타임아웃 포함)도 동일하게 `None` — **LLM 장애가 파이프라인을 중단시키는 경로는 없다** |
+| 실패 시 | 설정 실패·endpoint 불달·invalid action은 audit에 기록되고 파이프라인은 deterministic 결과로 계속 진행한다. **LLM 장애가 파이프라인을 중단시키는 경로는 없다** |
 
-## 2.9 Template Renderer (Step 11) 📋
+## 2.9 Template Renderer (Step 11) ✅
 
 | 항목 | 정의 |
 |---|---|
@@ -188,16 +188,16 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | LLM 사용 | ❌ 불허 |
 | 실패 시 | 필수 값이 unresolved인 리소스는 기본 **렌더 보류(defer) + 사유 기록**. 사용자가 `allow_placeholders`를 요청한 경우에만 `__UNRESOLVED__` placeholder로 렌더하고 Level 0으로 캡 |
 
-## 2.10 Kubernetes Validator (Step 12) 📋
+## 2.10 Kubernetes Validator (Step 12) ◐
 
 | 항목 | 정의 |
 |---|---|
-| 책임 | 렌더 결과에 검증 체인(YAML 문법 → kubeconform → kubectl dry-run → linter → 정책 엔진)을 실행하고 결과를 하나의 report에 누적 기록, `achieved_level`/`target_level`을 분리 판정한다. **판정은 도구가 한다** |
+| 책임 | 렌더 결과에 검증 체인(YAML 문법 → kubeconform → kubectl dry-run)을 실행하고 결과를 하나의 report에 누적 기록, `achieved_level`/`target_level`을 분리 판정한다. linter와 정책 엔진은 아직 미구현이다. **판정은 도구가 한다** |
 | 입력 | 렌더링된 manifest 디렉터리 + 대상 K8s 버전 |
 | 출력 | `validation_report.yaml` |
 | 사용 금지 | 실행하지 않은 단계의 pass 기록(반드시 `skipped(reason)`/`not_run`), placeholder manifest의 Level 1 이상 판정, 판정의 LLM 위임 |
 | LLM 사용 | ⭕ 제한적 — validator **오류 메시지의 해석·수리 제안**만(Repair Loop 경유). pass/fail 판정은 항상 도구 |
-| 실패 시 | 단계 실패는 fail 기록 + 후속 단계 skipped(fail-fast 체인). 외부 바이너리 부재는 `skipped: tool_not_found`로 기록하고 계속 — 예외를 던지지 않는다 |
+| 실패 시 | 단계 실패는 fail 기록 + 후속 단계 skipped(fail-fast 체인). 외부 바이너리 부재는 `skipped: tool_not_found`로 기록하고 계속 — 예외를 던지지 않는다. `kubeconform: skipped` 상태는 Kubernetes schema 검증 완료로 간주하지 않는다 |
 
 ## 2.11 Deployment Checker (Step 13) 📋
 
@@ -209,7 +209,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | 사용 금지 | 값을 바꿔서 조용히 재시도, Secret 값이 포함된 로그의 무마스킹 전달 |
 | LLM 사용 | ⭕ 제한적 — 수집된 이벤트/로그 기반 **원인 설명**만(Repair Loop 경유) |
 | 실패 시 | 실패 증거(이벤트, 로그, exit code)를 수집해 Repair Loop에 전달. `achieved_level`은 2 미만으로 유지 |
-| MVP 상태 | 실행 자동화는 2단계. MVP는 `deployment-readiness-checklist.md`를 생성해 사용자가 수동 수행 |
+| MVP 상태 | 실행 자동화는 미구현. 현재 파이프라인은 `14-deployment-readiness-checklist.md`를 생성해 사용자가 수동 수행 |
 
 ## 2.12 Smoke Test Runner (Step 14) 📋
 
@@ -221,7 +221,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | 사용 금지 | 판정의 LLM 위임(판정은 결정론), 실패의 pass 위장 |
 | LLM 사용 | ❌ 불허 (실패 리포트 요약만 Repair Loop에서 허용) |
 | 실패 시 | Level 3 미달성으로 기록(Level 2에 머묾), 실패한 검사·응답 코드를 report에 남기고 Repair Loop로 |
-| MVP 상태 | 실행 자동화는 2단계. MVP는 plan 파일 생성까지 |
+| MVP 상태 | 실행 자동화는 미구현. 현재 파이프라인은 `15-smoke-test-plan.yaml` 초안 생성까지 |
 
 ## 2.13 Repair Loop (Step 15) 📋
 

@@ -332,6 +332,20 @@ preanalyzer validate <manifest-dir> [--k8s-version 1.29]
 # 3. 구현 Task 분해
 
 > 사용자 지시("아직 코드는 작성하지 마")에 따라 본 계획에는 인터페이스 시그니처와 테스트 명세까지만 담고, 함수 본문 구현은 실행 단계로 미룬다. 각 Task는 TDD로 진행한다: 명세된 테스트를 먼저 작성 → 실패 확인 → 최소 구현 → 통과 → 커밋.
+>
+> **현재 구현 상태(2026-07-13, `src/` 기준):** 이 절은 원래 실행 계획이라 세부 체크박스는 작성 당시의 TDD 순서를 보존한다. 실제 코드 진행도는 아래 "Task 구현 상태" 표를 기준으로 본다.
+
+| Task | 현재 상태 | 메모 |
+|---|---|---|
+| Task 0~5 | ✅ 구현·테스트 완료 | Tracked/model/scanner/parser/evidence/rule inference 체인 |
+| Task 6~7 | 🔌 부분 구현 | bounded semantic agent, 도구 예산, verifier, OpenAI-compatible provider 경로. 전체 `SemanticAnalysisResult` 확장은 남음 |
+| Task 8 | ◐ MVP 구현 | component/runtime/dependency/intent 생성과 일부 질문 라우팅. 전체 conflict policy는 남음 |
+| Task 9 | ◐ MVP 구현 | registry/namespace/tag/ingress profile merge와 질문 축소. `user_decision` provenance/conflict report는 남음 |
+| Task 10 | ✅ MVP 구현 | 기본 K8s 리소스 템플릿 렌더링 |
+| Task 11 | ◐ MVP 구현 | YAML syntax, kubeconform, kubectl dry-run. linter/policy engine은 남음 |
+| Task 12 | 🔌 부분 구현 | semantic agent용 OpenAI-compatible provider는 있음. 질문/충돌/repair 5-operation provider 계약은 남음 |
+| Task 13 | ◐ MVP 구현 | `run_analysis`와 `analyze` CLI가 00~15 산출물을 생성. `merge-profile` 등 별도 CLI는 남음 |
+| Task 14 | ◐ 부분 구현 | fixture 기반 acceptance 일부 있음. 계획서의 전체 AC/integration suite는 남음 |
 
 ## 3.0 수정된 구현 순서
 

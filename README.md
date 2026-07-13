@@ -14,21 +14,27 @@ GitHub 저장소를 분석해 Kubernetes 매니페스트 생성에 필요한 정
 
 ## 현재 개발 현황
 
-전체는 Step 0~15. **Step 0~6 (결정론 사전분석, "Phase 1")까지 완료**.
-탐지 대상 예: `Dockerfile`·`compose`·`package.json`·`pom.xml`·`pyproject.toml`.
+전체는 Step 0~15. 현재 코드는 **Step 12까지 MVP 흐름이 연결된 상태**다.
+단, Step 5~12는 전체 설계의 모든 세부 기능이 아니라 "분석 → Intent → 템플릿 렌더링 → 검증 리포트"가
+fixture 기반으로 관통하는 최소 구현이다. Step 13~15는 자동 실행이 아니라 checklist/plan 산출 수준이다.
 
 - Step 0~6 ✅ — snapshot / artifact inventory / 배포파일 파싱 / component 탐지 / 언어·빌드 탐지 / 런타임 추출 / 포트·env·volume·의존 분석
-- Step 7~15 ⬜ — Application Topology → Kubernetes Intent → 템플릿 렌더링 → 검증 → 배포 → 스모크 → 리페어
+- Step 5~7 ◐ — bounded semantic agent / 도구 예산 / verifier / OpenAI-compatible provider 경로. 현재는 runtime command 보강 중심
+- Step 8~10 ◐ — Reconciliation / Profile merge / unresolved 질문 생성. 충돌 정책과 user_decision provenance는 아직 MVP 수준
+- Step 11 ✅ — Template Renderer: Deployment, Service, ServiceAccount, ConfigMap, Secret placeholder, Ingress 템플릿 렌더링
+- Step 12 ◐ — YAML syntax → project-managed kubeconform → kubectl dry-run 검증 체인. linter/policy engine은 미구현
+- Step 13~15 ⬜ — Deployment Check / Smoke Test 실행 / Repair Loop 자동화는 미구현. readiness checklist와 smoke-test-plan 초안만 생성
 
-Phase 1 체인 (저장소에서 바로 YAML로 가는 지름길은 없다 — 각 단계가 `00~03-*.yaml`로 남는다):
+결정론 분석 체인 (저장소에서 바로 YAML로 가는 지름길은 없다):
 
 ```text
 repository_snapshot → artifact_inventory → evidence_model → rule_inference
 ```
 
 Semantic agent는 도메인 모델·읽기 도구·예산 추적·검증기 + **bounded agent 상태기계**와
-**OpenAI 호환 온프렘 LLM provider**까지 배선됨 (phase1 파이프라인에 통합).
-Topology/Intent 모델·매니페스트 생성·배포·검증은 아직 미구현.
+**OpenAI 호환 온프렘 LLM provider**까지 배선됨. 전체 분석 파이프라인은 `00-repository-snapshot.yaml`부터
+`15-smoke-test-plan.yaml`까지 산출할 수 있으며, `13-validation-report.yaml`의 `kubeconform: skipped`는
+Kubernetes schema 검증이 완료되지 않았다는 뜻이다.
 
 ## 개발 환경 설정
 
@@ -59,21 +65,22 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover 
 
 `tests/fixtures/repos/` 아래 샘플 레포 3종(`jpetstore-like`, `fastapi-fullstack-like`, `node-express-like`)이 end-to-end 검증에 쓰인다.
 
-## Phase 1 직접 실행
+## 직접 실행
 
 ```python
 from datetime import datetime, timezone
 from pathlib import Path
-from preanalyzer.pipeline import run_phase1_analysis
+from preanalyzer.pipeline import run_analysis
 
-run_phase1_analysis(
+run_analysis(
     repo=Path("./my-repo"), output_dir=Path("./out"),
     url="https://github.com/example/my-repo", ref="main",
     clock=lambda: datetime.now(timezone.utc),
 )
 ```
 
-`./out/`에 `00-repository-snapshot.yaml` ~ `03-rule-inference.yaml` 4개가 생성된다.
+`./out/`에 `00-repository-snapshot.yaml` ~ `15-smoke-test-plan.yaml` 산출물이 생성된다.
+결정론 사전분석 4개 파일만 필요하면 `run_phase1_analysis(...)`를 사용할 수 있다.
 
 Snapshot 모드·Compose·Component ownership·Semantic budget·**Semantic LLM provider**(온프렘 OpenAI 호환 연동) 등 세부는 [docs/pipeline-details.md](./docs/pipeline-details.md) 참고.
 
