@@ -59,10 +59,20 @@
   - `WorkspaceManager`로 source/generated workspace 분리 및 cleanup 추가
   - Git 실행 시 `shell=False`, argument list, LFS smudge/prompt 비활성 env 적용
 
+### Task 5: 기존 Phase 1 분석을 Run 산출물 체계에 통합
+
+- 상태: 완료, commit 예정: `feat(analysis): integrate phase1 outputs into agent runs`
+- 변경:
+  - `Phase1Adapter.run(source, run_id)` 추가
+  - 기존 `preanalyzer.pipeline.run_phase1_analysis`를 thin adapter로 호출
+  - Run Directory의 `analysis/00`~`03` 산출물 생성
+  - 각 산출물 checksum 계산과 `phase1_completed` event 기록
+  - parse warning이 Run 전체 실패로 전환되지 않고 기존 Evidence warning으로 보존됨을 검증
+
 ## 현재 Task
 
-- 현재 Task: Task 5 기존 Phase 1 분석을 Run 산출물 체계에 통합
-- 다음 Task: Task 5 기존 Phase 1 분석을 Run 산출물 체계에 통합
+- 현재 Task: Task 5 검증 및 커밋
+- 다음 Task: Task 6 Evidence 기반 Application Topology 생성
 
 ## 실행한 테스트와 결과
 
@@ -142,16 +152,26 @@
   - 결과: 통과, `Ran 7 tests in 0.023s`, `OK`
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
   - 결과: 통과, `Ran 14 tests in 0.098s`, `OK`
+- Task 5 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.analysis.test_phase1_adapter tests.acceptance.test_agent_phase1_integration tests.acceptance.test_phase1_deterministic_outputs -v`
+  - 결과: 기대한 실패. `k8s_agent.analysis.phase1_adapter` 미구현으로 실패.
+- Task 5 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.analysis.test_phase1_adapter tests.acceptance.test_agent_phase1_integration tests.acceptance.test_phase1_deterministic_outputs -v`
+  - 결과: 통과, `Ran 4 tests in 0.080s`, `OK`
+  - 전체 테스트 실행 이유: 기존 결정론적 분석 API와 Agent adapter의 경계가 모든 parser/fixture에 영향을 줄 수 있음.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 412 tests in 1.903s`, `OK (skipped=1)`
 
 ## 전체 테스트 실행 이유와 결과
 
-- 시작 기준선에서만 전체 테스트를 실행했다.
-- Task 1~4 완료 조건에는 전체 테스트가 필요하지 않다. 신규 Agent 애플리케이션 패키지 내부 변경이며 기존 분석 코어를 변경하지 않았다.
+- 시작 기준선에서 전체 테스트를 실행했다.
+- Task 1~4 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 Agent 애플리케이션 패키지 내부 변경이며 기존 분석 코어를 변경하지 않았다.
+- Task 5 완료 시 전체 테스트를 실행했다. 이유: 기존 결정론적 분석 API와 Agent adapter의 경계가 모든 parser/fixture에 영향을 줄 수 있음.
 
 ## 설계 결정 또는 계획과의 차이
 
 - `--debug`는 CLI validation 오류에서도 traceback을 표시한다. 기본 모드에서는 traceback을 숨긴다.
-- 아직 실제 prepare orchestration은 실행하지 않고 검증 통과 요청을 stub으로 수락한다. 이는 Task 1 범위와 일치한다.
+- 현재 `prepare`는 Milestone 1 범위의 run/source artifact만 생성한다. 전체 Observe-Decide-Act-Evaluate agent loop는 Task 15 범위다.
 - 구현 계획 파일은 현재 worktree에서 처음 추적되는 기준 문서로 함께 보존한다.
 - Run 저장소 테스트에서는 temp directory를 Run root로 주입한다. 기본 `${K8S_AGENT_HOME}` 정책은 Task 15 application orchestration에서 연결한다.
 - Task 3 fingerprint는 기존 `preanalyzer.path_safety`의 symlink boundary walk를 재사용하고 Agent state exclusion만 추가했다.
@@ -165,4 +185,4 @@
 
 ## 다음 Task
 
-- Task 5: 기존 Phase 1 분석을 Run 산출물 체계에 통합
+- Task 6: Evidence 기반 Application Topology 생성
