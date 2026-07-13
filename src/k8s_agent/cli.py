@@ -52,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     export = subcommands.add_parser("export")
     export.add_argument("run_id")
     export.add_argument("--output", required=True)
+    export.add_argument("--overwrite", action="store_true")
     export.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
 
     analyze = subcommands.add_parser("analyze")
@@ -174,6 +175,39 @@ def _run_resume(args: argparse.Namespace) -> int:
     return outcome.exit_code
 
 
+def _run_status(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    report = AgentApplication().status(args.run_id)
+    print(
+        f"status run_id={report.run_id} state={report.state} summary={report.summary} "
+        f"validation={report.validation.status} resources={len(report.resources)} "
+        f"limitations={'; '.join(report.limitations)} next={report.next_action}"
+    )
+    return 0
+
+
+def _run_explain(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    explanation = AgentApplication().explain(args.run_id, args.subject)
+    resources = ", ".join(f"{resource.kind}/{resource.name}" for resource in explanation.resources)
+    print(
+        f"explain run_id={args.run_id} subject={explanation.subject} "
+        f"decision={explanation.decision_id} profile_field={explanation.profile_field} "
+        f"resource={resources} evidence={','.join(explanation.evidence_refs)} trace={explanation.trace}"
+    )
+    return 0
+
+
+def _run_export(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    result = AgentApplication().export(args.run_id, Path(args.output), overwrite=bool(args.overwrite))
+    print(f"export run_id={result.run_id} output={result.output} files={result.file_count}")
+    return 0
+
+
 def _run_skeleton(command: str) -> int:
     print(f"{command} accepted")
     return 0
@@ -199,6 +233,12 @@ def _main_impl(argv: Sequence[str] | None) -> int:
         return _run_prepare(args)
     if args.command == "resume":
         return _run_resume(args)
+    if args.command == "status":
+        return _run_status(args)
+    if args.command == "explain":
+        return _run_explain(args)
+    if args.command == "export":
+        return _run_export(args)
     return _run_skeleton(args.command)
 
 

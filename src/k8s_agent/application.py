@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -9,8 +10,11 @@ import yaml
 
 from k8s_agent.agent.orchestrator import AgentOrchestrator, RunOutcome
 from k8s_agent.cli import PrepareRequest
+from k8s_agent.errors import AgentError
+from k8s_agent.models.report import ExportResult
 from k8s_agent.models.run import RunRecord, RunState
 from k8s_agent.models.source import AcquiredSource, RepositorySource
+from k8s_agent.reporting.final_report import FinalReportBuilder
 from k8s_agent.run.manager import RunManager
 from k8s_agent.run.store import RunStore
 from k8s_agent.source.github import GitHubSourceResolver
@@ -84,6 +88,42 @@ class AgentApplication:
 
         self.run_manager.append_event(run_id, "resume_source_check", "resume source unchanged", {"run_id": run_id})
         return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True).run(run_id)
+
+    def status(self, run_id: str):
+        return FinalReportBuilder(self.store).build(run_id)
+
+    def explain(self, run_id: str, subject: str | None):
+        return FinalReportBuilder(self.store).explain(run_id, subject)
+
+    def export(self, run_id: str, output: Path, overwrite: bool = False) -> ExportResult:
+        run_root = self.store.run_path(run_id)
+        generated = run_root / "generated"
+        if not generated.is_dir():
+            raise AgentError(
+                code="EXPORT-102",
+                exit_code=3,
+                message="generated manifests are not available for export.",
+                resolution="Run prepare/resume until manifests are generated.",
+                context={"run_id": run_id},
+            )
+        destination = output.expanduser().resolve()
+        if destination.exists() and not overwrite:
+            raise AgentError(
+                code="EXPORT-101",
+                exit_code=2,
+                message=f"export output already exists: {destination}",
+                resolution="Choose a new output path or pass --overwrite.",
+                context={"run_id": run_id, "output": str(destination)},
+            )
+        if destination.exists():
+            if destination.is_dir():
+                shutil.rmtree(destination)
+            else:
+                destination.unlink()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(generated, destination)
+        file_count = len([path for path in destination.rglob("*") if path.is_file()])
+        return ExportResult(run_id=run_id, output=str(destination), file_count=file_count)
 
     def _acquire_source(self, request: PrepareRequest, run_id: str) -> RepositorySource:
         acquired_at = self.clock()
