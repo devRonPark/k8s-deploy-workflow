@@ -35,6 +35,29 @@ src/preanalyzer/pipeline.py               # orchestration + YAML
 
 모듈 세부는 `src/CLAUDE.md`, `tests/CLAUDE.md`. 계층 간 책임을 편의로 옮기지 않는다.
 
+## Local LLM Endpoint
+
+온프렘 OpenAI-compatible 모델 연동 확인은 다음 방식으로 한다.
+
+- Base URL: `http://192.168.30.167:30000/v1`
+- `Authorization` 헤더를 넣지 않는다.
+- `Content-Type: application/json`만 사용한다.
+- 먼저 `GET /models`로 실제 모델 ID를 확인한 뒤, 그 ID로 `POST /chat/completions`를 호출한다.
+- 모델 테스트 실패를 API key 문제로 단정하지 말고, 인증 헤더 없는 호출 결과를 먼저 근거로 삼는다.
+
+## Required Tooling
+
+Kubernetes manifest validation work requires project-managed `kubeconform`.
+
+Before agent-run sample repo validation or completion claims involving generated manifests:
+
+```bash
+python3 scripts/ensure_kubeconform.py --check
+```
+
+If `13-validation-report.yaml` records `kubeconform: skipped`, the sample validation run is incomplete.
+Do not report Kubernetes schema validation as complete until kubeconform produces `pass` or `fail`.
+
 
 ## Completion
 

@@ -41,6 +41,16 @@ uv pip install --python .venv/bin/python3 "pydantic>=2.8" "PyYAML>=6.0"
 
 `uv`가 없으면 표준 `venv` + `pip install -e .`로 대체.
 
+## Required manifest validation tool
+
+Install/check the project-managed kubeconform binary before running manifest validation:
+
+```bash
+python3 scripts/ensure_kubeconform.py --check
+```
+
+The binary is installed under `.tools/` and is not committed. Supported platforms are Linux amd64, Linux arm64, and Windows amd64.
+
 ## 테스트 실행
 
 ```bash
