@@ -108,10 +108,23 @@
   - production cluster validation은 생성하지 않고, stateful workload 판단은 blocked candidate로 유지
   - 선택적 `analysis/05-kubernetes-intent.yaml` stable output 지원
 
+### Task 9: 현재 상태 기반 Agent Planner와 재계획
+
+- 상태: 완료
+- commit: `05beb03fea75f936c3a52c59f108d00a8c9a4e29`
+- commit message: `feat(agent): plan repository-specific deployment work`
+- 변경:
+  - `AgentPlan`, `AgentTask`, `PlanningContext`, `AgentPlanner` 추가
+  - topology runtime command conflict와 missing command를 semantic action task로 계획
+  - target policy confirmation/blocker 후보를 user question/blocker task로 계획
+  - auto-confirmed deployment intent를 manifest generation task로, non-production cluster validation을 validation task로 계획
+  - completed task ID를 반영해 재계획 시 다음 action이 완료 task를 건너뜀
+  - fixture별 저장소 shape에 따라 다른 plan task가 생성됨을 검증
+
 ## 현재 Task
 
-- 현재 Task: Task 9 현재 상태 기반 Agent Planner와 재계획
-- 다음 Task: Task 9 현재 상태 기반 Agent Planner와 재계획
+- 현재 Task: Task 10 사용자 질문, answers file과 non-interactive 차단
+- 다음 Task: Task 10 사용자 질문, answers file과 non-interactive 차단
 
 ## 실행한 테스트와 결과
 
@@ -223,6 +236,12 @@
 - Task 8 Green:
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.policy.test_target_policy tests.unit.k8s_agent.analysis.test_intent_builder -v`
   - 결과: 통과, `Ran 9 tests in 0.014s`, `OK`
+- Task 9 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.agent.test_planner tests.acceptance.test_repository_specific_plans -v`
+  - 결과: 기대한 실패. `k8s_agent.agent.planner` 미구현으로 실패.
+- Task 9 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.agent.test_planner tests.acceptance.test_repository_specific_plans -v`
+  - 결과: 통과, `Ran 9 tests in 0.083s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -232,6 +251,7 @@
 - Task 6 완료 조건에는 전체 테스트가 필요하지 않았다. Phase 1 모델은 소비만 하고 변경하지 않는다.
 - Task 7 완료 시 전체 테스트를 실행했다. 이유: 기존 semantic task routing과 verifier의 public interface가 Agent에서 직접 사용됨.
 - Task 8 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 정책과 Intent 경계에 한정된다.
+- Task 9 완료 조건에는 전체 테스트가 필요하지 않았다. Planner 자체와 fixture별 plan만 검증한다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -246,6 +266,7 @@
 - Task 6 `TopologyBuilder.build_from_models()`는 pure merge 로직으로 유지하고, `TopologyBuilder.build()`만 Phase 1 파일 I/O와 `04-application-topology.yaml` 생성을 담당한다.
 - Task 7은 기존 `preanalyzer.semantic.agent`를 실행 엔진으로 재사용하고 Agent 패키지에는 redaction, provider transport, metadata wrapping, action executor 경계만 추가했다.
 - Task 8은 기존 `preanalyzer.models.intent`를 변경하지 않고 Agent-owned intent model을 별도로 추가했다.
+- Task 9 planner는 manifest/profile/question 구현을 직접 수행하지 않고, 다음 task들이 소비할 action/이유/근거/완료조건만 결정론적으로 계획한다.
 
 ## Blocker
 
@@ -253,4 +274,4 @@
 
 ## 다음 Task
 
-- Task 9: 현재 상태 기반 Agent Planner와 재계획
+- Task 10: 사용자 질문, answers file과 non-interactive 차단
