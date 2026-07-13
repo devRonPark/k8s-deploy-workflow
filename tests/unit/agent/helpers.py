@@ -49,3 +49,27 @@ class FakeRunner:
         if result.returncode == 0 and list(argv)[:3] == ["git", "clone", "--no-tags"]:
             (Path(argv[-1]) / ".git").mkdir(parents=True, exist_ok=True)
         return result
+
+
+class FakeLLM:
+    def __init__(self, responses: dict[str, list[Any]] | None = None) -> None:
+        self.responses = {key: list(value) for key, value in (responses or {}).items()}
+
+    def _pop(self, name: str):
+        values = self.responses.get(name, [])
+        return values.pop(0) if values else None
+
+    def explain_analysis(self, topology):
+        return self._pop("explain_analysis")
+
+    def phrase_question(self, question):
+        return self._pop("phrase_question")
+
+    def nl_to_changeset(self, request, intent, allowed_paths):
+        return self._pop("nl_to_changeset")
+
+    def explain_validation_failure(self, report):
+        return self._pop("explain_validation_failure")
+
+    def propose_correction(self, report_payload, intent, allowed_paths):
+        return self._pop("propose_correction")
