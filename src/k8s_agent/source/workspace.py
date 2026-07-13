@@ -5,6 +5,7 @@ from pathlib import Path
 
 from k8s_agent.errors import AgentError
 from k8s_agent.models.source import Workspace
+from k8s_agent.run.ids import safe_run_path
 
 
 class WorkspaceManager:
@@ -12,7 +13,7 @@ class WorkspaceManager:
         self.base_dir = base_dir
 
     def create(self, run_id: str) -> Workspace:
-        root = self.base_dir / run_id / "workspace"
+        root = safe_run_path(self.base_dir, run_id) / "workspace"
         source_path = root / "source"
         generated_path = root / "generated"
         source_path.mkdir(parents=True, exist_ok=True)

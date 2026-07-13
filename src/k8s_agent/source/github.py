@@ -10,10 +10,26 @@ from k8s_agent.source.git_runner import GitResult, GitRunner
 
 
 SAFE_GIT_ENV = {
+    "GIT_CONFIG_GLOBAL": "/dev/null",
     "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_SYSTEM": "/dev/null",
+    "GIT_OPTIONAL_LOCKS": "0",
     "GIT_LFS_SKIP_SMUDGE": "1",
     "GIT_TERMINAL_PROMPT": "0",
 }
+
+HARDENED_GIT_CONFIG = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "filter.lfs.process=",
+    "-c",
+    "filter.lfs.smudge=",
+    "-c",
+    "filter.lfs.required=false",
+    "-c",
+    "submodule.recurse=false",
+]
 
 
 class GitHubSourceResolver:
@@ -37,17 +53,25 @@ class GitHubSourceResolver:
             sanitized_url,
             ref,
         )
-        fetch = self.git.run(workspace.source_path, ["fetch", "--depth", "1", "origin", ref], env=SAFE_GIT_ENV)
+        fetch = self.git.run(
+            workspace.source_path,
+            [*HARDENED_GIT_CONFIG, "fetch", "--depth", "1", "origin", ref],
+            env=SAFE_GIT_ENV,
+        )
         if fetch.returncode != 0:
             code = "SOURCE-201" if _looks_like_missing_ref(fetch) else "SOURCE-202"
             raise _source_error(code, sanitized_url, ref)
         _check(
-            self.git.run(workspace.source_path, ["checkout", "--detach", "FETCH_HEAD"], env=SAFE_GIT_ENV),
+            self.git.run(
+                workspace.source_path,
+                [*HARDENED_GIT_CONFIG, "checkout", "--detach", "FETCH_HEAD"],
+                env=SAFE_GIT_ENV,
+            ),
             "SOURCE-202",
             sanitized_url,
             ref,
         )
-        resolved_commit = self.git.output(workspace.source_path, ["rev-parse", "HEAD"])
+        resolved_commit = self.git.output(workspace.source_path, ["rev-parse", "HEAD"], env=SAFE_GIT_ENV)
         if resolved_commit is None:
             raise _source_error("SOURCE-203", sanitized_url, ref)
         source = RepositorySource(
@@ -76,6 +100,13 @@ def sanitize_github_url(url: str) -> str:
         if parts.port:
             netloc = f"{netloc}:{parts.port}"
         return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    if parts.scheme == "ssh" and parts.hostname:
+        netloc = parts.hostname
+        if parts.port:
+            netloc = f"{netloc}:{parts.port}"
+        return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    if "@" in url and ":" in url.split("@", 1)[1]:
+        return url.split("@", 1)[1]
     return url
 
 

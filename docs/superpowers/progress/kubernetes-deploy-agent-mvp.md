@@ -48,7 +48,9 @@
 
 ### Task 4: GitHub Repository ref 고정과 격리 Workspace
 
-- 상태: 완료, commit 예정: `feat(source): pin github refs in isolated workspaces`
+- 상태: 완료
+- commit: `cfb91df8fcbe59f3137664bbe2aa226a9a3cb33e`
+- commit message: `feat(source): pin github refs in isolated workspaces`
 - 변경:
   - `GitHubSourceResolver.acquire()` 추가
   - GitHub HTTPS/SSH URL normalization과 embedded credential 제거 추가
@@ -59,7 +61,7 @@
 
 ## 현재 Task
 
-- 현재 Task: Task 4 검증 및 커밋
+- 현재 Task: Milestone 1 리뷰 피드백 수정 및 검증
 - 다음 Task: Task 5 기존 Phase 1 분석을 Run 산출물 체계에 통합
 
 ## 실행한 테스트와 결과
@@ -104,6 +106,24 @@
   - 패키지 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
   - 결과: 통과, `Ran 10 tests in 0.063s`, `OK`
   - 선택적 실제 GitHub integration: 실행하지 않음. `K8S_AGENT_RUN_NETWORK_TESTS=1` opt-in 테스트이며 현재 Task 완료에 필수 아님.
+- Milestone 1 Review:
+  - reviewer: subagent `Aristotle`
+  - range: `9252b708a5b6e71ac1145872d0cd96076c532524..cfb91df8fcbe59f3137664bbe2aa226a9a3cb33e`
+  - 결과: Critical 4건, Important 4건, Minor 3건 발견. Milestone 2 진행 전 trust boundary와 source persistence 수정 필요.
+- Milestone 1 Review Fix Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/run -p 'test_*.py' -v`
+  - 결과: 기대한 실패. run id path traversal 미차단.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
+  - 결과: 기대한 실패. optional locks 미설정, 민감 파일 fingerprint 포함, GitHub hardening 부족, credential URL variant 미마스킹, workspace traversal 미차단.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.cli.test_prepare_arguments.PrepareArgumentTests.test_prepare_accepts_production_target -v`
+  - 결과: 기대한 실패. valid prepare가 run/source.yaml을 만들지 않는 stub 동작.
+- Milestone 1 Review Fix Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.cli.test_prepare_arguments tests.unit.k8s_agent.test_errors -v`
+  - 결과: 통과, `Ran 10 tests in 0.461s`, `OK`
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/run -p 'test_*.py' -v`
+  - 결과: 통과, `Ran 7 tests in 0.012s`, `OK`
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/source -p 'test_*.py' -v`
+  - 결과: 통과, `Ran 13 tests in 0.068s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -118,6 +138,7 @@
 - Run 저장소 테스트에서는 temp directory를 Run root로 주입한다. 기본 `${K8S_AGENT_HOME}` 정책은 Task 15 application orchestration에서 연결한다.
 - Task 3 fingerprint는 기존 `preanalyzer.path_safety`의 symlink boundary walk를 재사용하고 Agent state exclusion만 추가했다.
 - Task 4 실제 네트워크 GitHub 테스트는 opt-in으로 남겼고 unit 테스트는 fake Git runner로 command construction과 Secret masking을 검증했다.
+- Milestone 1 review 후 다음을 보강했다: local Git metadata 조회에 `GIT_OPTIONAL_LOCKS=0`, remote Git hardening env/config, run id traversal guard, credential URL variant sanitization, sensitive file fingerprint exclusion, valid local `prepare`의 run/source.yaml persistence.
 
 ## Blocker
 

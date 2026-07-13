@@ -5,7 +5,12 @@ import hashlib
 from pathlib import Path
 
 from k8s_agent.models.source import ScanLimits, SourceFingerprint
-from preanalyzer.path_safety import is_excluded_rel_path, iter_repository_files, resolve_repository_path
+from preanalyzer.path_safety import (
+    is_excluded_rel_path,
+    is_sensitive_rel_path,
+    iter_repository_files,
+    resolve_repository_path,
+)
 
 
 AGENT_STATE_PATTERNS = (".k8s-agent/**", "**/.k8s-agent/**")
@@ -21,7 +26,7 @@ def build_source_fingerprint(root: Path, limits: ScanLimits) -> SourceFingerprin
 
     for path in files:
         rel = path.relative_to(resolved).as_posix()
-        if _is_agent_excluded(rel) or is_excluded_rel_path(rel):
+        if _is_agent_excluded(rel) or is_excluded_rel_path(rel) or is_sensitive_rel_path(rel):
             excluded.add(rel)
             continue
         try:

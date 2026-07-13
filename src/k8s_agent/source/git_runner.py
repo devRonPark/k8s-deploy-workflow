@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import subprocess
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +14,9 @@ class GitResult:
 
 
 class GitRunner:
+    def __init__(self, timeout_seconds: float = 60.0) -> None:
+        self.timeout_seconds = timeout_seconds
+
     def run(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> GitResult:
         process_env = os.environ.copy()
         if env:
@@ -26,13 +29,16 @@ class GitRunner:
                 text=True,
                 shell=False,
                 env=process_env,
+                timeout=self.timeout_seconds,
             )
+        except subprocess.TimeoutExpired as exc:
+            return GitResult(returncode=124, stdout=exc.stdout or "", stderr="git command timed out")
         except OSError as exc:
             return GitResult(returncode=127, stdout="", stderr=str(exc))
         return GitResult(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
 
-    def output(self, cwd: Path, args: list[str]) -> str | None:
-        result = self.run(cwd, args)
+    def output(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> str | None:
+        result = self.run(cwd, args, env=env)
         if result.returncode != 0:
             return None
         output = result.stdout.strip()

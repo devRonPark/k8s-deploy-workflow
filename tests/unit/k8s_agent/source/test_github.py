@@ -7,7 +7,7 @@ from pathlib import Path
 
 from k8s_agent.errors import AgentError
 from k8s_agent.source.git_runner import GitResult
-from k8s_agent.source.github import GitHubSourceResolver
+from k8s_agent.source.github import GitHubSourceResolver, sanitize_github_url
 from k8s_agent.source.workspace import WorkspaceManager
 
 
@@ -22,12 +22,12 @@ class FakeGitRunner:
 
     def run(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> GitResult:
         self.calls.append((cwd, args, env))
-        if args[:1] == ["fetch"] and self.fail_fetch is not None:
+        if "fetch" in args and self.fail_fetch is not None:
             return self.fail_fetch
         return GitResult(returncode=0, stdout="", stderr="")
 
-    def output(self, cwd: Path, args: list[str]) -> str | None:
-        self.calls.append((cwd, args, None))
+    def output(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> str | None:
+        self.calls.append((cwd, args, env))
         if args == ["rev-parse", "HEAD"]:
             return self.head
         return None
@@ -53,8 +53,17 @@ class GitHubSourceResolverTests(unittest.TestCase):
             commands = [args for _, args, _ in git.calls]
             self.assertIn(["init"], commands)
             self.assertIn(["remote", "add", "origin", "https://github.com/example/app.git"], commands)
-            self.assertIn(["fetch", "--depth", "1", "origin", "main"], commands)
-            self.assertIn(["checkout", "--detach", "FETCH_HEAD"], commands)
+            fetch = [args for args in commands if "fetch" in args][0]
+            checkout = [args for args in commands if "checkout" in args][0]
+            self.assertIn("core.hooksPath=/dev/null", fetch)
+            self.assertIn("submodule.recurse=false", fetch)
+            self.assertIn("fetch", fetch)
+            self.assertIn("--depth", fetch)
+            self.assertIn("checkout", checkout)
+            self.assertIn("--detach", checkout)
+            envs = [env for _, _, env in git.calls if env is not None]
+            self.assertTrue(envs)
+            self.assertTrue(all(env.get("GIT_CONFIG_GLOBAL") == "/dev/null" for env in envs))
 
     def test_embedded_credentials_are_removed_from_saved_url_and_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -83,6 +92,16 @@ class GitHubSourceResolverTests(unittest.TestCase):
                     workspace,
                     FIXED_TIME,
                 )
+
+    def test_sanitizes_credential_bearing_url_variants(self):
+        self.assertEqual(
+            sanitize_github_url("ssh://token123@github.com/example/private.git"),
+            "ssh://github.com/example/private.git",
+        )
+        self.assertEqual(
+            sanitize_github_url("token123@github.com:example/private.git"),
+            "github.com:example/private.git",
+        )
 
 
 if __name__ == "__main__":

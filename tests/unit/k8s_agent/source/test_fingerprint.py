@@ -33,6 +33,7 @@ class SourceFingerprintTests(unittest.TestCase):
             (root / ".git" / "HEAD").write_text("secret metadata", encoding="utf-8")
             (root / ".k8s-agent").mkdir()
             (root / ".k8s-agent" / "run.yaml").write_text("agent metadata", encoding="utf-8")
+            (root / ".env").write_text("TOKEN=super-secret", encoding="utf-8")
             (root / "binary.bin").write_bytes(b"abc\x00def")
             (root / "large.txt").write_text("0123456789" * 3, encoding="utf-8")
             outside = Path(tmp) / "outside.txt"
@@ -44,6 +45,7 @@ class SourceFingerprintTests(unittest.TestCase):
             self.assertEqual(fingerprint.included_files, ["app.py"])
             self.assertIn(".git/HEAD", fingerprint.excluded_paths)
             self.assertIn(".k8s-agent/run.yaml", fingerprint.excluded_paths)
+            self.assertIn(".env", fingerprint.excluded_paths)
             self.assertIn("binary.bin", fingerprint.excluded_paths)
             self.assertIn("large.txt", fingerprint.excluded_paths)
             self.assertTrue(any("outside-link.txt" in warning for warning in fingerprint.warnings))

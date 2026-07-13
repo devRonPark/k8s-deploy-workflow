@@ -9,6 +9,7 @@ import yaml
 
 from k8s_agent.errors import AgentError
 from k8s_agent.models.run import RunRecord
+from k8s_agent.run.ids import safe_run_path
 
 
 class RunStore:
@@ -16,7 +17,7 @@ class RunStore:
         self.base_dir = base_dir
 
     def run_path(self, run_id: str) -> Path:
-        return self.base_dir / run_id
+        return safe_run_path(self.base_dir, run_id)
 
     def run_file(self, run_id: str) -> Path:
         return self.run_path(run_id) / "run.yaml"
@@ -34,6 +35,26 @@ class RunStore:
             yaml.safe_dump(payload, handle, sort_keys=True, allow_unicode=False)
         os.replace(tmp_path, self.run_file(record.run_id))
         return normalized
+
+    def save_yaml(self, run_id: str, relative_path: str, payload: dict) -> Path:
+        run_root = self.run_path(run_id)
+        destination = (run_root / relative_path).resolve()
+        try:
+            destination.relative_to(run_root.resolve())
+        except ValueError as exc:
+            raise AgentError(
+                code="RUN-003",
+                exit_code=8,
+                message=f"artifact path escapes run root: {relative_path}",
+                resolution="Use an artifact path relative to the run root.",
+                context={"run_id": run_id, "path": relative_path},
+            ) from exc
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = destination.with_suffix(destination.suffix + ".tmp")
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(payload, handle, sort_keys=True, allow_unicode=False)
+        os.replace(tmp_path, destination)
+        return destination
 
     def load(self, run_id: str) -> RunRecord:
         path = self.run_file(run_id)

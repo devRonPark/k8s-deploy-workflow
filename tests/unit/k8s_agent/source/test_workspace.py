@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from k8s_agent.errors import AgentError
 from k8s_agent.source.workspace import WorkspaceManager
 
 
@@ -23,6 +24,13 @@ class WorkspaceManagerTests(unittest.TestCase):
             manager.cleanup(workspace)
 
             self.assertFalse(workspace.root.exists())
+
+    def test_rejects_run_id_path_traversal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = WorkspaceManager(Path(tmp))
+
+            with self.assertRaisesRegex(AgentError, "RUN-001"):
+                manager.create("../escape")
 
 
 if __name__ == "__main__":

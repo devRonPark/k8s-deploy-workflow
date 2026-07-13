@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,9 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 PYTHON = ROOT / ".venv" / "bin" / "python3"
 
 
-def run_agent(*args: str) -> subprocess.CompletedProcess[str]:
+def run_agent(*args: str, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         [str(PYTHON), "-m", "k8s_agent.cli", *args],
         cwd=ROOT,
@@ -90,18 +93,26 @@ class PrepareArgumentTests(unittest.TestCase):
         self.assertPrepareError(result, "CLI-105")
 
     def test_prepare_accepts_production_target(self):
-        result = run_agent(
-            "prepare",
-            "--local-path",
-            "tests/fixtures/repos/node-express-like",
-            "--target",
-            "production",
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_agent(
+                "prepare",
+                "--local-path",
+                "tests/fixtures/repos/node-express-like",
+                "--target",
+                "production",
+                extra_env={"K8S_AGENT_HOME": tmp},
+            )
 
-        text = result.stdout + result.stderr
-        self.assertEqual(result.returncode, 0, text)
-        self.assertIn("prepare accepted", text)
-        self.assertIn("target=production", text)
+            text = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, text)
+            self.assertIn("prepare created", text)
+            self.assertIn("target=production", text)
+            run_id = text.split("run_id=", 1)[1].split()[0]
+            run_root = Path(tmp) / "runs" / run_id
+            self.assertTrue((run_root / "run.yaml").is_file())
+            source_yaml = run_root / "source.yaml"
+            self.assertTrue(source_yaml.is_file())
+            self.assertIn("kind: local", source_yaml.read_text(encoding="utf-8"))
 
     def test_debug_includes_traceback_for_cli_errors(self):
         result = run_agent("--debug", "prepare", "--target", "development")

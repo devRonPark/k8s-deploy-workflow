@@ -93,6 +93,43 @@ class LocalSourceResolverTests(unittest.TestCase):
             with self.assertRaisesRegex(AgentError, "SOURCE-101"):
                 LocalSourceResolver().resolve(missing, FIXED_TIME)
 
+    def test_git_metadata_queries_disable_optional_locks(self):
+        class FakeGit:
+            def __init__(self, root: Path) -> None:
+                self.root = root
+                self.run_envs: list[dict[str, str] | None] = []
+                self.output_envs: list[dict[str, str] | None] = []
+
+            def output(self, cwd: Path, args: list[str], env: dict[str, str] | None = None) -> str | None:
+                del cwd
+                self.output_envs.append(env)
+                if args == ["rev-parse", "--show-toplevel"]:
+                    return str(self.root)
+                if args == ["branch", "--show-current"]:
+                    return "main"
+                if args == ["rev-parse", "HEAD"]:
+                    return "abc123"
+                return None
+
+            def run(self, cwd: Path, args: list[str], env: dict[str, str] | None = None):
+                del cwd, args
+                from k8s_agent.source.git_runner import GitResult
+
+                self.run_envs.append(env)
+                return GitResult(returncode=0, stdout="", stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "app.py").write_text("print('hello')\n", encoding="utf-8")
+            fake_git = FakeGit(repo.resolve())
+
+            LocalSourceResolver(git=fake_git).resolve(repo, FIXED_TIME)
+
+            envs = fake_git.output_envs + fake_git.run_envs
+            self.assertTrue(envs)
+            self.assertTrue(all(env and env.get("GIT_OPTIONAL_LOCKS") == "0" for env in envs))
+
 
 if __name__ == "__main__":
     unittest.main()

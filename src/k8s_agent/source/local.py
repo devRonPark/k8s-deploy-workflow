@@ -10,6 +10,9 @@ from k8s_agent.source.fingerprint import build_source_fingerprint
 from k8s_agent.source.git_runner import GitRunner
 
 
+READ_ONLY_GIT_ENV = {"GIT_OPTIONAL_LOCKS": "0"}
+
+
 class LocalSourceResolver:
     def __init__(self, git: GitRunner | None = None, limits: ScanLimits | None = None) -> None:
         self.git = git or GitRunner()
@@ -27,14 +30,14 @@ class LocalSourceResolver:
         )
 
     def _git_metadata(self, root: Path) -> GitMetadata:
-        toplevel = self.git.output(root, ["rev-parse", "--show-toplevel"])
+        toplevel = self.git.output(root, ["rev-parse", "--show-toplevel"], env=READ_ONLY_GIT_ENV)
         if toplevel is None or Path(toplevel).resolve() != root:
             return GitMetadata(is_repository=False)
         modified, untracked = _workspace_status(root, self.git)
         return GitMetadata(
             is_repository=True,
-            branch=self.git.output(root, ["branch", "--show-current"]),
-            head=self.git.output(root, ["rev-parse", "HEAD"]),
+            branch=self.git.output(root, ["branch", "--show-current"], env=READ_ONLY_GIT_ENV),
+            head=self.git.output(root, ["rev-parse", "HEAD"], env=READ_ONLY_GIT_ENV),
             dirty=bool(modified or untracked),
             modified_files=modified,
             untracked_files=untracked,
@@ -69,7 +72,7 @@ def _ensure_readable_directory(path: Path) -> None:
 
 
 def _workspace_status(root: Path, git: GitRunner) -> tuple[list[str], list[str]]:
-    result = git.run(root, ["status", "--porcelain"])
+    result = git.run(root, ["status", "--porcelain"], env=READ_ONLY_GIT_ENV)
     if result.returncode != 0:
         return [], []
     modified: set[str] = set()

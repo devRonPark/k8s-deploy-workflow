@@ -144,8 +144,13 @@ def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
 
 def _run_prepare(args: argparse.Namespace) -> int:
     request = _validate_prepare(args)
-    source = "repo-url" if request.repo_url else "local-path"
-    print(f"prepare accepted target={request.target} source={source}")
+    from k8s_agent.application import AgentApplication
+
+    outcome = AgentApplication().prepare(request)
+    print(
+        f"prepare created run_id={outcome.run_id} "
+        f"target={outcome.target} source={outcome.source_kind} run_root={outcome.run_root}"
+    )
     return 0
 
 

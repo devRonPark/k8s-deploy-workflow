@@ -45,6 +45,13 @@ class RunStoreTests(unittest.TestCase):
                     with store.acquire_lock("locked-run"):
                         pass
 
+    def test_run_id_path_traversal_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = RunStore(Path(tmp))
+
+            with self.assertRaisesRegex(AgentError, "RUN-001"):
+                store.run_path("../escape")
+
 
 if __name__ == "__main__":
     unittest.main()
