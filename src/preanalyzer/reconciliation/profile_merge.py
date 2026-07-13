@@ -4,9 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from preanalyzer.models.fields import Tracked, Confidence
-from preanalyzer.models.intent import KubernetesIntent, IngressIntent
+from preanalyzer.models.intent import KubernetesIntent, IngressIntent, ServiceIntent
 from preanalyzer.models.profile import DeploymentProfile
-from preanalyzer.models.questions import UnresolvedQuestions
+from preanalyzer.models.questions import UnresolvedQuestion, UnresolvedQuestions
 from preanalyzer.reconciliation.engine import ReconciliationResult
 
 
@@ -21,8 +21,31 @@ def _pf(value: str) -> Tracked[str]:
     return Tracked(value=value, source="deployment_profile", confidence=Confidence.HIGH, evidence_refs=[])
 
 
+def _pf_int(value: int) -> Tracked[int]:
+    return Tracked(value=value, source="deployment_profile", confidence=Confidence.HIGH, evidence_refs=[])
+
+
+def _service_port_component_ids(profile: DeploymentProfile) -> set[str]:
+    return {
+        component_id
+        for component_id, component in profile.components.items()
+        if component.service is not None and component.service.port is not None
+    }
+
+
+def _port_question_satisfied(q: UnresolvedQuestion, component_ids: set[str]) -> bool:
+    if q.answer_type != "port":
+        return False
+    return any(q.id == f"Q-PORT-{component_id}" for component_id in component_ids)
+
+
 def merge(result: ReconciliationResult, profile: DeploymentProfile) -> MergeResult:
     intent = result.intent.model_copy(deep=True)
+    known_component_ids = {c.component_id for c in intent.components}
+    unknown_component_ids = sorted(set(profile.components) - known_component_ids)
+    if unknown_component_ids:
+        raise ValueError(f"unknown deployment profile component: {unknown_component_ids[0]}")
+
     if profile.namespace:
         intent.namespace = _pf(profile.namespace)
     for ci in intent.components:
@@ -35,6 +58,19 @@ def merge(result: ReconciliationResult, profile: DeploymentProfile) -> MergeResu
         app = next((c for c in intent.components if c.role == "application"), None)
         if app is not None:
             app.ingress = IngressIntent(host=_pf(profile.ingress_host))
+    for ci in intent.components:
+        component_profile = profile.components.get(ci.component_id)
+        if component_profile is None or component_profile.service is None:
+            continue
+        service_port = component_profile.service.port
+        if service_port is None:
+            continue
+        port = _pf_int(service_port)
+        if ci.service is None:
+            ci.service = ServiceIntent()
+        ci.service.port = port
+        if ci.workload is not None:
+            ci.workload.port = port
 
     satisfied = set()
     if profile.registry:
@@ -43,6 +79,10 @@ def merge(result: ReconciliationResult, profile: DeploymentProfile) -> MergeResu
         satisfied.add("namespace")
     if profile.ingress_host:
         satisfied.add("ingress_host")
-    remaining = [q for q in result.questions.questions if q.profile_field not in satisfied]
+    port_component_ids = _service_port_component_ids(profile)
+    remaining = [
+        q for q in result.questions.questions
+        if q.profile_field not in satisfied and not _port_question_satisfied(q, port_component_ids)
+    ]
     ready = not any(q.blocking_level == "application_runnable" for q in remaining)
     return MergeResult(intent=intent, questions=UnresolvedQuestions(questions=remaining), ready_for_level2=ready)
