@@ -253,11 +253,6 @@ def _run_validate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_skeleton(command: str) -> int:
-    print(f"{command} accepted")
-    return 0
-
-
 def _main_impl(argv: Sequence[str] | None) -> int:
     parser = build_parser()
     try:
@@ -292,7 +287,13 @@ def _main_impl(argv: Sequence[str] | None) -> int:
         return _run_generate(args)
     if args.command == "validate":
         return _run_validate(args)
-    return _run_skeleton(args.command)
+    raise AgentError(
+        code="CLI-100",
+        exit_code=2,
+        message="a command is required.",
+        resolution="Run k8s-agent prepare --local-path ./app --target development.",
+        context={"command": str(args.command)},
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

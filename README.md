@@ -176,14 +176,14 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 
 ## Current status and limitations
 
-현재 코드는 Step 12까지 MVP 흐름이 연결되어 있습니다. "분석 → Intent → 템플릿 렌더링 → 검증 리포트"가 샘플 저장소 기준으로 관통합니다.
+현재 Kubernetes Deploy Agent MVP는 "source 획득 → 분석 → Intent → 질문/답변 → Profile → 템플릿 렌더링 → 검증 → 제한적 리페어 → 보고/export" 흐름이 샘플 저장소 기준으로 관통합니다.
 
 - Step 0~6: snapshot, artifact inventory, 배포파일 파싱, component 탐지, 언어/빌드 탐지, 런타임 추출, 포트/env/volume/의존 분석
 - Step 5~7: bounded semantic agent, 도구 예산, verifier, OpenAI-compatible provider 경로
 - Step 8~10: Reconciliation, Profile merge, unresolved 질문 생성
 - Step 11: Deployment, Service, ServiceAccount, ConfigMap, Secret placeholder, Ingress 템플릿 렌더링
 - Step 12: YAML syntax, project-managed kubeconform, kubectl dry-run 검증 체인
-- Step 13~15: Deployment Check, Smoke Test 실행, Repair Loop 자동화는 아직 미구현. 현재는 checklist와 smoke-test-plan 초안 생성 수준
+- Agent MVP: prepare/resume/status/explain/export와 단계별 analyze/plan/generate/validate 명령, 10개 fixture acceptance matrix, reproducible manifest bundle 검증
 
 이 프로젝트는 아직 한 번의 명령으로 운영 클러스터에 배포하는 도구가 아닙니다. 확인할 수 없는 값은 자동으로 꾸며내지 않고 질문이나 unresolved 항목으로 남깁니다.
 
