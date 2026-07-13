@@ -3,7 +3,7 @@ import unittest
 import yaml
 
 from preanalyzer.models.fields import Confidence, Tracked
-from preanalyzer.models.intent import ComponentIntent, KubernetesIntent, ServiceIntent, Workload
+from preanalyzer.models.intent import ComponentIntent, IngressIntent, KubernetesIntent, ServiceIntent, Workload
 from preanalyzer.renderer.engine import TemplateRenderer
 
 
@@ -11,11 +11,11 @@ def _t(v, s="x"):
     return Tracked(value=v, source=s, confidence=Confidence.HIGH, evidence_refs=["EV"])
 
 
-def _app_intent(registry=True):
+def _app_intent(registry=True, *, workload_port=8000, service_port=8000, ingress_host=None):
     workload = Workload(
         image_name=_t("backend"),
         image_tag=_t("v0"),
-        port=_t(8000),
+        port=_t(workload_port) if workload_port is not None else None,
         command=_t("uvicorn main:app"),
         secret_env=["POSTGRES_PASSWORD"],
     )
@@ -28,7 +28,8 @@ def _app_intent(registry=True):
                 component_id="backend",
                 role="application",
                 workload=workload,
-                service=ServiceIntent(port=_t(8000)),
+                service=ServiceIntent(port=_t(service_port)) if service_port is not None else None,
+                ingress=IngressIntent(host=_t(ingress_host)) if ingress_host else None,
             )
         ],
     )
@@ -72,6 +73,37 @@ class RendererTests(unittest.TestCase):
         intent = KubernetesIntent(components=[ComponentIntent(component_id="db", role="dependency")])
         result = TemplateRenderer("abc", "2026.07").render(intent)
         self.assertEqual(result.files, {})
+
+    def test_holds_ingress_without_service_port(self):
+        result = TemplateRenderer("abc", "2026.07").render(
+            _app_intent(workload_port=None, service_port=None, ingress_host="app.example.com")
+        )
+
+        self.assertFalse(any(path.endswith("backend/ingress.yaml") for path in result.files))
+        hold = next(
+            hold
+            for hold in result.generation_holds
+            if hold.component_id == "backend" and hold.resource.kind == "Ingress"
+        )
+        self.assertEqual(hold.status, "generation_held")
+        self.assertEqual(hold.display_status, "생성 보류")
+        self.assertEqual(hold.reason.code, "unresolved_service_port")
+
+    def test_renders_ingress_with_service_port(self):
+        result = TemplateRenderer("abc", "2026.07").render(_app_intent(ingress_host="app.example.com"))
+
+        ingress = yaml.safe_load(result.files["backend/ingress.yaml"])
+        port = ingress["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]["port"]["number"]
+        self.assertEqual(port, 8000)
+
+    def test_rendered_yaml_never_contains_none_service_port(self):
+        result = TemplateRenderer("abc", "2026.07").render(
+            _app_intent(workload_port=None, service_port=None, ingress_host="app.example.com")
+        )
+
+        rendered_yaml = "\n".join(result.files.values())
+        self.assertNotIn("number: None", rendered_yaml)
+        self.assertNotIn('number: "None"', rendered_yaml)
 
 
 if __name__ == "__main__":

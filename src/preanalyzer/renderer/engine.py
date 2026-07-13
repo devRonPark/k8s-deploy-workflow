@@ -20,10 +20,30 @@ class DeferredResource:
 
 
 @dataclass(frozen=True)
+class HeldResource:
+    kind: str
+
+
+@dataclass(frozen=True)
+class HoldReason:
+    code: str
+
+
+@dataclass(frozen=True)
+class GenerationHold:
+    component_id: str
+    resource: HeldResource
+    reason: HoldReason
+    status: str = "generation_held"
+    display_status: str = "생성 보류"
+
+
+@dataclass(frozen=True)
 class RenderResult:
     files: dict[str, str] = field(default_factory=dict)
     deferred: list[DeferredResource] = field(default_factory=list)
     achieved_level_cap: int = 1
+    generation_holds: list[GenerationHold] = field(default_factory=list)
 
 
 class TemplateRenderer:
@@ -40,6 +60,7 @@ class TemplateRenderer:
     def render(self, intent: KubernetesIntent, allow_placeholders: bool = False) -> RenderResult:
         files: dict[str, str] = {}
         deferred: list[DeferredResource] = []
+        generation_holds: list[GenerationHold] = []
         namespace = intent.namespace.value if intent.namespace is not None else None
         common_annotations = annotations(self._commit_sha, self._rules_version)
 
@@ -103,14 +124,41 @@ class TemplateRenderer:
                     "service.yaml.j2", **base, port=component.service.port.value
                 )
             if component.ingress and component.ingress.host and component.ingress.host.value:
+                service_port = (
+                    component.service.port.value
+                    if component.service and component.service.port and component.service.port.value is not None
+                    else port
+                )
+                if service_port is None:
+                    generation_holds.append(self._hold_ingress(component.component_id))
+                    deferred.append(
+                        DeferredResource(
+                            component.component_id,
+                            "Ingress",
+                            "unresolved_service_port",
+                        )
+                    )
+                    continue
                 files[f"{component.component_id}/ingress.yaml"] = self._render(
                     "ingress.yaml.j2",
                     **base,
                     host=component.ingress.host.value,
-                    service_port=port,
+                    service_port=service_port,
                 )
 
-        return RenderResult(files=dict(sorted(files.items())), deferred=deferred, achieved_level_cap=1)
+        return RenderResult(
+            files=dict(sorted(files.items())),
+            deferred=deferred,
+            generation_holds=generation_holds,
+            achieved_level_cap=1,
+        )
 
     def _render(self, template_name: str, **context) -> str:
         return self._env.get_template(template_name).render(**context).strip() + "\n"
+
+    def _hold_ingress(self, component_id: str) -> GenerationHold:
+        return GenerationHold(
+            component_id=component_id,
+            resource=HeldResource(kind="Ingress"),
+            reason=HoldReason(code="unresolved_service_port"),
+        )
