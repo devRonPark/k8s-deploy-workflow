@@ -244,10 +244,25 @@
   - plan 전 analysis, profile 전 generate, bundle 전 validate 선행조건 오류 `STAGE-101/201/301` 추가
   - 단계별 완료 event에 command와 입력 revision/result metadata 기록
 
+### Task 19: Trust boundary 보안 강화와 감사 추적
+
+- 상태: 완료
+- commit: `b0f39d0e5b52f3453260f7754afe1bf88fe143bf`
+- commit message: `security: harden agent trust boundaries and audit trail`
+- 변경:
+  - 공통 `Redactor`를 추가해 LLM payload, event details, command audit에서 secret-like 값과 Git URL userinfo를 정제
+  - `GitRunner`가 shell string 없이 argv list로만 실행됨을 audit details로 보존하고 민감 인자를 제거
+  - local/GitHub source acquisition에 audited `GitRunner`를 연결해 `tool_execution` event 기록
+  - `RunManager.create()`가 token 포함 Git URL을 run 저장 전 정제
+  - `EventLog`가 summary/details를 append 직전에 다시 정제
+  - internal manifest validation에 privileged container, hostPath volume, cluster-wide resource 차단 finding 추가
+  - multi-document YAML을 internal validator와 syntax stage가 동일하게 처리하도록 정합성 보강
+  - 보안 단위 테스트와 canary 기반 audit trail acceptance 추가
+
 ## 현재 Task
 
-- 현재 Task: Task 19 Trust boundary 보안 강화와 감사 추적
-- 다음 Task: Task 19 Trust boundary 보안 강화와 감사 추적
+- 현재 Task: Task 20 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
+- 다음 Task: Task 20 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
 
 ## 실행한 테스트와 결과
 
@@ -436,6 +451,18 @@
   - 결과: 통과, `Ran 9 tests in 3.439s`, `OK`
   - 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_stage_commands tests.cli.test_advanced_commands tests.cli.test_prepare_arguments tests.cli.test_prepare_black_box tests.cli.test_resume_black_box tests.cli.test_status_explain_export tests.unit.k8s_agent.test_resume -v`
   - 결과: 통과, `Ran 31 tests in 9.984s`, `OK`
+- Task 19 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/security -p 'test_*.py' -v`
+  - 결과: 기대한 실패. `GitResult.audit_details`, `Redactor`, manifest security policy, run 저장 전 URL 정제가 없어 실패.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_audit_trail -v`
+  - 결과: 기대한 실패. `tool_execution` audit event가 없어 실패.
+- Task 19 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/security -p 'test_*.py' -v`
+  - 결과: 통과, `Ran 7 tests in 0.005s`, `OK`
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_audit_trail -v`
+  - 결과: 통과, `Ran 1 test in 0.032s`, `OK`
+  - validation 정합성 보강 후 영향 범위 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.acceptance.test_audit_trail tests.acceptance.test_manifest_validation tests.unit.test_validator -v`
+  - 결과: 통과, `Ran 11 tests in 3.102s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -455,6 +482,9 @@
 - Task 16 완료 조건에는 전체 테스트가 필요하지 않았다. 기존 prepare 수직 경로는 인접 회귀 테스트로 확인하고 resume 분기에 한정했다.
 - Task 17 완료 조건에는 전체 테스트가 필요하지 않았다. read-only 조회와 generated manifest export 기능에 한정했다.
 - Task 18 완료 조건에는 전체 테스트가 필요하지 않았다. 기존 application action을 재사용하는 고급 진입점과 선행조건에 한정했다.
+- Task 19 완료 시 전체 테스트를 실행했다. 이유: 공통 Source, LLM redaction, subprocess audit, validation, event serialization 경계를 변경함.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 460 tests in 69.376s`, `OK (skipped=1)`
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -482,6 +512,8 @@
 - Task 17 report는 기존 run artifact를 집계하는 read-only view로 구현했고, status 호출 시 최신 `final-report.yaml`을 함께 갱신한다.
 - Task 17 explain은 MVP 범위에서 profile decision/field와 generated resource refs를 연결한다. 더 깊은 line-level Evidence traversal은 기존 evidence refs를 보존해 후속 고도화 지점으로 남긴다.
 - Task 18 stage commands는 Run state를 강제로 READY/FAILED로 전환하지 않고 산출물과 event를 갱신한다. 최종 readiness state 전이는 prepare/resume 오케스트레이션과 Task 20 acceptance에서 보강한다.
+- Task 19 command audit는 명령 실행 원문 대신 정제된 argv 문자열, env key 목록, exit code만 event details에 남긴다. 값이 필요한 재현은 기존 deterministic source metadata와 별도 artifact로 추적한다.
+- Task 19 manifest security policy는 생성 단계에서 위험 리소스를 만들지 않는 계약에 더해 validation 단계에서 privileged, hostPath, cluster-wide resource를 fail finding으로 차단한다.
 
 ## Blocker
 
@@ -489,4 +521,4 @@
 
 ## 다음 Task
 
-- Task 19: Trust boundary 보안 강화와 감사 추적
+- Task 20: 10개 fixture 기반 MVP acceptance, CI 종료 코드와 재현성 기준
