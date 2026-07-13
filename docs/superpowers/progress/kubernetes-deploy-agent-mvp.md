@@ -216,10 +216,24 @@
   - terminal `READY`/`FAILED`/`BLOCKED`/`CANCELLED` run에 대해 명확한 non-resumable outcome 반환
   - `k8s-agent resume <run-id> [--drift-policy ...]` CLI 연결과 state/run_root summary 출력 추가
 
+### Task 17: status, explain, export와 최종 보고서
+
+- 상태: 완료
+- commit: `03c39ea09c5ca319cefbeedba5d2a5527ac0255a`
+- commit message: `feat(report): explain and export manifest-ready runs`
+- 변경:
+  - `FinalReport`, `ExplanationView`, `ExportResult`와 report용 source/validation/resource model 추가
+  - `FinalReportBuilder.build(run_id)`가 source/profile/bundle/validation artifact를 집계하고 `final-report.yaml` 생성
+  - report summary, validation, generated resources, decision count, limitations, next action 제공
+  - `production-ready` 표현 없이 build-verified/cluster-verified 미실행을 limitation으로 명시
+  - `FinalReportBuilder.explain()`이 Evidence → Decision → Profile field → Resource trace를 제공하고 Secret 값을 노출하지 않음
+  - `status`, `explain`, `export` application method와 CLI handler 연결
+  - export는 generated manifest directory만 명시 경로로 복사하며 기존 출력 경로는 `--overwrite` 없이는 거부
+
 ## 현재 Task
 
-- 현재 Task: Task 17 status, explain, export와 최종 보고서
-- 다음 Task: Task 17 status, explain, export와 최종 보고서
+- 현재 Task: Task 18 고급 analyze, plan, generate, validate 단계 명령
+- 다음 Task: Task 18 고급 analyze, plan, generate, validate 단계 명령
 
 ## 실행한 테스트와 결과
 
@@ -392,6 +406,14 @@
   - 결과: 통과, `Ran 10 tests in 2.885s`, `OK`
   - 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_resume tests.cli.test_resume_black_box tests.unit.k8s_agent.agent.test_orchestrator tests.cli.test_prepare_black_box tests.acceptance.test_prepare_end_to_end tests.unit.k8s_agent.run.test_manager -v`
   - 결과: 통과, `Ran 25 tests in 3.915s`, `OK`
+- Task 17 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.reporting.test_final_report tests.cli.test_status_explain_export -v`
+  - 결과: 기대한 실패. `k8s_agent.reporting` 미구현과 `status`/`explain`/`export` skeleton으로 실패.
+- Task 17 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.reporting.test_final_report tests.cli.test_status_explain_export -v`
+  - 결과: 통과, `Ran 6 tests in 2.100s`, `OK`
+  - 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.reporting.test_final_report tests.cli.test_status_explain_export tests.cli.test_resume_black_box tests.cli.test_prepare_black_box tests.cli.test_prepare_arguments tests.cli.test_non_interactive_questions -v`
+  - 결과: 통과, `Ran 20 tests in 6.871s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -409,6 +431,7 @@
 - Task 14 완료 시 전체 테스트를 실행했다. 이유: 리페어가 공통 생성물과 검증 결과를 변경하므로 기존 재현성과 정적 검증 회귀를 확인해야 함.
 - Task 15 완료 시 전체 테스트를 실행했다. 이유: CLI부터 기존 Phase 1, semantic, Profile, renderer, validator, repair까지 전체 호출 경로가 연결됨.
 - Task 16 완료 조건에는 전체 테스트가 필요하지 않았다. 기존 prepare 수직 경로는 인접 회귀 테스트로 확인하고 resume 분기에 한정했다.
+- Task 17 완료 조건에는 전체 테스트가 필요하지 않았다. read-only 조회와 generated manifest export 기능에 한정했다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -433,6 +456,8 @@
 - Task 15 validation은 기존 Task 13 기본값과 동일하게 `run_external=False` internal validation 경로를 사용한다. kubeconform pass/fail이 필요한 sample repo batch 검증은 Task 19/20 completion 범위에서 수행한다.
 - Task 16 `continue-pinned`는 저장된 source metadata와 기존 analysis artifact를 신뢰해 진행한다. source drift가 있고 tool metadata도 stale인 조합은 안전하게 재분석하지 않고 사용자가 `replan` 또는 `new-run`을 선택해야 하는 운영 케이스로 남긴다.
 - Task 16 `new-run`은 현재 drifted local source에서 새 run을 생성한다. GitHub source는 저장된 pinned workspace를 기본으로 하며 refetch하지 않는다.
+- Task 17 report는 기존 run artifact를 집계하는 read-only view로 구현했고, status 호출 시 최신 `final-report.yaml`을 함께 갱신한다.
+- Task 17 explain은 MVP 범위에서 profile decision/field와 generated resource refs를 연결한다. 더 깊은 line-level Evidence traversal은 기존 evidence refs를 보존해 후속 고도화 지점으로 남긴다.
 
 ## Blocker
 
@@ -440,4 +465,4 @@
 
 ## 다음 Task
 
-- Task 17: status, explain, export와 최종 보고서
+- Task 18: 고급 analyze, plan, generate, validate 단계 명령
