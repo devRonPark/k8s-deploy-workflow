@@ -118,6 +118,8 @@
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.cli.test_prepare_arguments.PrepareArgumentTests.test_prepare_accepts_production_target -v`
   - 결과: 기대한 실패. valid prepare가 run/source.yaml을 만들지 않는 stub 동작.
 - Milestone 1 Review Fix Green:
+  - commit: `369e030bf1d5b9e04f208c461192437b22582b6a`
+  - commit message: `fix(security): harden milestone1 source boundaries`
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.cli.test_prepare_arguments tests.unit.k8s_agent.test_errors -v`
   - 결과: 통과, `Ran 10 tests in 0.461s`, `OK`
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/unit/k8s_agent/run -p 'test_*.py' -v`
