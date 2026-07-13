@@ -201,10 +201,25 @@
   - CLI prepare summary에 state와 next action message를 출력하고 outcome exit code를 반환
   - 실제 fixture prepare가 analysis/intent/plan/questions/profile 산출물까지 생성하는 end-to-end 경로 검증
 
+### Task 16: resume과 Source drift 처리
+
+- 상태: 완료
+- commit: `209ef498570641f9211141090e64a5dc2bbeff08`
+- commit message: `feat(run): resume safely across source changes`
+- 변경:
+  - `AgentApplication.resume(run_id, drift_policy)` 추가
+  - `DriftPolicy`로 `continue-pinned`, `replan`, `new-run` 선택 지원
+  - local source fingerprint/head drift를 감지하고 명시적 drift policy 없이는 exit `3`으로 진행 차단
+  - GitHub source는 저장된 pinned workspace/source metadata를 사용해 네트워크 refetch 없이 resume
+  - runtime tool metadata를 기록하고 stale metadata나 누락된 Phase 1 artifact는 분석 단계부터 재생성
+  - unchanged source에서는 기존 Phase 1 artifact를 재사용해 완료된 분석을 재실행하지 않음
+  - terminal `READY`/`FAILED`/`BLOCKED`/`CANCELLED` run에 대해 명확한 non-resumable outcome 반환
+  - `k8s-agent resume <run-id> [--drift-policy ...]` CLI 연결과 state/run_root summary 출력 추가
+
 ## 현재 Task
 
-- 현재 Task: Task 16 resume과 Source drift 처리
-- 다음 Task: Task 16 resume과 Source drift 처리
+- 현재 Task: Task 17 status, explain, export와 최종 보고서
+- 다음 Task: Task 17 status, explain, export와 최종 보고서
 
 ## 실행한 테스트와 결과
 
@@ -369,6 +384,14 @@
   - 전체 테스트 실행 이유: CLI부터 기존 Phase 1, semantic, Profile, renderer, validator, repair까지 전체 호출 경로가 연결됨.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
   - 결과: 통과, `Ran 437 tests in 61.007s`, `OK (skipped=1)`
+- Task 16 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_resume tests.cli.test_resume_black_box -v`
+  - 결과: 기대한 실패. `AgentApplication.resume` 미구현, `resume` CLI skeleton, `--drift-policy` 미지원으로 실패.
+- Task 16 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_resume tests.cli.test_resume_black_box -v`
+  - 결과: 통과, `Ran 10 tests in 2.885s`, `OK`
+  - 인접 회귀 확인: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.test_resume tests.cli.test_resume_black_box tests.unit.k8s_agent.agent.test_orchestrator tests.cli.test_prepare_black_box tests.acceptance.test_prepare_end_to_end tests.unit.k8s_agent.run.test_manager -v`
+  - 결과: 통과, `Ran 25 tests in 3.915s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -385,6 +408,7 @@
 - Task 13 완료 조건에는 전체 테스트가 필요하지 않았다. Renderer 결과에 대한 검증 기능 묶음에 한정한다.
 - Task 14 완료 시 전체 테스트를 실행했다. 이유: 리페어가 공통 생성물과 검증 결과를 변경하므로 기존 재현성과 정적 검증 회귀를 확인해야 함.
 - Task 15 완료 시 전체 테스트를 실행했다. 이유: CLI부터 기존 Phase 1, semantic, Profile, renderer, validator, repair까지 전체 호출 경로가 연결됨.
+- Task 16 완료 조건에는 전체 테스트가 필요하지 않았다. 기존 prepare 수직 경로는 인접 회귀 테스트로 확인하고 resume 분기에 한정했다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -407,6 +431,8 @@
 - Task 14 repair는 Source와 Profile을 수정하지 않고 ManifestBundle에 포함된 generated file만 변경한다.
 - Task 15 prepare orchestration은 아직 generated manifest로 진행 가능한 profile이 없으면 `WAITING_FOR_USER`를 성공 exit `0`으로 반환한다. non-interactive 실제 answer 재적용과 resume continuation은 Task 16 이후 범위에서 다룬다.
 - Task 15 validation은 기존 Task 13 기본값과 동일하게 `run_external=False` internal validation 경로를 사용한다. kubeconform pass/fail이 필요한 sample repo batch 검증은 Task 19/20 completion 범위에서 수행한다.
+- Task 16 `continue-pinned`는 저장된 source metadata와 기존 analysis artifact를 신뢰해 진행한다. source drift가 있고 tool metadata도 stale인 조합은 안전하게 재분석하지 않고 사용자가 `replan` 또는 `new-run`을 선택해야 하는 운영 케이스로 남긴다.
+- Task 16 `new-run`은 현재 drifted local source에서 새 run을 생성한다. GitHub source는 저장된 pinned workspace를 기본으로 하며 refetch하지 않는다.
 
 ## Blocker
 
@@ -414,4 +440,4 @@
 
 ## 다음 Task
 
-- Task 16: resume과 Source drift 처리
+- Task 17: status, explain, export와 최종 보고서
