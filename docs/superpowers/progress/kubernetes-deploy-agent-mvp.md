@@ -61,7 +61,7 @@
 
 ## 현재 Task
 
-- 현재 Task: Milestone 1 리뷰 피드백 수정 및 검증
+- 현재 Task: Task 5 기존 Phase 1 분석을 Run 산출물 체계에 통합
 - 다음 Task: Task 5 기존 Phase 1 분석을 Run 산출물 체계에 통합
 
 ## 실행한 테스트와 결과
@@ -131,6 +131,8 @@
   - range: `9252b708a5b6e71ac1145872d0cd96076c532524..2285f02c9f1473797d7844fdd62d3cd0b7b569ba`
   - 결과: Critical 없음. Important 1건: `GitRunner`가 inherited Git/SSH execution env를 scrub하지 않음.
 - Milestone 1 Re-review Fix:
+  - commit: `1abc6fbd08e84d626aeae99eb1fe42ec40e337fe`
+  - commit message: `fix(source): scrub git subprocess environment`
   - 변경: `GitRunner` 기본 subprocess 환경을 allowlist로 제한하고 caller-provided hardening env만 추가.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.source.test_git_runner -v`
   - 결과: 통과, `Ran 1 test in 0.002s`, `OK`
