@@ -134,10 +134,23 @@
   - `QuestionManager.to_decisions()`가 raw/normalized user answer를 explicit user Decision으로 변환
   - `prepare --non-interactive --answers-file`에서 required bootstrap answer가 없으면 `BLOCKED`로 종료
 
+### Task 11: 추적 가능한 Decision 병합과 immutable Deployment Profile
+
+- 상태: 완료
+- commit: `d6e3572d36138632068cecf63cdf34f3ef1c6fba`
+- commit message: `feat(profile): merge evidence and user decisions immutably`
+- 변경:
+  - `DeploymentProfile`, `ProfileValue`, `ProfileConflict`, `ProfileHold` 모델 추가
+  - `DeploymentProfileBuilder.build(inputs, previous)`가 Decision과 auto-confirm Intent 후보를 병합
+  - user answer > confirmed fact > semantic inference > policy default > rule inference 우선순위 적용
+  - 낮은 우선순위와 값이 다르면 conflict로 기록하고 evidence refs 보존
+  - unanswered required intent와 blocked intent가 있으면 `renderable=False`로 렌더링 진입 차단
+  - profile revision은 previous를 변경하지 않고 새 revision으로 증가, checksum은 동일 입력에서 안정적
+
 ## 현재 Task
 
-- 현재 Task: Task 11 추적 가능한 Decision 병합과 immutable Deployment Profile
-- 다음 Task: Task 11 추적 가능한 Decision 병합과 immutable Deployment Profile
+- 현재 Task: Task 12 Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
+- 다음 Task: Task 12 Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
 
 ## 실행한 테스트와 결과
 
@@ -261,6 +274,15 @@
 - Task 10 Green:
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.questions.test_manager tests.unit.k8s_agent.questions.test_answers tests.cli.test_non_interactive_questions -v`
   - 결과: 통과, `Ran 7 tests in 0.460s`, `OK`
+- Task 11 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.profile.test_builder tests.acceptance.test_deployment_profile -v`
+  - 결과: 기대한 실패. `k8s_agent.profile.builder` 미구현으로 실패.
+- Task 11 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.profile.test_builder tests.acceptance.test_deployment_profile -v`
+  - 결과: 통과, `Ran 6 tests in 0.001s`, `OK`
+  - 전체 테스트 실행 이유: 공통 Decision/Profile 계약이 Phase 1 이후 전체 기능 묶음의 연결점이 됨.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
+  - 결과: 통과, `Ran 428 tests in 2.548s`, `OK (skipped=1)`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -272,6 +294,7 @@
 - Task 8 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 정책과 Intent 경계에 한정된다.
 - Task 9 완료 조건에는 전체 테스트가 필요하지 않았다. Planner 자체와 fixture별 plan만 검증한다.
 - Task 10 완료 조건에는 전체 테스트가 필요하지 않았다. 질문·답변 기능 묶음에 한정된다.
+- Task 11 완료 시 전체 테스트를 실행했다. 이유: 공통 Decision/Profile 계약이 Phase 1 이후 전체 기능 묶음의 연결점이 됨.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -288,6 +311,7 @@
 - Task 8은 기존 `preanalyzer.models.intent`를 변경하지 않고 Agent-owned intent model을 별도로 추가했다.
 - Task 9 planner는 manifest/profile/question 구현을 직접 수행하지 않고, 다음 task들이 소비할 action/이유/근거/완료조건만 결정론적으로 계획한다.
 - Task 10의 CLI non-interactive 검사는 Task 15 전체 orchestration 전까지 bootstrap 질문 세트를 사용해 answers file 계약과 BLOCKED exit code를 검증한다.
+- Task 11 profile은 아직 renderer 입력으로 필요한 최소 JSON-pointer values/holds/conflicts 계약만 보존하고, 구체 Kubernetes resource shape은 Task 12에서 생성한다.
 
 ## Blocker
 
@@ -295,4 +319,4 @@
 
 ## 다음 Task
 
-- Task 11: 추적 가능한 Decision 병합과 immutable Deployment Profile
+- Task 12: Profile 기반 Kubernetes Manifest와 Kustomize 렌더링
