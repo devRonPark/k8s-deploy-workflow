@@ -47,6 +47,34 @@ class ValidatorTests(unittest.TestCase):
 
         self.assertEqual(report.achieved_level, 0)
 
+    def test_generation_holds_are_reported_without_failing_kubeconform(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            _write(directory, "ok.yaml", "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: x\n")
+            exe = directory / "kc"
+            exe.write_text("#!/bin/sh\n", encoding="utf-8")
+            exe.chmod(0o755)
+            completed = Mock(returncode=0, stdout="summary ok", stderr="")
+            generation_holds = [
+                {
+                    "component_id": "api",
+                    "resource": {"kind": "Ingress"},
+                    "reason": {"code": "unresolved_service_port"},
+                    "status": "generation_held",
+                    "display_status": "생성 보류",
+                }
+            ]
+
+            with patch("preanalyzer.validator.pipeline.subprocess.run", return_value=completed):
+                report = ValidationPipeline(kubeconform_path=exe, repo_root=directory).run(
+                    directory,
+                    generation_holds=generation_holds,
+                )
+
+        stages = {stage.stage: stage.status for stage in report.stages}
+        self.assertEqual(stages["kubeconform"], "pass")
+        self.assertEqual(report.generation_holds[0].display_status, "생성 보류")
+
 
 class KubeconformResolverTests(unittest.TestCase):
     def test_explicit_path_wins(self):

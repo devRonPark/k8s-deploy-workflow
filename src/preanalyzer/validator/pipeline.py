@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from preanalyzer.models.report import StageResult, ValidationReport
+from preanalyzer.models.report import GenerationHold, StageResult, ValidationReport
 from preanalyzer.validator.kubeconform_tool import resolve_kubeconform
 
 
@@ -30,7 +30,12 @@ class ValidationPipeline:
         self._kubeconform_path = kubeconform_path
         self._repo_root = repo_root or Path.cwd()
 
-    def run(self, manifest_dir: Path, rendered_placeholders: bool = False) -> ValidationReport:
+    def run(
+        self,
+        manifest_dir: Path,
+        rendered_placeholders: bool = False,
+        generation_holds: list[GenerationHold] | None = None,
+    ) -> ValidationReport:
         stages: list[StageResult] = []
         yaml_ok = self._yaml_syntax(manifest_dir, stages)
 
@@ -48,7 +53,12 @@ class ValidationPipeline:
             stages.append(StageResult(stage="dry_run", status="skipped", detail="prior stage not pass"))
 
         achieved = 1 if yaml_ok and kubeconform_status == "pass" and not rendered_placeholders else 0
-        return ValidationReport(target_level=1, achieved_level=achieved, stages=stages)
+        return ValidationReport(
+            target_level=1,
+            achieved_level=achieved,
+            stages=stages,
+            generation_holds=[GenerationHold.model_validate(hold) for hold in generation_holds or []],
+        )
 
     def _yaml_syntax(self, directory: Path, stages: list[StageResult]) -> bool:
         for path in sorted(directory.rglob("*.yaml")):

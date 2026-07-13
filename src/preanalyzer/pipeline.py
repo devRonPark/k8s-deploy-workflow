@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import tempfile
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from preanalyzer.analyzer.scanner import build_inventory, snapshot
 from preanalyzer.models.evidence import EvidenceModel
 from preanalyzer.models.inventory import ArtifactInventory
 from preanalyzer.models.profile import DeploymentProfile
-from preanalyzer.models.report import ValidationReport
+from preanalyzer.models.report import GenerationHold, ValidationReport
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
 from preanalyzer.models.semantic_agent import SemanticAgentRunResult
 from preanalyzer.models.snapshot import RepositorySnapshot
@@ -205,6 +206,7 @@ def run_analysis(
         report = ValidationPipeline().run(
             manifest_dir,
             rendered_placeholders=render.achieved_level_cap == 0,
+            generation_holds=_generation_holds_for_report(render.generation_holds),
         )
         _write_yaml(output_dir / "13-validation-report.yaml", {"validation_report": report.model_dump()})
         _write_readiness_checklist(output_dir / "14-deployment-readiness-checklist.md", questions.questions)
@@ -246,6 +248,10 @@ def _write_extended_outputs(
         output_dir / "11-deployment-profile.yaml",
         {"deployment_profile": profile.model_dump() if profile is not None else None},
     )
+
+
+def _generation_holds_for_report(generation_holds: list) -> list[GenerationHold]:
+    return [GenerationHold.model_validate(asdict(hold)) for hold in generation_holds]
 
 
 def _write_readiness_checklist(path: Path, questions) -> None:
