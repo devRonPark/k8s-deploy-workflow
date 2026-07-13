@@ -84,12 +84,45 @@ run_analysis(
 
 Snapshot 모드·Compose·Component ownership·Semantic budget·**Semantic LLM provider**(온프렘 OpenAI 호환 연동) 등 세부는 [docs/pipeline-details.md](./docs/pipeline-details.md) 참고.
 
+## 대화형 Kubernetes Agent MVP
+
+저장소를 분석한 뒤 질문 답변을 반영해 `k8s-agent-output/` 아래에 매니페스트와 검증 리포트를 만든다.
+CLI는 세션 단위로 이어서 실행할 수 있다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8sagent analyze tests/fixtures/repos/node-express-like --no-llm
+PYTHONPATH=src .venv/bin/python3 -m k8sagent select <session-id> --all
+PYTHONPATH=src .venv/bin/python3 -m k8sagent answer <session-id> --answers-file tests/fixtures/agent/answers-node.yaml
+PYTHONPATH=src .venv/bin/python3 -m k8sagent generate <session-id> --approve-plan
+PYTHONPATH=src .venv/bin/python3 -m k8sagent validate <session-id>
+```
+
+스크립트 없이 진행하려면:
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8sagent start --no-llm
+```
+
+주요 환경 변수:
+
+- `K8S_AGENT_HOME`: 세션과 캐시 저장 위치. 기본값은 `.k8s-agent/`.
+- `K8S_AGENT_GIT_TOKEN`: 비공개 Git 저장소 clone에 쓰는 토큰 변수명.
+- `K8S_AGENT_NO_LLM`: `1`이면 LLM을 쓰지 않고 결정론 질문만 사용.
+- `K8S_AGENT_K8S_VERSION`: 검증 대상 Kubernetes 버전.
+- `K8S_AGENT_LLM_BASE_URL`: 기본값 `http://192.168.30.167:30000/v1`.
+- `K8S_AGENT_LLM_MODEL`: 비워두면 `GET /models`로 실제 모델 ID를 먼저 확인.
+- `K8S_AGENT_LLM_TIMEOUT_SECONDS`: LLM HTTP 요청 제한 시간.
+
+Agent LLM 호출은 `Authorization` 헤더를 보내지 않고 `Content-Type: application/json`만 사용한다.
+LLM은 질문 문구·구조화된 변경 제안·오류 설명에만 쓰이며 Kubernetes YAML을 직접 만들지 않는다.
+
 ## 프로젝트 구조
 
 오케스트레이션은 `src/preanalyzer/pipeline.py`, 모듈 상세는 각 디렉터리 CLAUDE.md 참고.
 
 ```text
 src/preanalyzer/    # analyzer(scanner/parsers/evidence/rule) + models + pipeline
+src/k8sagent/       # interactive agent sessions + intent + deterministic render/validate
 tests/              # unit · acceptance · fixtures/repos
 docs/               # architecture.md, pipeline-details.md, adr, tasks
 ```

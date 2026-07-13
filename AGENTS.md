@@ -31,6 +31,10 @@ src/preanalyzer/analyzer/scanner.py       # snapshot + inventory
 src/preanalyzer/analyzer/parsers/         # artifact parsing
 src/preanalyzer/analyzer/rule_inference.py # evidence -> candidates
 src/preanalyzer/pipeline.py               # orchestration + YAML
+src/k8sagent/session.py                   # interactive agent session state
+src/k8sagent/models/intent.py             # agent Intent model + typed update paths
+src/k8sagent/render/                      # deterministic manifest rendering
+src/k8sagent/cli.py                       # non-interactive agent workflow
 ```
 
 모듈 세부는 `src/CLAUDE.md`, `tests/CLAUDE.md`. 계층 간 책임을 편의로 옮기지 않는다.

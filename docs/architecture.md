@@ -235,6 +235,18 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | 실패 시 | patch 채택 → Step 11(재렌더)부터 재실행. 반복 상한 초과 시 사람에게 escalate하고 시도 내역을 파일로 보존 |
 | MVP 상태 | 자동화는 2단계. MVP는 규칙 기반 항목 + 오류 설명 생성까지(`suggest_patch`는 인터페이스만 고정) |
 
+## 2.14 Interactive Agent Orchestrator ✅
+
+| 항목 | 정의 |
+|---|---|
+| 책임 | 저장소 입력에서 세션을 만들고, 결정론 분석 → 컴포넌트 선택 → 질문 답변 → Intent 변경 승인 → 템플릿 렌더링 → 검증 리포트까지 MVP 사용자 흐름을 연결한다. 산출물은 분석 대상 저장소의 `k8s-agent-output/` 아래에 보존한다 |
+| 입력 | 로컬 경로 또는 Git URL, ref, 사용자 답변 파일 또는 대화형 입력, 선택적 LLM endpoint 설정 |
+| 출력 | `k8s-agent-output/analysis/`, `intent/`, `manifests/`, `validation/report.yaml`, 그리고 agent home의 세션 JSON |
+| 사용 금지 | 저장소에서 바로 YAML 생성, LLM free-form YAML 채택, 승인 없는 변경 적용, Secret 값 저장·전송·렌더링, `k8s-agent-output/` 재분석 |
+| LLM 사용 | ⭕ 제한적 — 질문 문구, 자연어 요청의 typed changeset 변환, 검증 실패 설명/수정 제안만 허용. 기본 로컬 endpoint는 `http://192.168.30.167:30000/v1`이며 `Authorization` 헤더를 보내지 않는다 |
+| 실패 시 | 세션 상태 전이를 중단하고 명시 오류를 반환한다. 외부 검증 도구 부재는 validation report에 `skipped`로 기록하며, Kubernetes schema 검증 완료로 보고하지 않는다 |
+| 구현 파일 | `src/k8sagent/` (`cli.py`, `interactive.py`, `session.py`, `analysis.py`, `models/`, `render/`, `validate.py`) |
+
 ---
 
 # 3. 데이터 흐름
