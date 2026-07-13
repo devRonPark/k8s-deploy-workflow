@@ -71,10 +71,22 @@
   - 각 산출물 checksum 계산과 `phase1_completed` event 기록
   - parse warning이 Run 전체 실패로 전환되지 않고 기존 Evidence warning으로 보존됨을 검증
 
+### Task 6: Evidence 기반 Application Topology 생성
+
+- 상태: 완료
+- commit: `a2e1c2905f024e49cf5de9efee7d57b9e9e98625`
+- commit message: `feat(topology): build evidence-linked application topology`
+- 변경:
+  - `ApplicationTopology`, `ApplicationComponent`, evidence-linked runtime/port/command/dependency/secret 모델 추가
+  - `TopologyBuilder.build(phase1)`가 Phase 1 Evidence/Rule Inference 산출물을 읽어 component 중심 topology로 병합
+  - 충돌하는 runtime command를 확정하지 않고 `conflicts`에 evidence ref와 함께 기록
+  - Secret은 이름과 사용 위치 메타데이터만 topology에 포함
+  - `analysis/04-application-topology.yaml`을 안정적인 component/field ordering으로 생성
+
 ## 현재 Task
 
-- 현재 Task: Task 6 Evidence 기반 Application Topology 생성
-- 다음 Task: Task 6 Evidence 기반 Application Topology 생성
+- 현재 Task: Task 7 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
+- 다음 Task: Task 7 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
 
 ## 실행한 테스트와 결과
 
@@ -163,12 +175,21 @@
   - 전체 테스트 실행 이유: 기존 결정론적 분석 API와 Agent adapter의 경계가 모든 parser/fixture에 영향을 줄 수 있음.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
   - 결과: 통과, `Ran 412 tests in 1.903s`, `OK (skipped=1)`
+- Task 6 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.analysis.test_topology_builder -v`
+  - 결과: 기대한 실패. `k8s_agent.analysis.topology_builder` 미구현으로 실패.
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.analysis.test_topology_builder tests.acceptance.test_application_topology -v`
+  - 결과: 기대한 실패. `TOPOLOGY_ARTIFACT`와 topology YAML writer 미구현으로 실패.
+- Task 6 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.analysis.test_topology_builder tests.acceptance.test_application_topology -v`
+  - 결과: 통과, `Ran 4 tests in 0.115s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
 - 시작 기준선에서 전체 테스트를 실행했다.
 - Task 1~4 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 Agent 애플리케이션 패키지 내부 변경이며 기존 분석 코어를 변경하지 않았다.
 - Task 5 완료 시 전체 테스트를 실행했다. 이유: 기존 결정론적 분석 API와 Agent adapter의 경계가 모든 parser/fixture에 영향을 줄 수 있음.
+- Task 6 완료 조건에는 전체 테스트가 필요하지 않았다. Phase 1 모델은 소비만 하고 변경하지 않는다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -180,6 +201,7 @@
 - Task 4 실제 네트워크 GitHub 테스트는 opt-in으로 남겼고 unit 테스트는 fake Git runner로 command construction과 Secret masking을 검증했다.
 - Milestone 1 review 후 다음을 보강했다: local Git metadata 조회에 `GIT_OPTIONAL_LOCKS=0`, remote Git hardening env/config, run id traversal guard, credential URL variant sanitization, sensitive file fingerprint exclusion, valid local `prepare`의 run/source.yaml persistence.
 - Milestone 1 re-review 후 `GitRunner`가 inherited `GIT_*`, askpass, SSH command, protocol override 환경변수를 전달하지 않도록 allowlist 환경으로 변경했다.
+- Task 6 `TopologyBuilder.build_from_models()`는 pure merge 로직으로 유지하고, `TopologyBuilder.build()`만 Phase 1 파일 I/O와 `04-application-topology.yaml` 생성을 담당한다.
 
 ## Blocker
 
@@ -187,4 +209,4 @@
 
 ## 다음 Task
 
-- Task 6: Evidence 기반 Application Topology 생성
+- Task 7: 구조화 LLM Gateway와 기존 runtime-command semantic task 실행
