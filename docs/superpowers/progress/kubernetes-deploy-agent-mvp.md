@@ -61,7 +61,9 @@
 
 ### Task 5: 기존 Phase 1 분석을 Run 산출물 체계에 통합
 
-- 상태: 완료, commit 예정: `feat(analysis): integrate phase1 outputs into agent runs`
+- 상태: 완료
+- commit: `98dc0688ee72e7862daebe01b3ad30aa4c511097`
+- commit message: `feat(analysis): integrate phase1 outputs into agent runs`
 - 변경:
   - `Phase1Adapter.run(source, run_id)` 추가
   - 기존 `preanalyzer.pipeline.run_phase1_analysis`를 thin adapter로 호출
@@ -71,7 +73,7 @@
 
 ## 현재 Task
 
-- 현재 Task: Task 5 검증 및 커밋
+- 현재 Task: Task 6 Evidence 기반 Application Topology 생성
 - 다음 Task: Task 6 Evidence 기반 Application Topology 생성
 
 ## 실행한 테스트와 결과
