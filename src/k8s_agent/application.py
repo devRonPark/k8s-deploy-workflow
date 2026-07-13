@@ -28,6 +28,7 @@ from k8s_agent.reporting.final_report import FinalReportBuilder
 from k8s_agent.run.manager import RunManager
 from k8s_agent.run.store import RunStore
 from k8s_agent.source.github import GitHubSourceResolver
+from k8s_agent.source.git_runner import CommandAudit, GitRunner
 from k8s_agent.source.local import LocalSourceResolver
 from k8s_agent.source.workspace import WorkspaceManager
 from k8s_agent.validation.orchestrator import ValidationOrchestrator
@@ -146,7 +147,7 @@ class AgentApplication:
                 )
             )
         if drift and drift_policy == DriftPolicy.REPLAN:
-            current = LocalSourceResolver().resolve(source.path, self.clock())
+            current = LocalSourceResolver(git=self._audited_git_runner(run_id)).resolve(source.path, self.clock())
             self.store.save_yaml(run_id, "source.yaml", _source_payload(current))
             self.run_manager.append_event(run_id, "resume_source_replan", "source drift accepted for replan", {"run_id": run_id})
             return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=False).run(run_id)
@@ -195,11 +196,12 @@ class AgentApplication:
 
     def _acquire_source(self, request: PrepareRequest, run_id: str) -> RepositorySource:
         acquired_at = self.clock()
+        git = self._audited_git_runner(run_id)
         if request.local_path is not None:
-            return LocalSourceResolver().resolve(request.local_path, acquired_at)
+            return LocalSourceResolver(git=git).resolve(request.local_path, acquired_at)
         workspace = WorkspaceManager(self.state_home / "runs").create(run_id)
         try:
-            acquired = GitHubSourceResolver().acquire(request.repo_url or "", request.ref, workspace, acquired_at)
+            acquired = GitHubSourceResolver(git=git).acquire(request.repo_url or "", request.ref, workspace, acquired_at)
         except Exception:
             WorkspaceManager(self.state_home / "runs").cleanup(workspace)
             raise
@@ -219,6 +221,12 @@ class AgentApplication:
             drift["saved_head"] = source.git.head
             drift["current_head"] = current.git.head
         return drift or None
+
+    def _audited_git_runner(self, run_id: str) -> GitRunner:
+        def append(audit: CommandAudit) -> None:
+            self.run_manager.append_event(run_id, "tool_execution", "tool executed", audit.details())
+
+        return GitRunner(audit_sink=append)
 
 
 def _default_state_home() -> Path:

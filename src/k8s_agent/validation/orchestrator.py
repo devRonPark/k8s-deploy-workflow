@@ -48,7 +48,7 @@ def _syntax_findings(paths: list[Path]):
     findings = []
     for path in paths:
         try:
-            yaml.safe_load(path.read_text(encoding="utf-8"))
+            list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
         except yaml.YAMLError as exc:
             findings.append(_finding("yaml-syntax", "error", None, "/", "yaml_syntax", str(exc)))
     return findings

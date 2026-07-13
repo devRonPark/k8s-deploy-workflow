@@ -10,6 +10,7 @@ from k8s_agent.errors import AgentError
 from k8s_agent.models.run import RunEvent, RunRecord, RunSource, RunState, TERMINAL_STATES
 from k8s_agent.run.events import EventLog
 from k8s_agent.run.store import RunStore
+from k8s_agent.source.github import sanitize_github_url
 
 
 ALLOWED_TRANSITIONS: dict[RunState, set[RunState]] = {
@@ -116,7 +117,7 @@ def _source_from_request(request: PrepareRequest) -> RunSource:
     if request.local_path is not None:
         return RunSource(kind="local", value=str(Path(request.local_path)), ref=None)
     if request.repo_url is not None:
-        return RunSource(kind="github", value=request.repo_url, ref=request.ref)
+        return RunSource(kind="github", value=sanitize_github_url(request.repo_url), ref=request.ref)
     raise AgentError(
         code="RUN-102",
         exit_code=2,

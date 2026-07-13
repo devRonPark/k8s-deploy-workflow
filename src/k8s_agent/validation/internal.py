@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -14,14 +15,16 @@ class InternalManifestValidator:
         findings: list[ValidationFinding] = []
         for path in paths:
             try:
-                payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+                payloads = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
             except yaml.YAMLError as exc:
                 findings.append(_finding("yaml-syntax", "error", None, "/", "yaml_syntax", str(exc)))
                 continue
-            if isinstance(payload, dict) and "kind" in payload and payload.get("kind") != "Kustomization":
-                resources.append((path, payload))
+            for payload in payloads:
+                if isinstance(payload, dict) and "kind" in payload and payload.get("kind") != "Kustomization":
+                    resources.append((path, payload))
         findings.extend(_duplicates(resources))
         findings.extend(_service_checks(resources))
+        findings.extend(_security_checks(resources))
         return sorted(findings, key=lambda item: item.finding_id)
 
 
@@ -55,6 +58,88 @@ def _service_checks(resources: list[tuple[Path, dict]]) -> list[ValidationFindin
             if port.get("targetPort") not in container_ports:
                 findings.append(_finding("internal", "error", _ref(service, path), f"/spec/ports/{index}/targetPort", "service_target_port_mismatch", "service targetPort does not match a containerPort", True))
     return findings
+
+
+CLUSTER_WIDE_KINDS = {
+    "ClusterRole",
+    "ClusterRoleBinding",
+    "CustomResourceDefinition",
+    "MutatingWebhookConfiguration",
+    "Namespace",
+    "PersistentVolume",
+    "StorageClass",
+    "ValidatingWebhookConfiguration",
+}
+
+
+def _security_checks(resources: list[tuple[Path, dict]]) -> list[ValidationFinding]:
+    findings = []
+    for path, resource in resources:
+        if resource.get("kind") in CLUSTER_WIDE_KINDS:
+            findings.append(
+                _finding(
+                    "manifest-security",
+                    "error",
+                    _ref(resource, path),
+                    "/kind",
+                    "cluster_wide_resource",
+                    f"{resource.get('kind')} is cluster-wide and requires explicit review",
+                )
+            )
+        pod_spec, base_path = _pod_spec(resource)
+        if not isinstance(pod_spec, dict):
+            continue
+        for volume_index, volume in enumerate(pod_spec.get("volumes", []) or []):
+            if isinstance(volume, dict) and "hostPath" in volume:
+                findings.append(
+                    _finding(
+                        "manifest-security",
+                        "error",
+                        _ref(resource, path),
+                        f"{base_path}/volumes/{volume_index}/hostPath",
+                        "host_path_volume",
+                        "hostPath volumes require explicit review",
+                    )
+                )
+        for container_field in ("initContainers", "containers"):
+            for container_index, container in enumerate(pod_spec.get(container_field, []) or []):
+                if _is_privileged(container):
+                    findings.append(
+                        _finding(
+                            "manifest-security",
+                            "error",
+                            _ref(resource, path),
+                            f"{base_path}/{container_field}/{container_index}/securityContext/privileged",
+                            "privileged_container",
+                            "privileged containers require explicit review",
+                        )
+                    )
+    return findings
+
+
+def _pod_spec(resource: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    kind = resource.get("kind")
+    spec = resource.get("spec", {})
+    if kind == "Pod":
+        return spec if isinstance(spec, dict) else None, "/spec"
+    if kind in {"Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "ReplicationController"}:
+        pod_spec = spec.get("template", {}).get("spec", {}) if isinstance(spec, dict) else {}
+        return pod_spec if isinstance(pod_spec, dict) else None, "/spec/template/spec"
+    if kind == "Job":
+        pod_spec = spec.get("template", {}).get("spec", {}) if isinstance(spec, dict) else {}
+        return pod_spec if isinstance(pod_spec, dict) else None, "/spec/template/spec"
+    if kind == "CronJob":
+        job_spec = spec.get("jobTemplate", {}).get("spec", {}) if isinstance(spec, dict) else {}
+        pod_spec = job_spec.get("template", {}).get("spec", {}) if isinstance(job_spec, dict) else {}
+        return pod_spec if isinstance(pod_spec, dict) else None, "/spec/jobTemplate/spec/template/spec"
+    return None, ""
+
+
+def _is_privileged(container: Any) -> bool:
+    if not isinstance(container, dict):
+        return False
+    security_context = container.get("securityContext", {})
+    return isinstance(security_context, dict) and security_context.get("privileged") is True
 
 
 def _ref(resource: dict, path: Path) -> ResourceRef:
