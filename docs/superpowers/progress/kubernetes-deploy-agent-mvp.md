@@ -95,10 +95,23 @@
   - `SemanticActionExecutor.resolve_runtime_commands(topology, phase1)`가 Phase 1 산출물에서 runtime command semantic task를 만들고 검증 결과를 반환
   - provider schema error retry, unavailable fallback, allowlist 밖 tool 차단, verifier rejection을 Agent 경계에서 검증
 
+### Task 8: Target 정책을 적용한 Kubernetes Intent 생성
+
+- 상태: 완료
+- commit: `547b65ffc861384260c232c8f6018aff39a1f1ff`
+- commit message: `feat(intent): derive target-aware kubernetes intent`
+- 변경:
+  - Agent-owned `KubernetesIntent`, `IntentCandidate`, `PolicyDecision` 모델 추가
+  - development/staging/production target policy와 `PolicyEngine.evaluate()` 추가
+  - `IntentBuilder.build(topology, target)`가 Deployment/Service/replica/exposure/secret/storage/resource/probe 후보를 생성
+  - external exposure, hostname, Secret, PVC, resource/probe 후보는 confirmation으로 유지
+  - production cluster validation은 생성하지 않고, stateful workload 판단은 blocked candidate로 유지
+  - 선택적 `analysis/05-kubernetes-intent.yaml` stable output 지원
+
 ## 현재 Task
 
-- 현재 Task: Task 8 Target 정책을 적용한 Kubernetes Intent 생성
-- 다음 Task: Task 8 Target 정책을 적용한 Kubernetes Intent 생성
+- 현재 Task: Task 9 현재 상태 기반 Agent Planner와 재계획
+- 다음 Task: Task 9 현재 상태 기반 Agent Planner와 재계획
 
 ## 실행한 테스트와 결과
 
@@ -204,6 +217,12 @@
   - 전체 테스트 실행 이유: 기존 semantic task routing과 verifier의 public interface가 Agent에서 직접 사용됨.
   - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -v`
   - 결과: 통과, `Ran 417 tests in 2.266s`, `OK (skipped=1)`
+- Task 8 Red:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.policy.test_target_policy tests.unit.k8s_agent.analysis.test_intent_builder -v`
+  - 결과: 기대한 실패. `k8s_agent.models.intent`와 `k8s_agent.analysis.intent_builder` 미구현으로 실패.
+- Task 8 Green:
+  - 명령: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest tests.unit.k8s_agent.policy.test_target_policy tests.unit.k8s_agent.analysis.test_intent_builder -v`
+  - 결과: 통과, `Ran 9 tests in 0.014s`, `OK`
 
 ## 전체 테스트 실행 이유와 결과
 
@@ -212,6 +231,7 @@
 - Task 5 완료 시 전체 테스트를 실행했다. 이유: 기존 결정론적 분석 API와 Agent adapter의 경계가 모든 parser/fixture에 영향을 줄 수 있음.
 - Task 6 완료 조건에는 전체 테스트가 필요하지 않았다. Phase 1 모델은 소비만 하고 변경하지 않는다.
 - Task 7 완료 시 전체 테스트를 실행했다. 이유: 기존 semantic task routing과 verifier의 public interface가 Agent에서 직접 사용됨.
+- Task 8 완료 조건에는 전체 테스트가 필요하지 않았다. 신규 정책과 Intent 경계에 한정된다.
 
 ## 설계 결정 또는 계획과의 차이
 
@@ -225,6 +245,7 @@
 - Milestone 1 re-review 후 `GitRunner`가 inherited `GIT_*`, askpass, SSH command, protocol override 환경변수를 전달하지 않도록 allowlist 환경으로 변경했다.
 - Task 6 `TopologyBuilder.build_from_models()`는 pure merge 로직으로 유지하고, `TopologyBuilder.build()`만 Phase 1 파일 I/O와 `04-application-topology.yaml` 생성을 담당한다.
 - Task 7은 기존 `preanalyzer.semantic.agent`를 실행 엔진으로 재사용하고 Agent 패키지에는 redaction, provider transport, metadata wrapping, action executor 경계만 추가했다.
+- Task 8은 기존 `preanalyzer.models.intent`를 변경하지 않고 Agent-owned intent model을 별도로 추가했다.
 
 ## Blocker
 
@@ -232,4 +253,4 @@
 
 ## 다음 Task
 
-- Task 8: Target 정책을 적용한 Kubernetes Intent 생성
+- Task 9: 현재 상태 기반 Agent Planner와 재계획
