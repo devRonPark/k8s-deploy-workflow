@@ -19,6 +19,8 @@ REPO_EXCLUDED_GLOBS = [
     "**/.git/**",
     "node_modules/**",
     "**/node_modules/**",
+    "k8s-agent-output/**",
+    "**/k8s-agent-output/**",
     "**/*.png",
     "**/*.jpg",
     "**/*.jpeg",
@@ -28,6 +30,7 @@ REPO_EXCLUDED_GLOBS = [
 EXCLUDED_DIR_NAMES = {
     ".git",
     "node_modules",
+    "k8s-agent-output",
     "vendor",
     "target",
     "dist",
