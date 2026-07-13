@@ -531,10 +531,10 @@
 - Task 10의 CLI non-interactive 검사는 Task 15 전체 orchestration 전까지 bootstrap 질문 세트를 사용해 answers file 계약과 BLOCKED exit code를 검증한다.
 - Task 11 profile은 아직 renderer 입력으로 필요한 최소 JSON-pointer values/holds/conflicts 계약만 보존하고, 구체 Kubernetes resource shape은 Task 12에서 생성한다.
 - Task 12 renderer는 Deployment Profile만 읽고, Evidence/Topology/Intent를 직접 조회하지 않는다.
-- Task 13 external adapters는 실제 tool 실행 전 단계로 상태 정규화와 stage 계약을 고정했다.
+- Task 13 external adapters는 리뷰 후 실제 subprocess 실행으로 보강했다. `manifest_ready`는 kubeconform `pass`일 때만 `true`이며 `not-run`/`tool-missing`은 완료로 보지 않는다.
 - Task 14 repair는 Source와 Profile을 수정하지 않고 ManifestBundle에 포함된 generated file만 변경한다.
 - Task 15 prepare orchestration은 아직 generated manifest로 진행 가능한 profile이 없으면 `WAITING_FOR_USER`를 성공 exit `0`으로 반환한다. non-interactive 실제 answer 재적용과 resume continuation은 Task 16 이후 범위에서 다룬다.
-- Task 15 validation은 기존 Task 13 기본값과 동일하게 `run_external=False` internal validation 경로를 사용한다. kubeconform pass/fail이 필요한 sample repo batch 검증은 Task 19/20 completion 범위에서 수행한다.
+- Task 15 validation은 리뷰 후 `run_external=True` 경로로 전환했다. Agent `prepare`/stage `validate`는 project-managed kubeconform을 실행해 pass/fail을 기록한다.
 - Task 16 `continue-pinned`는 저장된 source metadata와 기존 analysis artifact를 신뢰해 진행한다. source drift가 있고 tool metadata도 stale인 조합은 안전하게 재분석하지 않고 사용자가 `replan` 또는 `new-run`을 선택해야 하는 운영 케이스로 남긴다.
 - Task 16 `new-run`은 현재 drifted local source에서 새 run을 생성한다. GitHub source는 저장된 pinned workspace를 기본으로 하며 refetch하지 않는다.
 - Task 17 report는 기존 run artifact를 집계하는 read-only view로 구현했고, status 호출 시 최신 `final-report.yaml`을 함께 갱신한다.
@@ -544,7 +544,7 @@
 - Task 19 manifest security policy는 생성 단계에서 위험 리소스를 만들지 않는 계약에 더해 validation 단계에서 privileged, hostPath, cluster-wide resource를 fail finding으로 차단한다.
 - Task 20 non-interactive answers는 bootstrap acknowledgement가 아니라 실제 `agent/questions.yaml`의 stable question ID를 입력으로 받는다.
 - Task 20 renderer alias는 기존 hand-authored profile path와 Agent intent path를 둘 다 읽는다. Intent/Profile 모델은 유지하고 renderer 소비 경계에서 호환성을 처리했다.
-- Task 20 matrix는 `fastapi-fullstack-like`와 `port-conflict-node`를 non-ready 기준으로 둔다. 각각 stateful dependency review와 conflicting runtime command 질문을 남기는 것이 성공 조건이다.
+- Task 20 matrix는 `persistent-storage-compose`와 `port-conflict-node`를 non-ready 기준으로 둔다. 각각 persistent storage design review와 conflicting runtime command 질문을 남기는 것이 성공 조건이다.
 
 ## Blocker
 

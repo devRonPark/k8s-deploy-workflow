@@ -121,7 +121,7 @@ class AgentApplication:
         bundle = _load_bundle(run_root)
         if profile is None or bundle is None:
             raise _stage_error("STAGE-301", "generated manifest bundle is required before validate.", "Run k8s-agent generate first.", run_id)
-        report = ValidationOrchestrator(run_external=False).validate(bundle, profile, run_root / "generated")
+        report = ValidationOrchestrator(run_external=True).validate(bundle, profile, run_root / "generated")
         self.store.save_yaml(run_id, "validation/13-validation-report.yaml", {"validation_report": report.model_dump(mode="json")})
         self.run_manager.append_event(run_id, "stage_validate_completed", "stage validate completed", {"command": "validate", "manifest_ready": str(report.manifest_ready)})
         return report

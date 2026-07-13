@@ -1,2 +1,1 @@
 """Manifest validation pipeline."""
-

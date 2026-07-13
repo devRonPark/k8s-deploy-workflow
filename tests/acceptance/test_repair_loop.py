@@ -22,7 +22,7 @@ class RepairLoopAcceptanceTests(unittest.TestCase):
             service = yaml.safe_load(service_path.read_text(encoding="utf-8"))
             service["spec"]["ports"][0]["targetPort"] = 9000
             service_path.write_text(yaml.safe_dump(service, sort_keys=False), encoding="utf-8")
-            report = ValidationOrchestrator(run_external=False).validate(bundle, profile, root)
+            report = ValidationOrchestrator(run_external=True).validate(bundle, profile, root)
 
             result = RepairController(destination=root).repair(bundle, profile, report)
 

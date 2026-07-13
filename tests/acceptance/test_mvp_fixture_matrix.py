@@ -31,7 +31,7 @@ MVP_FIXTURES = [
     FixtureExpectation("secret-candidate-node", True, "secret candidate with explicit existing Secret answer"),
     FixtureExpectation("no-dockerfile-node", True, "dockerfile missing but package command is known"),
     FixtureExpectation("corrupt-package-node", True, "corrupt package manifest falls back to Dockerfile evidence"),
-    FixtureExpectation("fastapi-fullstack-like", False, "stateful dependency requires design review"),
+    FixtureExpectation("persistent-storage-compose", False, "persistent storage requires explicit design review"),
     FixtureExpectation("port-conflict-node", False, "conflicting runtime commands require explicit resolution"),
 ]
 

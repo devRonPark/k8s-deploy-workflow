@@ -31,7 +31,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
 | `secret-candidate-node` | READY | Secret 후보, 기존 Secret 사용 답변 |
 | `no-dockerfile-node` | READY | Dockerfile 없음, package metadata 기반 |
 | `corrupt-package-node` | READY | 손상된 package manifest, Dockerfile 근거 fallback |
-| `fastapi-fullstack-like` | BLOCKED | persistent/stateful dependency design review |
+| `persistent-storage-compose` | BLOCKED | persistent/stateful dependency design review |
 | `port-conflict-node` | WAITING_FOR_USER | conflicting runtime commands |
 
 ## 판정 규칙

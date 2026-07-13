@@ -57,7 +57,7 @@ class RepairController:
             service_path = self.destination / path
             deployment_path = _first_deployment_path(self.destination, allowed)
             changed = apply_strategy(strategy, service_path, deployment_path)
-            current = ValidationOrchestrator(run_external=False).validate(bundle, profile, self.destination)
+            current = ValidationOrchestrator(run_external=True).validate(bundle, profile, self.destination)
             record = RepairAttempt(
                 attempt=attempt_no,
                 finding_refs=[finding.finding_id],

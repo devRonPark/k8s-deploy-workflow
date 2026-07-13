@@ -142,7 +142,7 @@ class AgentOrchestrator:
 
         generated_dir = run_root / "generated"
         bundle = ManifestRenderer().render(profile, generated_dir)
-        report = ValidationOrchestrator(run_external=False).validate(bundle, profile, generated_dir)
+        report = ValidationOrchestrator(run_external=True).validate(bundle, profile, generated_dir)
         artifacts.update(
             {
                 "generated/manifest-bundle.yaml": {"manifest_bundle": bundle.model_dump(mode="json")},
@@ -154,7 +154,7 @@ class AgentOrchestrator:
         if not report.manifest_ready:
             repair = RepairController(destination=generated_dir).repair(bundle, profile, report)
             artifacts["repair/14-repair-report.yaml"] = {"repair_report": repair.model_dump(mode="json")}
-            report = repair.validation_result
+            report = ValidationOrchestrator(run_external=True).validate(bundle, profile, generated_dir)
             artifacts["validation/13-validation-report.yaml"] = {"validation_report": report.model_dump(mode="json")}
 
         if report.manifest_ready:

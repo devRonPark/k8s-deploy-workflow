@@ -8,8 +8,8 @@ from k8s_agent.models.profile import DeploymentProfile
 from k8s_agent.models.validation import ValidationReport, ValidationStage
 from k8s_agent.render.renderer import ManifestBundle
 from k8s_agent.validation.internal import InternalManifestValidator, _finding
-from k8s_agent.validation.kubeconform import KubeconformValidator
-from k8s_agent.validation.kustomize import KustomizeValidator
+from k8s_agent.validation.kubeconform import KubeconformValidator, project_kubeconform_binary
+from k8s_agent.validation.kustomize import KustomizeValidator, path_kustomize_binary
 
 
 class ValidationOrchestrator:
@@ -31,8 +31,9 @@ class ValidationOrchestrator:
         findings.extend(internal_findings)
 
         if self.run_external:
-            kustomize = KustomizeValidator(binary=Path("kustomize")).validate(paths)
-            kubeconform = KubeconformValidator(binary=Path("kubeconform")).validate(paths)
+            repo_root = Path(__file__).resolve().parents[3]
+            kustomize = KustomizeValidator(binary=path_kustomize_binary()).validate(paths)
+            kubeconform = KubeconformValidator(binary=project_kubeconform_binary(repo_root)).validate(paths)
         else:
             kustomize = KustomizeValidator(binary=None).validate(paths)
             kubeconform = ValidationReport(status="not-run", manifest_ready=False, stages=[ValidationStage(stage="kubeconform", status="not-run")])
@@ -40,7 +41,8 @@ class ValidationOrchestrator:
         stages.extend(kubeconform.stages)
         findings.extend(kustomize.findings)
         findings.extend(kubeconform.findings)
-        ready = not findings
+        kubeconform_status = next((stage.status for stage in stages if stage.stage == "kubeconform"), None)
+        ready = not findings and kubeconform_status == "pass"
         return ValidationReport(status="pass" if ready else "fail", manifest_ready=ready, stages=stages, findings=findings)
 
 

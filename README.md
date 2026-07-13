@@ -168,11 +168,11 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 - `10-unresolved-questions.yaml`: 도구가 안전하게 결정하지 못한 값
 - `11-deployment-profile.yaml`: 실행에 사용된 deployment profile 값. profile을 주지 않으면 `null`
 - `12-generated-manifests/`: Intent Model과 템플릿에서 렌더링된 Kubernetes 리소스 파일
-- `13-validation-report.yaml`: YAML, kubeconform, kubectl dry-run 검증 결과. `generation_holds`는 안전하게 만들 수 없어 `생성 보류`된 리소스와 필요한 해소 값을 보여줍니다.
+- `13-validation-report.yaml`: YAML syntax, internal manifest checks, project-managed kubeconform 검증 결과. `generation_holds`는 안전하게 만들 수 없어 `생성 보류`된 리소스와 필요한 해소 값을 보여줍니다.
 
 전체 파이프라인은 `00-repository-snapshot.yaml`부터 `15-smoke-test-plan.yaml`까지의 산출물을 만들 수 있습니다.
 
-`13-validation-report.yaml`에 `kubeconform: skipped`가 기록되어 있으면 Kubernetes schema 검증이 완료된 것이 아닙니다. 이 경우 `python3 scripts/ensure_kubeconform.py --check`를 먼저 확인하세요.
+`13-validation-report.yaml`에 `kubeconform: not-run` 또는 `tool-missing`이 기록되어 있으면 Kubernetes schema 검증이 완료된 것이 아닙니다. 이 경우 `python3 scripts/ensure_kubeconform.py --check`를 먼저 확인하세요.
 
 ## Current status and limitations
 
@@ -182,7 +182,7 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 - Step 5~7: bounded semantic agent, 도구 예산, verifier, OpenAI-compatible provider 경로
 - Step 8~10: Reconciliation, Profile merge, unresolved 질문 생성
 - Step 11: Deployment, Service, ServiceAccount, ConfigMap, Secret placeholder, Ingress 템플릿 렌더링
-- Step 12: YAML syntax, project-managed kubeconform, kubectl dry-run 검증 체인
+- Step 12: YAML syntax, internal manifest checks, project-managed kubeconform 검증 체인
 - Agent MVP: prepare/resume/status/explain/export와 단계별 analyze/plan/generate/validate 명령, 10개 fixture acceptance matrix, reproducible manifest bundle 검증
 
 이 프로젝트는 아직 한 번의 명령으로 운영 클러스터에 배포하는 도구가 아닙니다. 확인할 수 없는 값은 자동으로 꾸며내지 않고 질문이나 unresolved 항목으로 남깁니다.
