@@ -31,6 +31,7 @@ from k8s_agent.source.github import GitHubSourceResolver
 from k8s_agent.source.git_runner import CommandAudit, GitRunner
 from k8s_agent.source.local import LocalSourceResolver
 from k8s_agent.source.workspace import WorkspaceManager
+from k8s_agent.llm.openai_compatible import semantic_executor_from_env
 from k8s_agent.validation.orchestrator import ValidationOrchestrator
 
 
@@ -67,6 +68,7 @@ class AgentApplication:
         return AgentOrchestrator(
             run_manager=self.run_manager,
             answers_file=request.answers_file if request.non_interactive else None,
+            semantic_executor=semantic_executor_from_env(),
         ).run(run.run_id)
 
     def analyze(self, request: PrepareRequest) -> RunOutcome:
@@ -153,13 +155,13 @@ class AgentApplication:
             current = LocalSourceResolver(git=self._audited_git_runner(run_id)).resolve(source.path, self.clock())
             self.store.save_yaml(run_id, "source.yaml", _source_payload(current))
             self.run_manager.append_event(run_id, "resume_source_replan", "source drift accepted for replan", {"run_id": run_id})
-            return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=False).run(run_id)
+            return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=False, semantic_executor=semantic_executor_from_env()).run(run_id)
         if drift and drift_policy == DriftPolicy.CONTINUE_PINNED:
             self.run_manager.append_event(run_id, "resume_source_pinned", "source drift ignored for pinned resume", {"run_id": run_id})
-            return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True).run(run_id)
+            return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True, semantic_executor=semantic_executor_from_env()).run(run_id)
 
         self.run_manager.append_event(run_id, "resume_source_check", "resume source unchanged", {"run_id": run_id})
-        return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True).run(run_id)
+        return AgentOrchestrator(run_manager=self.run_manager, reuse_completed_analysis=True, semantic_executor=semantic_executor_from_env()).run(run_id)
 
     def status(self, run_id: str):
         return FinalReportBuilder(self.store).build(run_id)

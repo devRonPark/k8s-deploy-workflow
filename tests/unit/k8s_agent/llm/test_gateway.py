@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from k8s_agent.llm.gateway import LLMGateway, SemanticContext
-from k8s_agent.llm.openai_compatible import OpenAICompatibleDecisionProvider
+from k8s_agent.llm.openai_compatible import OpenAICompatibleDecisionProvider, resolve_model_id
 from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet
 from preanalyzer.models.semantic import (
@@ -209,6 +209,20 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(result.status, SemanticAgentRunStatus.VERIFICATION_REJECTED)
         self.assertEqual(result.verification_status, "rejected")
         self.assertEqual(result.accepted_commands, [])
+
+    def test_resolve_model_id_fetches_models_without_authorization_when_key_absent(self):
+        calls = []
+
+        def transport(payload, timeout_seconds):
+            calls.append((payload, timeout_seconds))
+            return {"data": [{"id": "local-model"}]}
+
+        model = resolve_model_id("http://llm.test/v1", api_key=None, timeout_seconds=7, transport=transport)
+
+        self.assertEqual(model, "local-model")
+        self.assertEqual(calls[0][0]["url"], "http://llm.test/v1/models")
+        self.assertEqual(calls[0][0]["headers"], {"Content-Type": "application/json"})
+        self.assertEqual(calls[0][1], 7)
 
 
 def _minimal_context():

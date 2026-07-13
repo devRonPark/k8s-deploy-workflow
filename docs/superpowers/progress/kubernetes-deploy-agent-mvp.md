@@ -545,6 +545,8 @@
 - Task 20 non-interactive answers는 bootstrap acknowledgement가 아니라 실제 `agent/questions.yaml`의 stable question ID를 입력으로 받는다.
 - Task 20 renderer alias는 기존 hand-authored profile path와 Agent intent path를 둘 다 읽는다. Intent/Profile 모델은 유지하고 renderer 소비 경계에서 호환성을 처리했다.
 - Task 20 matrix는 `persistent-storage-compose`와 `port-conflict-node`를 non-ready 기준으로 둔다. 각각 persistent storage design review와 conflicting runtime command 질문을 남기는 것이 성공 조건이다.
+- Review follow-up으로 prepare/resume orchestration에 optional `SemanticActionExecutor`를 연결했다. 검증 수락된 runtime command는 `/components/<id>/workload/command` Profile decision으로 병합하고 `agent/semantic-resolution.yaml`에 기록한다.
+- Agent LLM 설정은 `K8S_AGENT_LLM_*`를 우선하며, 모델 ID가 없으면 인증 헤더 없이 `GET /models`를 호출해 실제 model id를 확인한다.
 
 ## Blocker
 

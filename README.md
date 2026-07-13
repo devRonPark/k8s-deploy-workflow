@@ -130,25 +130,19 @@ LLM은 필수가 아닙니다. 다만 OpenAI-compatible endpoint를 연결하면
 환경변수를 설정합니다.
 
 ```bash
-export SEMANTIC_LLM_BASE_URL="https://your-llm.example/v1"
-export SEMANTIC_LLM_MODEL="your-model"
-export SEMANTIC_LLM_API_KEY="your-key"
-export SEMANTIC_LLM_TIMEOUT_SECONDS="30"
+export K8S_AGENT_LLM_BASE_URL="https://your-llm.example/v1"
+export K8S_AGENT_LLM_MODEL="your-model"
+export K8S_AGENT_LLM_API_KEY="your-key"
+export K8S_AGENT_LLM_TIMEOUT_SECONDS="30"
 ```
 
-실제 모델 ID를 추측하지 말고 endpoint에서 먼저 확인합니다.
+`K8S_AGENT_LLM_MODEL`을 생략하면 에이전트가 먼저 `GET /models`로 실제 모델 ID를 확인합니다. 인증이 없는 로컬 OpenAI-compatible endpoint에서는 `K8S_AGENT_LLM_API_KEY`를 설정하지 않습니다. 이 경우 요청 헤더에는 `Authorization`을 넣지 않고 `Content-Type: application/json`만 사용합니다.
 
 ```bash
-curl "$SEMANTIC_LLM_BASE_URL/models"
+curl "$K8S_AGENT_LLM_BASE_URL/models"
 ```
 
-반환된 모델 ID를 `SEMANTIC_LLM_MODEL`에 넣습니다. 실제 API key, token, password는 커밋하지 마세요.
-
-인증이 없는 로컬 OpenAI-compatible endpoint를 쓰는 경우에도 현재 설정 로더는 `SEMANTIC_LLM_API_KEY`가 비어 있으면 거부합니다. 이런 endpoint가 placeholder key를 허용한다면 비밀값이 아닌 값을 사용합니다.
-
-```bash
-export SEMANTIC_LLM_API_KEY="none"
-```
+반환된 모델 ID를 명시하고 싶으면 `K8S_AGENT_LLM_MODEL`에 넣습니다. 실제 API key, token, password는 커밋하지 마세요. 기존 `SEMANTIC_LLM_*` 환경변수도 preanalyzer 호환 경로로 읽지만, Agent MVP에서는 `K8S_AGENT_LLM_*`를 우선합니다.
 
 LLM 연동 실행 예시는 다음과 같습니다.
 

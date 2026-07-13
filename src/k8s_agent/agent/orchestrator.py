@@ -9,10 +9,12 @@ from typing import Any
 import yaml
 
 from k8s_agent.agent.planner import AgentPlanner, PlanningContext
+from k8s_agent.agent.actions import SemanticActionExecutor, SemanticResolutionSet
 from k8s_agent.analysis.intent_builder import IntentBuilder
 from k8s_agent.analysis.phase1_adapter import PHASE1_ARTIFACTS, Phase1Adapter, Phase1Result
 from k8s_agent.analysis.topology_builder import TopologyBuilder
 from k8s_agent.errors import AgentError
+from k8s_agent.models.decision import Decision
 from k8s_agent.models.run import RunRecord, RunState, TERMINAL_STATES
 from k8s_agent.models.source import RepositorySource
 from k8s_agent.profile.builder import DeploymentProfileBuilder, ProfileInputs
@@ -65,12 +67,14 @@ class AgentOrchestrator:
         pipeline: Callable[[str], OrchestrationResult] | None = None,
         reuse_completed_analysis: bool = False,
         answers_file: Path | None = None,
+        semantic_executor: SemanticActionExecutor | None = None,
     ) -> None:
         self.run_manager = run_manager
         self.store = run_manager.store
         self.pipeline = pipeline or self._run_default_pipeline
         self.reuse_completed_analysis = reuse_completed_analysis
         self.answers_file = answers_file
+        self.semantic_executor = semantic_executor
 
     def run(self, run_id: str) -> RunOutcome:
         record = self.store.load(run_id)
@@ -110,12 +114,17 @@ class AgentOrchestrator:
         topology = TopologyBuilder().build(phase1)
         intent = IntentBuilder(output_dir=phase1.analysis_dir).build(topology, record.target)
         plan = AgentPlanner().plan(PlanningContext(topology=topology, intent=intent))
+        semantic_resolution: SemanticResolutionSet | None = None
+        semantic_decisions: list[Decision] = []
+        if self.semantic_executor is not None and any(task.action == "semantic_action" for task in plan.tasks):
+            semantic_resolution = self.semantic_executor.resolve_runtime_commands(topology, phase1)
+            semantic_decisions = _semantic_profile_decisions(semantic_resolution)
         question_manager = QuestionManager()
         questions = question_manager.build(intent, plan)
-        decisions = []
+        decisions = list(semantic_decisions)
         if self.answers_file is not None:
             answers = AnswerLoader().load(self.answers_file, questions)
-            decisions = question_manager.to_decisions(answers)
+            decisions.extend(question_manager.to_decisions(answers))
         profile = DeploymentProfileBuilder().build(ProfileInputs(intent=intent, decisions=decisions))
 
         artifacts: dict[str, dict[str, Any]] = {
@@ -124,6 +133,8 @@ class AgentOrchestrator:
             "agent/questions.yaml": {"question_set": questions.model_dump(mode="json")},
             "profile/deployment-profile.yaml": {"deployment_profile": profile.model_dump(mode="json")},
         }
+        if semantic_resolution is not None:
+            artifacts["agent/semantic-resolution.yaml"] = {"semantic_resolution": semantic_resolution.model_dump(mode="json")}
 
         if profile.blocked:
             return OrchestrationResult(
@@ -212,6 +223,46 @@ def _runtime_metadata(run_root: Path) -> dict:
 
 def _sha256(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+def _semantic_profile_decisions(resolution: SemanticResolutionSet) -> list[Decision]:
+    by_task = {
+        item["task_id"]: item
+        for item in resolution.task_decisions
+        if isinstance(item.get("task_id"), str) and isinstance(item.get("target_field"), str)
+    }
+    decisions: list[Decision] = []
+    for result in resolution.results:
+        if result.verification_status != "accepted" or not result.accepted_commands:
+            continue
+        task = by_task.get(result.task_id)
+        if task is None:
+            continue
+        target_field = _profile_command_field(task["target_field"])
+        command = result.accepted_commands[0]
+        decisions.append(
+            Decision(
+                decision_id=f"D-{result.task_id}",
+                target_field=target_field,
+                value=command,
+                raw_value=command,
+                normalized_value=command,
+                classification="llm_semantic_inference",
+                confidence="medium",
+                evidence_refs=result.evidence_refs,
+                actor="agent",
+                alternatives=[],
+                approval="automatic",
+                affected_resources=[],
+            )
+        )
+    return sorted(decisions, key=lambda item: item.decision_id)
+
+
+def _profile_command_field(target_field: str) -> str:
+    if target_field.endswith("/runtime/command"):
+        return f"{target_field.removesuffix('/runtime/command')}/workload/command"
+    return target_field
 
 
 def _outcome(record: RunRecord, exit_code: int, message: str) -> RunOutcome:

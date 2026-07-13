@@ -5,11 +5,17 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
+from k8s_agent.agent.orchestrator import AgentOrchestrator
 from k8s_agent.agent.actions import SemanticActionExecutor
 from k8s_agent.analysis.phase1_adapter import Phase1Adapter
 from k8s_agent.analysis.topology_builder import TOPOLOGY_ARTIFACT, TopologyBuilder
+from k8s_agent.cli import PrepareRequest
 from k8s_agent.llm.gateway import LLMGateway
+from k8s_agent.models.run import RunState
 from k8s_agent.models.source import GitMetadata, RepositorySource, SourceFingerprint
+from k8s_agent.run.manager import RunManager
 from k8s_agent.run.store import RunStore
 from preanalyzer.models.semantic import SemanticCandidate, SemanticResolution, SemanticResolutionStatus
 from preanalyzer.models.semantic_agent import ResolutionAction, ToolCallAction
@@ -56,6 +62,43 @@ class RuntimeCommandSemanticResolutionAcceptanceTests(unittest.TestCase):
         self.assertTrue(result.evidence_refs)
         self.assertEqual(result.model, "fake-semantic-model")
         self.assertEqual(result.prompt_version, "runtime-command-semantic/v1")
+
+    def test_prepare_pipeline_merges_verified_semantic_command_into_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manager = RunManager(
+                RunStore(root / "runs"),
+                clock=lambda: FIXED_TIME,
+                run_id_factory=lambda: "run-semantic-prepare",
+            )
+            source = source_for(FIXTURES / "fastapi-shell-entrypoint")
+            run = manager.create(
+                PrepareRequest(
+                    repo_url=None,
+                    local_path=source.path,
+                    ref=None,
+                    target="development",
+                    non_interactive=False,
+                    answers_file=None,
+                )
+            )
+            manager.store.save_yaml(run.run_id, "source.yaml", source.model_dump(mode="json"))
+            manager.transition(run.run_id, RunState.ACQUIRING_SOURCE, "source acquisition started")
+            gateway = LLMGateway(provider=EntryPointProvider(), provider_name="fake", model="fake-semantic-model")
+
+            outcome = AgentOrchestrator(
+                run_manager=manager,
+                semantic_executor=SemanticActionExecutor(gateway=gateway),
+            ).run(run.run_id)
+
+            profile = yaml.safe_load((outcome.run_root / "profile" / "deployment-profile.yaml").read_text(encoding="utf-8"))
+            semantic = yaml.safe_load((outcome.run_root / "agent" / "semantic-resolution.yaml").read_text(encoding="utf-8"))
+
+        command = profile["deployment_profile"]["values"]["/components/backend/workload/command"]
+        self.assertEqual(outcome.state, RunState.WAITING_FOR_USER)
+        self.assertEqual(command["value"], "uvicorn main:app --host 0.0.0.0 --port 8000")
+        self.assertEqual(command["classification"], "llm_semantic_inference")
+        self.assertEqual(semantic["semantic_resolution"]["results"][0]["verification_status"], "accepted")
 
 
 class EntryPointProvider:
