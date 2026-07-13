@@ -69,7 +69,7 @@ PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli prepare \
   --target development
 ```
 
-`prepare`는 source snapshot, analysis, intent, plan, questions, deployment profile, manifest render, validation을 가능한 곳까지 진행합니다. 확인이 필요한 값이 있으면 `agent/questions.yaml`에 질문을 남기고 `WAITING_FOR_USER` 상태로 끝납니다. 자동 실행에서는 먼저 질문 파일을 확인한 뒤 answers file을 넣습니다.
+`prepare`는 source snapshot, analysis, intent, plan, questions, deployment profile, manifest render, validation을 가능한 곳까지 진행합니다. 확인이 필요한 값이 있으면 run directory의 questions artifact에 질문을 남기고 `WAITING_FOR_USER` 상태로 끝납니다. 자동 실행에서는 먼저 질문 파일을 확인한 뒤 answers file을 넣습니다.
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli prepare \
