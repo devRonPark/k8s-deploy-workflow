@@ -91,7 +91,22 @@ class ValidatorKubeconformCommandTests(unittest.TestCase):
         self.assertEqual(report.stages[1].status, "pass")
         self.assertEqual(
             run.call_args_list[0].args[0],
-            [str(exe), "-strict", "-summary", "-kubernetes-version", "1.30", str(directory)],
+            [str(exe), "-strict", "-summary", "-kubernetes-version", "1.30.0", str(directory)],
+        )
+
+    def test_pipeline_preserves_master_kubernetes_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            _write(directory, "ok.yaml", "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: x\n")
+            exe = directory / "kc"
+            exe.write_text("#!/bin/sh\n", encoding="utf-8")
+            exe.chmod(0o755)
+            completed = Mock(returncode=0, stdout="summary ok", stderr="")
+            with patch("preanalyzer.validator.pipeline.subprocess.run", return_value=completed) as run:
+                ValidationPipeline(k8s_version="master", kubeconform_path=exe, repo_root=directory).run(directory)
+        self.assertEqual(
+            run.call_args_list[0].args[0],
+            [str(exe), "-strict", "-summary", "-kubernetes-version", "master", str(directory)],
         )
 
 

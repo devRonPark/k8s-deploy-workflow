@@ -9,6 +9,16 @@ from preanalyzer.models.report import StageResult, ValidationReport
 from preanalyzer.validator.kubeconform_tool import resolve_kubeconform
 
 
+def _normalize_kubernetes_version(version: str) -> str:
+    text = version.strip()
+    if text == "master":
+        return text
+    parts = text.split(".")
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return f"{text}.0"
+    return text
+
+
 class ValidationPipeline:
     def __init__(
         self,
@@ -16,7 +26,7 @@ class ValidationPipeline:
         kubeconform_path: Path | None = None,
         repo_root: Path | None = None,
     ) -> None:
-        self._k8s_version = k8s_version
+        self._k8s_version = _normalize_kubernetes_version(k8s_version)
         self._kubeconform_path = kubeconform_path
         self._repo_root = repo_root or Path.cwd()
 
