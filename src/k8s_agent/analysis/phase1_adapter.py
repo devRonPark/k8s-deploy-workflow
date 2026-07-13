@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from k8s_agent.errors import AgentError
@@ -25,6 +26,7 @@ PHASE1_ARTIFACTS = [
 @dataclass(frozen=True)
 class Phase1Result:
     run_id: str
+    analysis_dir: Path
     checksums: dict[str, str]
     artifact_count: int
 
@@ -54,7 +56,12 @@ class Phase1Adapter:
                 context={"run_id": run_id, "source_kind": source.kind},
             ) from exc
         checksums = {name: _sha256(analysis_dir / name) for name in PHASE1_ARTIFACTS}
-        result = Phase1Result(run_id=run_id, checksums=checksums, artifact_count=len(PHASE1_ARTIFACTS))
+        result = Phase1Result(
+            run_id=run_id,
+            analysis_dir=analysis_dir,
+            checksums=checksums,
+            artifact_count=len(PHASE1_ARTIFACTS),
+        )
         EventLog(self.store.event_file(run_id)).append(
             RunEvent(
                 event_id=f"event-{uuid4().hex}",
