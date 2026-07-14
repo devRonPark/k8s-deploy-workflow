@@ -1,0 +1,323 @@
+from __future__ import annotations
+
+import argparse
+import sys
+import traceback
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Sequence
+
+from k8s_agent.errors import AgentError, format_agent_error
+
+
+TARGETS = {"development", "staging", "production"}
+
+
+@dataclass(frozen=True)
+class PrepareRequest:
+    repo_url: str | None
+    local_path: Path | None
+    ref: str | None
+    target: str
+    non_interactive: bool
+    answers_file: Path | None
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="k8s-agent")
+    parser.add_argument("--debug", action="store_true", dest="global_debug")
+    subcommands = parser.add_subparsers(dest="command")
+
+    prepare = subcommands.add_parser("prepare")
+    _add_source_arguments(prepare)
+    prepare.add_argument("--target", required=True)
+    prepare.add_argument("--non-interactive", action="store_true")
+    prepare.add_argument("--answers-file")
+    prepare.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    resume = subcommands.add_parser("resume")
+    resume.add_argument("run_id")
+    resume.add_argument("--drift-policy", choices=["continue-pinned", "replan", "new-run"])
+    resume.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    status = subcommands.add_parser("status")
+    status.add_argument("run_id")
+    status.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    explain = subcommands.add_parser("explain")
+    explain.add_argument("run_id")
+    explain.add_argument("subject", nargs="?")
+    explain.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    export = subcommands.add_parser("export")
+    export.add_argument("run_id")
+    export.add_argument("--output", required=True)
+    export.add_argument("--overwrite", action="store_true")
+    export.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    analyze = subcommands.add_parser("analyze")
+    _add_source_arguments(analyze)
+    analyze.add_argument("--target", required=True)
+    analyze.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    plan = subcommands.add_parser("plan")
+    plan.add_argument("run_id")
+    plan.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    generate = subcommands.add_parser("generate")
+    generate.add_argument("run_id")
+    generate.add_argument("--profile-revision", type=int)
+    generate.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    validate = subcommands.add_parser("validate")
+    validate.add_argument("run_id")
+    validate.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+
+    return parser
+
+
+def _add_source_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--repo-url")
+    parser.add_argument("--local-path")
+    parser.add_argument("--ref")
+
+
+def _validate_prepare(args: argparse.Namespace) -> PrepareRequest:
+    return _validate_source_target(
+        args,
+        command="prepare",
+        non_interactive=bool(args.non_interactive),
+        answers_file=Path(args.answers_file) if args.answers_file else None,
+    )
+
+
+def _validate_source_target(
+    args: argparse.Namespace,
+    *,
+    command: str,
+    non_interactive: bool = False,
+    answers_file: Path | None = None,
+) -> PrepareRequest:
+    repo_url = args.repo_url
+    local_path = Path(args.local_path) if args.local_path else None
+    has_repo_url = bool(repo_url)
+    has_local_path = local_path is not None
+    example = "k8s-agent prepare --local-path ./app --target development"
+
+    if has_repo_url == has_local_path:
+        if has_repo_url:
+            raise AgentError(
+                code="CLI-102",
+                exit_code=2,
+                message=f"{command} accepts exactly one source, but both --repo-url and --local-path were provided.",
+                resolution=f"Choose one source option. Example: k8s-agent {command} --repo-url https://github.com/org/app.git --target staging",
+                context={"command": command},
+            )
+        raise AgentError(
+            code="CLI-101",
+            exit_code=2,
+            message=f"{command} requires an explicit source.",
+            resolution="Pass either --repo-url or --local-path. Example: " + example.replace("prepare", command, 1),
+            context={"command": command},
+        )
+
+    if local_path is not None and args.ref:
+        raise AgentError(
+            code="CLI-103",
+            exit_code=2,
+            message="--ref can only be used with --repo-url.",
+            resolution="Remove --ref for local sources. Example: " + example.replace("prepare", command, 1),
+            context={"command": command},
+        )
+
+    if args.target not in TARGETS:
+        raise AgentError(
+            code="CLI-104",
+            exit_code=2,
+            message=f"unsupported target '{args.target}'.",
+            resolution="Use one of development, staging, or production. Example: " + example.replace("prepare", command, 1),
+            context={"command": command, "target": args.target},
+        )
+
+    if non_interactive and answers_file is None:
+        raise AgentError(
+            code="CLI-105",
+            exit_code=2,
+            message="--non-interactive requires --answers-file.",
+            resolution="Provide explicit answers or run interactively. Example: k8s-agent prepare --local-path ./app --target development --non-interactive --answers-file answers.yaml",
+            context={"command": "prepare"},
+        )
+
+    return PrepareRequest(
+        repo_url=repo_url,
+        local_path=local_path,
+        ref=args.ref,
+        target=args.target,
+        non_interactive=non_interactive,
+        answers_file=answers_file,
+    )
+
+
+def _run_prepare(args: argparse.Namespace) -> int:
+    request = _validate_prepare(args)
+    from k8s_agent.application import AgentApplication
+
+    outcome = AgentApplication().prepare(request)
+    print(
+        f"prepare created run_id={outcome.run_id} "
+        f"target={outcome.target} source={outcome.source_kind} state={outcome.state.value} "
+        f"run_root={outcome.run_root} next={outcome.message}"
+    )
+    return outcome.exit_code
+
+
+def _run_resume(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication, DriftPolicy
+
+    drift_policy = DriftPolicy(args.drift_policy) if args.drift_policy else None
+    outcome = AgentApplication().resume(args.run_id, drift_policy)
+    print(
+        f"resume run_id={outcome.run_id} "
+        f"target={outcome.target} source={outcome.source_kind} state={outcome.state.value} "
+        f"run_root={outcome.run_root} next={outcome.message}"
+    )
+    return outcome.exit_code
+
+
+def _run_status(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    report = AgentApplication().status(args.run_id)
+    print(
+        f"status run_id={report.run_id} state={report.state} summary={report.summary} "
+        f"validation={report.validation.status} resources={len(report.resources)} "
+        f"limitations={'; '.join(report.limitations)} next={report.next_action}"
+    )
+    return 0
+
+
+def _run_explain(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    explanation = AgentApplication().explain(args.run_id, args.subject)
+    resources = ", ".join(f"{resource.kind}/{resource.name}" for resource in explanation.resources)
+    print(
+        f"explain run_id={args.run_id} subject={explanation.subject} "
+        f"decision={explanation.decision_id} profile_field={explanation.profile_field} "
+        f"resource={resources} evidence={','.join(explanation.evidence_refs)} trace={explanation.trace}"
+    )
+    return 0
+
+
+def _run_export(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    result = AgentApplication().export(args.run_id, Path(args.output), overwrite=bool(args.overwrite))
+    print(f"export run_id={result.run_id} output={result.output} files={result.file_count}")
+    return 0
+
+
+def _run_analyze(args: argparse.Namespace) -> int:
+    request = _validate_source_target(args, command="analyze")
+    from k8s_agent.application import AgentApplication
+
+    outcome = AgentApplication().analyze(request)
+    print(
+        f"analyze run_id={outcome.run_id} target={outcome.target} source={outcome.source_kind} "
+        f"state={outcome.state.value} run_root={outcome.run_root} next={outcome.message}"
+    )
+    return outcome.exit_code
+
+
+def _run_plan(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    plan = AgentApplication().plan(args.run_id)
+    print(f"plan run_id={args.run_id} tasks={len(plan.tasks)}")
+    return 0
+
+
+def _run_generate(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    bundle = AgentApplication().generate(args.run_id, profile_revision=args.profile_revision)
+    print(f"generate run_id={args.run_id} files={len(bundle.files)} resources={len(bundle.resource_refs)}")
+    return 0
+
+
+def _run_validate(args: argparse.Namespace) -> int:
+    from k8s_agent.application import AgentApplication
+
+    report = AgentApplication().validate(args.run_id)
+    print(f"validate run_id={args.run_id} status={report.status} manifest_ready={report.manifest_ready}")
+    return 0
+
+
+def _main_impl(argv: Sequence[str] | None) -> int:
+    parser = build_parser()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code)
+
+    if args.command is None:
+        raise AgentError(
+            code="CLI-100",
+            exit_code=2,
+            message="a command is required.",
+            resolution="Run k8s-agent prepare --local-path ./app --target development.",
+            context={"command": "missing"},
+        )
+
+    if args.command == "prepare":
+        return _run_prepare(args)
+    if args.command == "resume":
+        return _run_resume(args)
+    if args.command == "status":
+        return _run_status(args)
+    if args.command == "explain":
+        return _run_explain(args)
+    if args.command == "export":
+        return _run_export(args)
+    if args.command == "analyze":
+        return _run_analyze(args)
+    if args.command == "plan":
+        return _run_plan(args)
+    if args.command == "generate":
+        return _run_generate(args)
+    if args.command == "validate":
+        return _run_validate(args)
+    raise AgentError(
+        code="CLI-100",
+        exit_code=2,
+        message="a command is required.",
+        resolution="Run k8s-agent prepare --local-path ./app --target development.",
+        context={"command": str(args.command)},
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    debug = "--debug" in argv if argv is not None else "--debug" in sys.argv[1:]
+    try:
+        return _main_impl(argv)
+    except AgentError as exc:
+        if debug:
+            traceback.print_exc()
+        print(format_agent_error(exc), file=sys.stderr)
+        return exc.exit_code
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        error = AgentError(
+            code="CLI-999",
+            exit_code=8,
+            message="unexpected internal error.",
+            resolution="Retry with --debug and report the command output.",
+            context={"error_type": type(exc).__name__},
+        )
+        if debug:
+            traceback.print_exc()
+        print(format_agent_error(error), file=sys.stderr)
+        return error.exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

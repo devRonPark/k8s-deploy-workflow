@@ -61,6 +61,47 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 
 명령은 `achieved_level=<level> out=out/node-express-like` 형식의 요약을 출력하고, `out/node-express-like/` 아래에 분석 산출물을 씁니다.
 
+Kubernetes Deploy Agent MVP CLI는 같은 editable install에서 `k8s-agent` 모듈로 실행할 수 있습니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli prepare \
+  --local-path tests/fixtures/repos/node-express-like \
+  --target development
+```
+
+`prepare`는 source snapshot, analysis, intent, plan, questions, deployment profile, manifest render, validation을 가능한 곳까지 진행합니다. 확인이 필요한 값이 있으면 run directory의 questions artifact에 질문을 남기고 `WAITING_FOR_USER` 상태로 끝납니다. 자동 실행에서는 먼저 질문 파일을 확인한 뒤 answers file을 넣습니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli prepare \
+  --local-path tests/fixtures/repos/node-express-like \
+  --target development \
+  --non-interactive \
+  --answers-file answers.yaml
+```
+
+중단된 run은 source drift 정책을 명시해 재개할 수 있습니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli resume <run-id> --drift-policy replan
+```
+
+준비된 run은 상태 확인, 결정 근거 설명, manifest export를 지원합니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli status <run-id>
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli explain <run-id> <decision-or-field>
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli export <run-id> --output out/manifests --overwrite
+```
+
+고급 단계별 명령은 같은 run artifact를 기준으로 분석, 계획, 생성, 검증을 분리해 실행합니다.
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli analyze --local-path ./my-repo --target development
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli plan <run-id>
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli generate <run-id> --profile-revision 1
+PYTHONPATH=src .venv/bin/python3 -m k8s_agent.cli validate <run-id>
+```
+
 ## Run on your repository
 
 샘플 실행 후에는 자신의 저장소 경로를 넘겨 실행합니다.
@@ -89,25 +130,19 @@ LLM은 필수가 아닙니다. 다만 OpenAI-compatible endpoint를 연결하면
 환경변수를 설정합니다.
 
 ```bash
-export SEMANTIC_LLM_BASE_URL="https://your-llm.example/v1"
-export SEMANTIC_LLM_MODEL="your-model"
-export SEMANTIC_LLM_API_KEY="your-key"
-export SEMANTIC_LLM_TIMEOUT_SECONDS="30"
+export K8S_AGENT_LLM_BASE_URL="https://your-llm.example/v1"
+export K8S_AGENT_LLM_MODEL="your-model"
+export K8S_AGENT_LLM_API_KEY="your-key"
+export K8S_AGENT_LLM_TIMEOUT_SECONDS="30"
 ```
 
-실제 모델 ID를 추측하지 말고 endpoint에서 먼저 확인합니다.
+`K8S_AGENT_LLM_MODEL`을 생략하면 에이전트가 먼저 `GET /models`로 실제 모델 ID를 확인합니다. 인증이 없는 로컬 OpenAI-compatible endpoint에서는 `K8S_AGENT_LLM_API_KEY`를 설정하지 않습니다. 이 경우 요청 헤더에는 `Authorization`을 넣지 않고 `Content-Type: application/json`만 사용합니다.
 
 ```bash
-curl "$SEMANTIC_LLM_BASE_URL/models"
+curl "$K8S_AGENT_LLM_BASE_URL/models"
 ```
 
-반환된 모델 ID를 `SEMANTIC_LLM_MODEL`에 넣습니다. 실제 API key, token, password는 커밋하지 마세요.
-
-인증이 없는 로컬 OpenAI-compatible endpoint를 쓰는 경우에도 현재 설정 로더는 `SEMANTIC_LLM_API_KEY`가 비어 있으면 거부합니다. 이런 endpoint가 placeholder key를 허용한다면 비밀값이 아닌 값을 사용합니다.
-
-```bash
-export SEMANTIC_LLM_API_KEY="none"
-```
+반환된 모델 ID를 명시하고 싶으면 `K8S_AGENT_LLM_MODEL`에 넣습니다. 실제 API key, token, password는 커밋하지 마세요. 기존 `SEMANTIC_LLM_*` 환경변수도 preanalyzer 호환 경로로 읽지만, Agent MVP에서는 `K8S_AGENT_LLM_*`를 우선합니다.
 
 LLM 연동 실행 예시는 다음과 같습니다.
 
@@ -127,22 +162,22 @@ PYTHONPATH=src .venv/bin/python3 -m preanalyzer.cli analyze \
 - `10-unresolved-questions.yaml`: 도구가 안전하게 결정하지 못한 값
 - `11-deployment-profile.yaml`: 실행에 사용된 deployment profile 값. profile을 주지 않으면 `null`
 - `12-generated-manifests/`: Intent Model과 템플릿에서 렌더링된 Kubernetes 리소스 파일
-- `13-validation-report.yaml`: YAML, kubeconform, kubectl dry-run 검증 결과. `generation_holds`는 안전하게 만들 수 없어 `생성 보류`된 리소스와 필요한 해소 값을 보여줍니다.
+- `13-validation-report.yaml`: YAML syntax, internal manifest checks, project-managed kubeconform 검증 결과. `generation_holds`는 안전하게 만들 수 없어 `생성 보류`된 리소스와 필요한 해소 값을 보여줍니다.
 
 전체 파이프라인은 `00-repository-snapshot.yaml`부터 `15-smoke-test-plan.yaml`까지의 산출물을 만들 수 있습니다.
 
-`13-validation-report.yaml`에 `kubeconform: skipped`가 기록되어 있으면 Kubernetes schema 검증이 완료된 것이 아닙니다. 이 경우 `python3 scripts/ensure_kubeconform.py --check`를 먼저 확인하세요.
+`13-validation-report.yaml`에 `kubeconform: not-run` 또는 `tool-missing`이 기록되어 있으면 Kubernetes schema 검증이 완료된 것이 아닙니다. 이 경우 `python3 scripts/ensure_kubeconform.py --check`를 먼저 확인하세요.
 
 ## Current status and limitations
 
-현재 코드는 Step 12까지 MVP 흐름이 연결되어 있습니다. "분석 → Intent → 템플릿 렌더링 → 검증 리포트"가 샘플 저장소 기준으로 관통합니다.
+현재 Kubernetes Deploy Agent MVP는 "source 획득 → 분석 → Intent → 질문/답변 → Profile → 템플릿 렌더링 → 검증 → 제한적 리페어 → 보고/export" 흐름이 샘플 저장소 기준으로 관통합니다.
 
 - Step 0~6: snapshot, artifact inventory, 배포파일 파싱, component 탐지, 언어/빌드 탐지, 런타임 추출, 포트/env/volume/의존 분석
 - Step 5~7: bounded semantic agent, 도구 예산, verifier, OpenAI-compatible provider 경로
 - Step 8~10: Reconciliation, Profile merge, unresolved 질문 생성
 - Step 11: Deployment, Service, ServiceAccount, ConfigMap, Secret placeholder, Ingress 템플릿 렌더링
-- Step 12: YAML syntax, project-managed kubeconform, kubectl dry-run 검증 체인
-- Step 13~15: Deployment Check, Smoke Test 실행, Repair Loop 자동화는 아직 미구현. 현재는 checklist와 smoke-test-plan 초안 생성 수준
+- Step 12: YAML syntax, internal manifest checks, project-managed kubeconform 검증 체인
+- Agent MVP: prepare/resume/status/explain/export와 단계별 analyze/plan/generate/validate 명령, 10개 fixture acceptance matrix, reproducible manifest bundle 검증
 
 이 프로젝트는 아직 한 번의 명령으로 운영 클러스터에 배포하는 도구가 아닙니다. 확인할 수 없는 값은 자동으로 꾸며내지 않고 질문이나 unresolved 항목으로 남깁니다.
 
@@ -158,6 +193,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover 
 
 - [docs/pipeline-details.md](./docs/pipeline-details.md): 기능별 세부 규칙
 - [docs/architecture.md](./docs/architecture.md): 구현 상태와 아키텍처 경계
+- [docs/testing/agent-mvp-test-matrix.md](./docs/testing/agent-mvp-test-matrix.md): Agent MVP fixture matrix와 CI 검증 명령
 - [onprem-llm-k8s-manifest-preanalysis-workflow.md](./onprem-llm-k8s-manifest-preanalysis-workflow.md): 전체 워크플로우 설계
 
 ## Project structure
