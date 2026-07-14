@@ -1,0 +1,459 @@
+schema_version: repository-analysis-corpus/v1
+corpus_version: 2026-07-14.6
+change_history:
+  - version: 2026-07-14.1
+    reason: Lock normal, negative finding, conflict, and coverage-gap contracts.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+  - version: 2026-07-14.2
+    reason: Require the Gradle fixture to produce an explicit component boundary.
+    affected_cases:
+      - gradle-coverage-gap
+  - version: 2026-07-14.3
+    reason: Bind fixture contents and cover every officially supported artifact family.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+      - maven-normal
+      - python-normal
+      - gradle-kotlin-coverage-gap
+      - kubernetes-kustomize-coverage-gap
+  - version: 2026-07-14.4
+    reason: Harden scorecard metric populations, evidence locators, and secret redaction.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+      - maven-normal
+      - python-normal
+      - gradle-kotlin-coverage-gap
+      - kubernetes-kustomize-coverage-gap
+  - version: 2026-07-14.5
+    reason: Validate repository pins and fixture fingerprints before scorecard analysis.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+      - maven-normal
+      - python-normal
+      - gradle-kotlin-coverage-gap
+      - kubernetes-kustomize-coverage-gap
+  - version: 2026-07-14.6
+    reason: Require explicit not-applicable rows for unsupported artifact/state matrix cells.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+      - maven-normal
+      - python-normal
+      - gradle-kotlin-coverage-gap
+      - kubernetes-kustomize-coverage-gap
+artifact_contract:
+  - artifact_type: node_package
+    field_id: components.root.present
+    scenario: normal
+    expected_state: resolved
+    case_id: node-normal
+  - artifact_type: node_package
+    field_id: artifact_contract.node_package.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked node package conflict case is meaningful without another conflicting artifact.
+  - artifact_type: node_package
+    field_id: artifact_contract.node_package.coverage_gap
+    scenario: coverage_gap
+    expected_state: not_applicable
+    not_applicable_reason: Node package metadata is supported directly; coverage gaps are represented by unsupported artifact families.
+  - artifact_type: dockerfile
+    field_id: components.root.effective_runtime_command
+    scenario: normal
+    expected_state: resolved
+    case_id: node-normal
+  - artifact_type: dockerfile
+    field_id: components.root.runtime_port
+    scenario: normal
+    expected_state: resolved
+    case_id: node-normal
+  - artifact_type: dockerfile
+    field_id: artifact_contract.dockerfile.coverage_gap
+    scenario: coverage_gap
+    expected_state: not_applicable
+    not_applicable_reason: Dockerfile instructions used in the contract are supported directly.
+  - artifact_type: node_package
+    field_id: package_dependencies.root.express
+    scenario: normal
+    expected_state: resolved
+    case_id: node-normal
+  - artifact_type: node_package
+    field_id: components.root.secret_classification
+    scenario: absence
+    expected_state: not_applicable
+    case_id: node-secret-absence
+  - artifact_type: dockerfile
+    field_id: components.root.build_strategy
+    scenario: absence
+    expected_state: resolved
+    case_id: node-secret-absence
+  - artifact_type: dockerfile
+    field_id: components.web.runtime_port
+    scenario: conflict
+    expected_state: conflict
+    case_id: runtime-port-conflict
+  - artifact_type: docker_compose
+    field_id: components.web.runtime_port
+    scenario: conflict
+    expected_state: conflict
+    case_id: runtime-port-conflict
+  - artifact_type: docker_compose
+    field_id: artifact_contract.docker_compose.normal
+    scenario: normal
+    expected_state: not_applicable
+    not_applicable_reason: Normal Compose-only runtime port evidence is covered outside this regression corpus.
+  - artifact_type: docker_compose
+    field_id: artifact_contract.docker_compose.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Proven absence for Compose ports is not meaningful without a Compose service field expectation.
+  - artifact_type: docker_compose
+    field_id: artifact_contract.docker_compose.coverage_gap
+    scenario: coverage_gap
+    expected_state: not_applicable
+    not_applicable_reason: Compose port syntax used in the contract is supported directly.
+  - artifact_type: gradle_groovy
+    field_id: components.root.present
+    scenario: coverage_gap
+    expected_state: resolved
+    case_id: gradle-coverage-gap
+  - artifact_type: gradle_groovy
+    field_id: artifact_contract.gradle_groovy.normal
+    scenario: normal
+    expected_state: not_applicable
+    not_applicable_reason: Normal Gradle coverage is tracked by the public Spring Petclinic truth corpus.
+  - artifact_type: gradle_groovy
+    field_id: artifact_contract.gradle_groovy.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Gradle absence is not a meaningful field expectation for a Gradle fixture.
+  - artifact_type: gradle_groovy
+    field_id: artifact_contract.gradle_groovy.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked Gradle conflict fixture is part of this regression corpus.
+  - artifact_type: application_config
+    field_id: components.root.runtime_port
+    scenario: coverage_gap
+    expected_state: unresolved
+    case_id: gradle-coverage-gap
+  - artifact_type: application_config
+    field_id: artifact_contract.application_config.normal
+    scenario: normal
+    expected_state: not_applicable
+    not_applicable_reason: Application config normal values are not yet consumed by the topology builder.
+  - artifact_type: application_config
+    field_id: artifact_contract.application_config.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Absence is represented through full-document evidence in expert truth, not this fixture.
+  - artifact_type: application_config
+    field_id: artifact_contract.application_config.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked application config conflict fixture is part of this regression corpus.
+  - artifact_type: gradle_groovy
+    field_id: package_dependencies.root.org.springframework.boot:spring-boot-starter-web
+    scenario: coverage_gap
+    expected_state: resolved
+    case_id: gradle-coverage-gap
+  - artifact_type: maven
+    field_id: components.root.present
+    scenario: normal
+    expected_state: resolved
+    case_id: maven-normal
+  - artifact_type: maven
+    field_id: artifact_contract.maven.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Maven absence is not meaningful for a Maven fixture.
+  - artifact_type: maven
+    field_id: artifact_contract.maven.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked Maven conflict fixture is part of this regression corpus.
+  - artifact_type: maven
+    field_id: artifact_contract.maven.coverage_gap
+    scenario: coverage_gap
+    expected_state: not_applicable
+    not_applicable_reason: Maven packaging evidence used here is supported directly.
+  - artifact_type: dockerfile
+    field_id: components.root.effective_runtime_command
+    scenario: normal
+    expected_state: resolved
+    case_id: maven-normal
+  - artifact_type: dockerfile
+    field_id: components.root.effective_runtime_command
+    scenario: normal
+    expected_state: resolved
+    case_id: python-normal
+  - artifact_type: python_package
+    field_id: package_dependencies.root.fastapi
+    scenario: normal
+    expected_state: resolved
+    case_id: python-normal
+  - artifact_type: python_package
+    field_id: artifact_contract.python_package.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Python package absence is not meaningful for a Python fixture.
+  - artifact_type: python_package
+    field_id: artifact_contract.python_package.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked Python package conflict fixture is part of this regression corpus.
+  - artifact_type: python_package
+    field_id: artifact_contract.python_package.coverage_gap
+    scenario: coverage_gap
+    expected_state: not_applicable
+    not_applicable_reason: Python requirements evidence used here is supported directly.
+  - artifact_type: gradle_kotlin
+    field_id: components.root.present
+    scenario: coverage_gap
+    expected_state: resolved
+    case_id: gradle-kotlin-coverage-gap
+  - artifact_type: gradle_kotlin
+    field_id: artifact_contract.gradle_kotlin.normal
+    scenario: normal
+    expected_state: not_applicable
+    not_applicable_reason: No locked normal Gradle Kotlin fixture is part of this regression corpus.
+  - artifact_type: gradle_kotlin
+    field_id: artifact_contract.gradle_kotlin.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Gradle Kotlin absence is not meaningful for a Gradle Kotlin fixture.
+  - artifact_type: gradle_kotlin
+    field_id: artifact_contract.gradle_kotlin.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked Gradle Kotlin conflict fixture is part of this regression corpus.
+  - artifact_type: kubernetes_manifest
+    field_id: components.web.effective_runtime_command
+    scenario: coverage_gap
+    expected_state: resolved
+    case_id: kubernetes-kustomize-coverage-gap
+  - artifact_type: kubernetes_manifest
+    field_id: artifact_contract.kubernetes_manifest.normal
+    scenario: normal
+    expected_state: not_applicable
+    not_applicable_reason: Normal Kubernetes manifest topology extraction is not implemented in this scorecard path.
+  - artifact_type: kubernetes_manifest
+    field_id: artifact_contract.kubernetes_manifest.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Kubernetes manifest absence is not meaningful for a Kubernetes manifest fixture.
+  - artifact_type: kubernetes_manifest
+    field_id: artifact_contract.kubernetes_manifest.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked Kubernetes manifest conflict fixture is part of this regression corpus.
+  - artifact_type: kustomize
+    field_id: components.web.runtime_port
+    scenario: coverage_gap
+    expected_state: resolved
+    case_id: kubernetes-kustomize-coverage-gap
+  - artifact_type: kustomize
+    field_id: artifact_contract.kustomize.normal
+    scenario: normal
+    expected_state: not_applicable
+    not_applicable_reason: Normal Kustomize topology extraction is not implemented in this scorecard path.
+  - artifact_type: kustomize
+    field_id: artifact_contract.kustomize.absence
+    scenario: absence
+    expected_state: not_applicable
+    not_applicable_reason: Kustomize absence is not meaningful for a Kustomize fixture.
+  - artifact_type: kustomize
+    field_id: artifact_contract.kustomize.conflict
+    scenario: conflict
+    expected_state: not_applicable
+    not_applicable_reason: No locked Kustomize conflict fixture is part of this regression corpus.
+cases:
+  - case_id: node-normal
+    visibility: contract
+    revision: fixture-v1
+    scenario: normal
+    content_sha256: sha256:1cd80a18ca893a9f553e6ca2dbdc9a0f1a22ce8d17d867fe19df7beb4bc7de53
+    artifact_types: [dockerfile, node_package]
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: package.json
+            locator: jsonpath:$.dependencies.express
+      - field_id: components.root.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["node", "server.js"]'
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:CMD
+      - field_id: components.root.runtime_port
+        group: core
+        expected_state: resolved
+        expected_value: 3000
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:EXPOSE[0]
+      - field_id: package_dependencies.root.express
+        group: extended
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: package.json
+            locator: jsonpath:$.dependencies.express
+  - case_id: node-secret-absence
+    visibility: contract
+    revision: fixture-v1
+    scenario: absence
+    content_sha256: sha256:1ca1d9f3ae012962d9eb68b5e05f9c4e87b5beac02416d9aa59f7fb7696331ad
+    artifact_types: [dockerfile, node_package]
+    fields:
+      - field_id: components.root.secret_classification
+        group: core
+        expected_state: not_applicable
+        expected_evidence:
+          - artifact: package.json
+            locator: full-document:no-secret-inputs
+      - field_id: components.root.build_strategy
+        group: extended
+        expected_state: resolved
+        expected_value: dockerfile_needed
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: inventory:absent
+  - case_id: runtime-port-conflict
+    visibility: contract
+    revision: fixture-v1
+    scenario: conflict
+    content_sha256: sha256:50088b23426813d1e47e9f938552f91e7661bc763b186b8a95b737765a5a712e
+    artifact_types: [dockerfile, docker_compose, node_package]
+    fields:
+      - field_id: components.web.runtime_port
+        group: core
+        expected_state: conflict
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:EXPOSE[0]
+          - artifact: docker-compose.yml
+            locator: yamlpath:$.services.web.ports[0]
+  - case_id: gradle-coverage-gap
+    visibility: contract
+    revision: fixture-v1
+    scenario: coverage_gap
+    content_sha256: sha256:00bb530956f101e4c730d86aeaf9b445781400b745bcf2ee59b9afe52bf28433
+    artifact_types: [gradle_groovy, application_config]
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: build.gradle
+            locator: gradle:plugins.org.springframework.boot
+      - field_id: components.root.runtime_port
+        group: core
+        expected_state: unresolved
+        expected_evidence:
+          - artifact: src/main/resources/application.yml
+            locator: yamlpath:$.server.port
+      - field_id: package_dependencies.root.org.springframework.boot:spring-boot-starter-web
+        group: extended
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: build.gradle
+            locator: gradle:dependencies.implementation[0]
+  - case_id: maven-normal
+    visibility: contract
+    revision: fixture-v1
+    scenario: normal
+    content_sha256: sha256:2021f82973fb5207dc54eb2b5410619c1446cba9b1d69ecf7d9a251e230d49aa
+    artifact_types: [dockerfile, maven]
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: pom.xml
+            locator: xpath:/project/packaging
+      - field_id: components.root.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["java", "-jar", "app.jar"]'
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:CMD
+  - case_id: python-normal
+    visibility: contract
+    revision: fixture-v1
+    scenario: normal
+    content_sha256: sha256:467839d1cd091bd9cc7dfe4a85cadc19c536c7232301bb51e71ab238c80f821c
+    artifact_types: [dockerfile, python_package]
+    fields:
+      - field_id: components.root.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]'
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:CMD
+      - field_id: package_dependencies.root.fastapi
+        group: extended
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: requirements.txt
+            locator: requirement:fastapi
+  - case_id: gradle-kotlin-coverage-gap
+    visibility: contract
+    revision: fixture-v1
+    scenario: coverage_gap
+    content_sha256: sha256:89cdec5a8b3432e6b31f7c299eff7b94863141ae03a5629c07706b626fec2f47
+    artifact_types: [gradle_kotlin]
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: build.gradle.kts
+            locator: gradle:plugins.org.springframework.boot
+  - case_id: kubernetes-kustomize-coverage-gap
+    visibility: contract
+    revision: fixture-v1
+    scenario: coverage_gap
+    content_sha256: sha256:7f0e23c57d93fe153cab800ea074eeb14c7d061dc226691fa56f625efcbb05f8
+    artifact_types: [kubernetes_manifest, kustomize]
+    fields:
+      - field_id: components.web.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["node", "server.js"]'
+        expected_evidence:
+          - artifact: base/deployment.yaml
+            locator: yamlpath:$.spec.template.spec.containers[0].command
+      - field_id: components.web.runtime_port
+        group: core
+        expected_state: resolved
+        expected_value: 3000
+        expected_evidence:
+          - artifact: base/deployment.yaml
+            locator: yamlpath:$.spec.template.spec.containers[0].ports[0].containerPort

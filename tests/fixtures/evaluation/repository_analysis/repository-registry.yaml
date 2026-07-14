@@ -1,0 +1,47 @@
+schema_version: repository-analysis-registry/v1
+registry_version: 2026-07-14.2
+corpus_version: 2026-07-14.2
+change_history:
+  - version: 2026-07-14.1
+    reason: Lock the initial four-repository evaluation registry.
+    affected_evaluations:
+      - public-fastapi-fullstack
+      - public-spring-petclinic
+      - internal-gradle-service
+      - internal-node-service
+  - version: 2026-07-14.2
+    reason: Bind the registry to the current materialized corpus version.
+    affected_evaluations:
+      - public-fastapi-fullstack
+      - public-spring-petclinic
+      - internal-gradle-service
+      - internal-node-service
+repositories:
+  - case_id: public-fastapi-fullstack
+    visibility: public
+    stack: python-node-compose
+    repository_url: https://github.com/tiangolo/full-stack-fastapi-template
+    revision: 7d80b8534ecfff3d4c6cc631012298d6ef605ca0
+    expert_truth_path: expert-truth/public-fastapi-fullstack.yaml
+  - case_id: public-spring-petclinic
+    visibility: public
+    stack: java-maven-gradle-compose
+    repository_url: https://github.com/spring-projects/spring-petclinic
+    revision: 51045d1648dad955df586150c1a1a6e22ef400c2
+    expert_truth_path: expert-truth/public-spring-petclinic.yaml
+  - case_id: internal-gradle-service
+    visibility: internal
+    stack: java-gradle-spring
+    repository_url_env: REPOSITORY_EVAL_INTERNAL_GRADLE_URL
+    repository_path_env: REPOSITORY_EVAL_INTERNAL_GRADLE_PATH
+    revision_env: REPOSITORY_EVAL_INTERNAL_GRADLE_REVISION
+    revision_sha256: sha256:e5cf08449f6589e440149c465f70dcdc483ff30346db9093ed0afeee3be51c8b
+    expert_truth_path_env: REPOSITORY_EVAL_INTERNAL_GRADLE_TRUTH
+  - case_id: internal-node-service
+    visibility: internal
+    stack: node-typescript-docker
+    repository_url_env: REPOSITORY_EVAL_INTERNAL_NODE_URL
+    repository_path_env: REPOSITORY_EVAL_INTERNAL_NODE_PATH
+    revision_env: REPOSITORY_EVAL_INTERNAL_NODE_REVISION
+    revision_sha256: sha256:3a64303a20c417862eb57e819920cce5058e556b22ce5fa57bda5e9128771ceb
+    expert_truth_path_env: REPOSITORY_EVAL_INTERNAL_NODE_TRUTH

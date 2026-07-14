@@ -1,0 +1,28 @@
+{
+  "contract_kind": "human_baseline",
+  "entries": [
+    {
+      "affected_evaluations": [
+        "public-fastapi-fullstack",
+        "public-spring-petclinic",
+        "internal-gradle-service",
+        "internal-node-service"
+      ],
+      "content_sha256": "sha256:83af8febc40a8887a4bfe08a7fb2b96919d4cc497298e925092ffcb56c0b4b64",
+      "reason": "Lock the initial manual-vs-Agent timing template.",
+      "version": "2026-07-14.1"
+    },
+    {
+      "affected_evaluations": [
+        "public-fastapi-fullstack",
+        "public-spring-petclinic",
+        "internal-gradle-service",
+        "internal-node-service"
+      ],
+      "content_sha256": "sha256:83af8febc40a8887a4bfe08a7fb2b96919d4cc497298e925092ffcb56c0b4b64",
+      "reason": "Bind the timing template to the current materialized corpus version.",
+      "version": "2026-07-14.2"
+    }
+  ],
+  "schema_version": "repository-analysis-contract-lock/v1"
+}

@@ -1,0 +1,90 @@
+{
+  "entries": [
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap"
+      ],
+      "content_sha256": "sha256:ee8c5b9437761862770a621bff864c00a443b3d57febe64648352e859ce7952f",
+      "reason": "Lock normal, negative finding, conflict, and coverage-gap contracts.",
+      "scoring_rules_sha256": "sha256:0e5c8aa736abd67fb105fef894ce96810210314ffdb5ee24cfe4e824308797f8",
+      "version": "2026-07-14.1"
+    },
+    {
+      "affected_cases": [
+        "gradle-coverage-gap"
+      ],
+      "content_sha256": "sha256:db29775a39e72171b3cf3fd10548d64ed61d058dec2d64db280f56fa62faba5f",
+      "reason": "Require the Gradle fixture to produce an explicit component boundary.",
+      "scoring_rules_sha256": "sha256:0e5c8aa736abd67fb105fef894ce96810210314ffdb5ee24cfe4e824308797f8",
+      "version": "2026-07-14.2"
+    },
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap",
+        "maven-normal",
+        "python-normal",
+        "gradle-kotlin-coverage-gap",
+        "kubernetes-kustomize-coverage-gap"
+      ],
+      "content_sha256": "sha256:bbe4ecfa13132a8cd5a3df1d851319f7e06df95f5cb3ed6f5a78b42365d5e2bc",
+      "reason": "Bind fixture contents and cover every officially supported artifact family.",
+      "scoring_rules_sha256": "sha256:0e5c8aa736abd67fb105fef894ce96810210314ffdb5ee24cfe4e824308797f8",
+      "version": "2026-07-14.3"
+    },
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap",
+        "maven-normal",
+        "python-normal",
+        "gradle-kotlin-coverage-gap",
+        "kubernetes-kustomize-coverage-gap"
+      ],
+      "content_sha256": "sha256:8d26e61d167476842e89f85eff672857b9334e2e76d9ea60aafb27a3961808fe",
+      "reason": "Harden scorecard metric populations, evidence locators, and secret redaction.",
+      "scoring_rules_sha256": "sha256:01819ed63d34a16208ec5569a14f5f532d338f1ea32aade1ed50729db11bfd4c",
+      "version": "2026-07-14.4"
+    },
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap",
+        "maven-normal",
+        "python-normal",
+        "gradle-kotlin-coverage-gap",
+        "kubernetes-kustomize-coverage-gap"
+      ],
+      "content_sha256": "sha256:f16bbd710e092994d50fb462c454d0df4a96d12084883f5939b6dc62f894e6c6",
+      "reason": "Validate repository pins and fixture fingerprints before scorecard analysis.",
+      "scoring_rules_sha256": "sha256:efea61b8e3bb6b0778dd873ab6b2c7c84c164a6a366a59b4a71a53c163840e4d",
+      "version": "2026-07-14.5"
+    },
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap",
+        "maven-normal",
+        "python-normal",
+        "gradle-kotlin-coverage-gap",
+        "kubernetes-kustomize-coverage-gap"
+      ],
+      "content_sha256": "sha256:5dcacfa843418a57e62e4c16eda2feb3092180d05c54968ebf0381440bc15283",
+      "reason": "Require explicit not-applicable rows for unsupported artifact/state matrix cells.",
+      "scoring_rules_sha256": "sha256:7746283d454bdd3038f30ba622a1eb8487450c9500eb6f605ebaa390965cdc64",
+      "version": "2026-07-14.6"
+    }
+  ],
+  "schema_version": "repository-analysis-corpus-lock/v1"
+}
