@@ -10,7 +10,10 @@ the two private truth files, then pass the four checked-out paths to
 `run_repository_scorecard`. Lock that local corpus with
 `initialize_repository_corpus_lock` before looking at Agent output. Later truth
 changes must use `update_repository_corpus_lock`, which requires a new version,
-reason, and affected case list.
+reason, and affected case list. Internal revisions are pinned by a SHA-256
+fingerprint so the commit can be verified without publishing the private commit
+ID. Corpus locks also bind the scoring rules, and contract cases bind a
+deterministic hash of every fixture file.
 
 `contract-corpus.yaml` is the non-secret regression corpus. Its case-to-fixture
 mapping is:
@@ -19,6 +22,10 @@ mapping is:
 - `node-secret-absence` → `repos/no-dockerfile-node`
 - `runtime-port-conflict` → `repos/port-conflict-node`
 - `gradle-coverage-gap` → `repos/gradle-spring-like`
+- `maven-normal` → `repos/java-spring-like`
+- `python-normal` → `repos/python-fastapi-like`
+- `gradle-kotlin-coverage-gap` → `repos/gradle-kotlin-like`
+- `kubernetes-kustomize-coverage-gap` → `repos/kubernetes-kustomize-like`
 
 `human-baseline.template.yaml` alternates the manual and Agent-assisted roles
 between two Platform Engineers. Fill both `total_seconds` and

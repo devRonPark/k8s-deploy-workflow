@@ -1,0 +1,8 @@
+plugins {
+    java
+    id("org.springframework.boot") version "3.3.1"
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+}

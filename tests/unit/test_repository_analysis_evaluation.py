@@ -4,16 +4,25 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
 from preanalyzer.evaluation.repository_analysis import (
+    DEFAULT_QUALITY_THRESHOLDS,
+    CaseScore,
+    ExpectedField,
+    FieldScore,
     HumanBaseline,
+    RepositoryCorpus,
+    RepositoryCorpusLock,
     initialize_repository_corpus_lock,
     load_repository_corpus,
     load_human_baseline,
     update_repository_corpus_lock,
     verify_repository_corpus_lock,
+    _calculate_metrics,
+    _redact_value,
 )
 
 
@@ -69,7 +78,14 @@ class RepositoryCorpusLockTests(unittest.TestCase):
             corpus_path.write_text(
                 yaml.safe_dump(corpus, sort_keys=False), encoding="utf-8"
             )
-            initialize_repository_corpus_lock(corpus_path, lock_path)
+            initialized = initialize_repository_corpus_lock(corpus_path, lock_path)
+
+            self.assertEqual(
+                initialized,
+                RepositoryCorpusLock.model_validate(
+                    initialized.model_dump(mode="json")
+                ),
+            )
 
             verify_repository_corpus_lock(corpus_path, lock_path)
             corpus["cases"][0]["fields"][0]["expected_value"] = False
@@ -98,6 +114,78 @@ class RepositoryCorpusLockTests(unittest.TestCase):
             verify_repository_corpus_lock(corpus_path, lock_path)
             lock = json.loads(lock_path.read_text(encoding="utf-8"))
             self.assertEqual([entry["version"] for entry in lock["entries"]], ["1", "2"])
+
+    def test_scoring_rule_change_invalidates_existing_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            corpus_path = root / "corpus.yaml"
+            lock_path = root / "corpus.lock.json"
+            corpus_path.write_text(
+                yaml.safe_dump(_corpus(), sort_keys=False), encoding="utf-8"
+            )
+            initialize_repository_corpus_lock(corpus_path, lock_path)
+
+            with patch.dict(
+                DEFAULT_QUALITY_THRESHOLDS,
+                {"auto_confirmed_accuracy": 0.99},
+            ):
+                with self.assertRaisesRegex(ValueError, "scoring rules hash"):
+                    verify_repository_corpus_lock(corpus_path, lock_path)
+
+
+class ScorecardMetricTests(unittest.TestCase):
+    def test_core_result_cannot_raise_extended_auto_confirmed_accuracy(self):
+        fields = [
+            FieldScore(
+                field_id="components.root.present",
+                group="core",
+                variant="common",
+                expected_state="resolved",
+                expected_value=True,
+                actual_state="resolved",
+                actual_value=True,
+                correct=True,
+            ),
+            FieldScore(
+                field_id="components.root.build_strategy",
+                group="extended",
+                variant="common",
+                expected_state="resolved",
+                expected_value="buildpack",
+                actual_state="resolved",
+                actual_value="dockerfile",
+                correct=False,
+            ),
+        ]
+
+        metrics = _calculate_metrics(
+            [
+                CaseScore(
+                    case_id="case-a",
+                    visibility="contract",
+                    revision="fixture-v1",
+                    fields=fields,
+                )
+            ]
+        )
+
+        self.assertEqual(metrics.auto_confirmed_accuracy, 0.0)
+
+    def test_secret_values_are_rejected_and_report_values_are_redacted(self):
+        canary = "postgresql://user:super-secret@db/app"
+
+        with self.assertRaisesRegex(ValueError, "classification metadata only"):
+            ExpectedField(
+                field_id="components.root.database_password",
+                group="core",
+                expected_state="resolved",
+                expected_value=canary,
+                expected_evidence=[
+                    {"artifact": "application.yml", "locator": "yamlpath:$.password"}
+                ],
+            )
+
+        self.assertNotIn("super-secret", _redact_value("token=super-secret"))
 
 
 class HumanBaselineContractTests(unittest.TestCase):
@@ -204,6 +292,7 @@ class CommittedEvaluationContractTests(unittest.TestCase):
                 self.assertNotIn("repository_url", item)
                 self.assertIn("repository_url_env", item)
                 self.assertIn("revision_env", item)
+                self.assertRegex(item["revision_sha256"], r"^sha256:[0-9a-f]{64}$")
                 self.assertIn("expert_truth_path_env", item)
 
     def test_public_expert_truth_has_core_extended_variant_and_precise_evidence(self):
@@ -244,6 +333,25 @@ class CommittedEvaluationContractTests(unittest.TestCase):
             {case.scenario for case in corpus.cases},
             {"normal", "absence", "conflict", "coverage_gap"},
         )
+        self.assertEqual(
+            corpus,
+            RepositoryCorpus.model_validate(corpus.model_dump(mode="json")),
+        )
+        self.assertEqual(
+            {artifact for case in corpus.cases for artifact in case.artifact_types},
+            {
+                "dockerfile",
+                "docker_compose",
+                "maven",
+                "gradle_groovy",
+                "gradle_kotlin",
+                "node_package",
+                "python_package",
+                "application_config",
+                "kubernetes_manifest",
+                "kustomize",
+            },
+        )
         self.assertTrue(
             (
                 Path(__file__).resolve().parents[1]
@@ -262,6 +370,11 @@ class CommittedEvaluationContractTests(unittest.TestCase):
         )
 
         baseline = HumanBaseline.model_validate(payload)
+
+        self.assertEqual(
+            baseline,
+            HumanBaseline.model_validate(baseline.model_dump(mode="json")),
+        )
 
         methods_by_operator: dict[str, set[str]] = {}
         for case in baseline.cases:

@@ -8,6 +8,7 @@
         "gradle-coverage-gap"
       ],
       "content_sha256": "sha256:ee8c5b9437761862770a621bff864c00a443b3d57febe64648352e859ce7952f",
+      "scoring_rules_sha256": "sha256:0e5c8aa736abd67fb105fef894ce96810210314ffdb5ee24cfe4e824308797f8",
       "reason": "Lock normal, negative finding, conflict, and coverage-gap contracts.",
       "version": "2026-07-14.1"
     },
@@ -16,8 +17,25 @@
         "gradle-coverage-gap"
       ],
       "content_sha256": "sha256:db29775a39e72171b3cf3fd10548d64ed61d058dec2d64db280f56fa62faba5f",
+      "scoring_rules_sha256": "sha256:0e5c8aa736abd67fb105fef894ce96810210314ffdb5ee24cfe4e824308797f8",
       "reason": "Require the Gradle fixture to produce an explicit component boundary.",
       "version": "2026-07-14.2"
+    },
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap",
+        "maven-normal",
+        "python-normal",
+        "gradle-kotlin-coverage-gap",
+        "kubernetes-kustomize-coverage-gap"
+      ],
+      "content_sha256": "sha256:bbe4ecfa13132a8cd5a3df1d851319f7e06df95f5cb3ed6f5a78b42365d5e2bc",
+      "scoring_rules_sha256": "sha256:0e5c8aa736abd67fb105fef894ce96810210314ffdb5ee24cfe4e824308797f8",
+      "reason": "Bind fixture contents and cover every officially supported artifact family.",
+      "version": "2026-07-14.3"
     }
   ],
   "schema_version": "repository-analysis-corpus-lock/v1"

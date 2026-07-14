@@ -2,6 +2,22 @@ schema_version: repository-analysis-expert-truth/v1
 case_id: public-spring-petclinic
 revision: 51045d1648dad955df586150c1a1a6e22ef400c2
 fields:
+  - field_id: components.mysql.present
+    group: core
+    variant: mysql
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: docker-compose.yml
+        locator: yamlpath:$.services.mysql
+  - field_id: components.postgres.present
+    group: core
+    variant: postgres
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: docker-compose.yml
+        locator: yamlpath:$.services.postgres
   - field_id: components.root.present
     group: core
     variant: common
@@ -87,3 +103,19 @@ fields:
     expected_evidence:
       - artifact: build.gradle
         locator: gradle:plugins.org.springframework.boot
+  - field_id: exposure_ports.mysql.compose
+    group: extended
+    variant: mysql
+    expected_state: resolved
+    expected_value: 3306
+    expected_evidence:
+      - artifact: docker-compose.yml
+        locator: yamlpath:$.services.mysql.ports[0].published
+  - field_id: exposure_ports.postgres.compose
+    group: extended
+    variant: postgres
+    expected_state: resolved
+    expected_value: 5432
+    expected_evidence:
+      - artifact: docker-compose.yml
+        locator: yamlpath:$.services.postgres.ports[0].published

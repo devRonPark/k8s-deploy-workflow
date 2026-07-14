@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import re
 import subprocess
@@ -16,7 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from k8s_agent.analysis.topology_builder import TopologyBuilder
 from k8s_agent.models.topology import ApplicationComponent, ApplicationTopology
+from preanalyzer.analyzer.env_safety import contains_credentials, is_secret_name
 from preanalyzer.pipeline import run_phase1_analysis
+from preanalyzer.semantic.tools.common import redacted
 
 
 DEFAULT_QUALITY_THRESHOLDS = {
@@ -27,6 +30,8 @@ DEFAULT_QUALITY_THRESHOLDS = {
     "evidence_reference_accuracy": 1.0,
     "max_ungrounded_auto_confirmed_count": 0.0,
 }
+
+FieldState = Literal["resolved", "not_applicable", "conflict", "unresolved", "missing"]
 
 
 class CorpusChange(BaseModel):
@@ -43,9 +48,7 @@ class ExpectedField(BaseModel):
     field_id: str
     group: Literal["core", "extended"]
     variant: str = "common"
-    expected_state: Literal[
-        "resolved", "not_applicable", "conflict", "unresolved"
-    ]
+    expected_state: Literal["resolved", "not_applicable", "conflict", "unresolved"]
     expected_value: Any | None = None
     expected_evidence: list["ExpectedEvidenceReference"] = Field(default_factory=list)
 
@@ -53,12 +56,13 @@ class ExpectedField(BaseModel):
     def reject_secret_values(self) -> "ExpectedField":
         if not self.expected_evidence:
             raise ValueError("expert truth fields require precise expected_evidence")
-        if "secret" not in self.field_id.lower() or self.expected_state != "resolved":
-            return self
-        if not self.field_id.endswith("classification"):
-            raise ValueError("secret truth may record classification metadata only")
-        if self.expected_value not in {"secret", "non_secret"}:
-            raise ValueError("secret classification must not contain a secret value")
+        if self.expected_state == "resolved" and is_secret_name(self.field_id):
+            if not self.field_id.endswith("classification"):
+                raise ValueError("secret truth may record classification metadata only")
+            if self.expected_value not in {"secret", "non_secret"}:
+                raise ValueError("secret classification must not contain a secret value")
+        if _contains_sensitive_value(self.expected_value):
+            raise ValueError("expert truth must not contain secret values")
         return self
 
 
@@ -76,7 +80,22 @@ class RepositoryCase(BaseModel):
     visibility: Literal["public", "internal", "contract"]
     revision: str
     repository_url: str | None = None
+    content_sha256: str | None = None
     scenario: Literal["normal", "absence", "conflict", "coverage_gap"] | None = None
+    artifact_types: list[
+        Literal[
+            "dockerfile",
+            "docker_compose",
+            "maven",
+            "gradle_groovy",
+            "gradle_kotlin",
+            "node_package",
+            "python_package",
+            "application_config",
+            "kubernetes_manifest",
+            "kustomize",
+        ]
+    ] = Field(default_factory=list)
     fields: list[ExpectedField] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -124,10 +143,13 @@ class FieldScore(BaseModel):
     field_id: str
     group: Literal["core", "extended"]
     variant: str
-    expected_state: str
+    expected_state: FieldState
     expected_value: Any | None = None
-    actual_state: str
+    actual_state: FieldState
     actual_value: Any | None = None
+    source: str | None = None
+    confidence: str | None = None
+    classification: str | None = None
     correct: bool
     evidence_references: list["ActualEvidenceReference"] = Field(default_factory=list)
     evidence_correct: bool | None = None
@@ -175,9 +197,12 @@ class RepositoryScorecardReport(BaseModel):
 
 
 class _ActualField(BaseModel):
-    state: str = "missing"
+    state: FieldState = "missing"
     value: Any | None = None
     evidence_refs: list[str] = Field(default_factory=list)
+    source: str | None = None
+    confidence: str | None = None
+    classification: str | None = None
 
 
 class CorpusLockEntry(BaseModel):
@@ -185,6 +210,7 @@ class CorpusLockEntry(BaseModel):
 
     version: str
     content_sha256: str
+    scoring_rules_sha256: str
     reason: str
     affected_cases: list[str]
 
@@ -289,6 +315,7 @@ def initialize_repository_corpus_lock(corpus_path: Path, lock_path: Path) -> Rep
             CorpusLockEntry(
                 version=corpus.corpus_version,
                 content_sha256=_content_hash(corpus_path),
+                scoring_rules_sha256=_scoring_rules_hash(),
                 reason=latest.reason,
                 affected_cases=latest.affected_cases,
             )
@@ -308,6 +335,8 @@ def verify_repository_corpus_lock(corpus_path: Path, lock_path: Path) -> Reposit
         raise ValueError("corpus lock version does not match corpus_version")
     if latest.content_sha256 != _content_hash(corpus_path):
         raise ValueError("corpus content hash does not match the locked truth")
+    if latest.scoring_rules_sha256 != _scoring_rules_hash():
+        raise ValueError("scoring rules hash does not match the lock")
     history = corpus.change_history[-1]
     if latest.reason != history.reason or latest.affected_cases != history.affected_cases:
         raise ValueError("corpus lock change metadata does not match change_history")
@@ -337,6 +366,7 @@ def update_repository_corpus_lock(corpus_path: Path, lock_path: Path) -> Reposit
                 CorpusLockEntry(
                     version=corpus.corpus_version,
                     content_sha256=_content_hash(corpus_path),
+                    scoring_rules_sha256=_scoring_rules_hash(),
                     reason=latest.reason,
                     affected_cases=latest.affected_cases,
                 )
@@ -383,13 +413,7 @@ def run_repository_scorecard(
             )
 
     metrics = _calculate_metrics(case_scores)
-    quality_gate_passed = all(
-        getattr(metrics, metric) >= threshold
-        for metric, threshold in DEFAULT_QUALITY_THRESHOLDS.items()
-        if metric != "max_ungrounded_auto_confirmed_count"
-    ) and metrics.ungrounded_auto_confirmed_count <= DEFAULT_QUALITY_THRESHOLDS[
-        "max_ungrounded_auto_confirmed_count"
-    ]
+    quality_gate_passed = _passes_quality_gate(metrics)
     report = RepositoryScorecardReport(
         corpus_version=corpus.corpus_version,
         generated_at=clock(),
@@ -403,12 +427,28 @@ def run_repository_scorecard(
     return report
 
 
+def _passes_quality_gate(metrics: ScorecardMetrics) -> bool:
+    return all(
+        getattr(metrics, metric) >= threshold
+        for metric, threshold in DEFAULT_QUALITY_THRESHOLDS.items()
+        if metric != "max_ungrounded_auto_confirmed_count"
+    ) and metrics.ungrounded_auto_confirmed_count <= DEFAULT_QUALITY_THRESHOLDS[
+        "max_ungrounded_auto_confirmed_count"
+    ]
+
+
 def _evaluate_case(
     case: RepositoryCase,
     repository_path: Path,
     analysis_dir: Path,
     clock: Callable[[], datetime],
 ) -> CaseScore:
+    if case.content_sha256 is not None:
+        actual_hash = repository_content_sha256(repository_path)
+        if actual_hash != case.content_sha256:
+            raise ValueError(
+                f"repository content hash mismatch for case {case.case_id}"
+            )
     _, _, evidence, rules = run_phase1_analysis(
         repo=repository_path,
         output_dir=analysis_dir,
@@ -468,7 +508,10 @@ def _score_field(
         expected_state=expected.expected_state,
         expected_value=expected.expected_value,
         actual_state=actual.state,
-        actual_value=actual.value,
+        actual_value=_redact_value(actual.value),
+        source=actual.source,
+        confidence=actual.confidence,
+        classification=actual.classification,
         correct=correct,
         evidence_references=references,
         evidence_correct=evidence_correct,
@@ -492,7 +535,12 @@ def _extract_actual_field(
         )
         if dependency is not None and ".".join(parts[3:]) == "present":
             return _ActualField(
-                state="resolved", value=True, evidence_refs=dependency.evidence_refs
+                state="resolved",
+                value=True,
+                evidence_refs=dependency.evidence_refs,
+                source=dependency.source,
+                confidence=dependency.confidence,
+                classification=dependency.classification,
             )
         return _ActualField()
     if len(parts) < 3 or parts[0] != "components":
@@ -520,9 +568,7 @@ def _extract_component_field(
     topology: ApplicationTopology,
 ) -> _ActualField:
     if field_name == "deployment_role":
-        return _ActualField(
-            state="resolved", value=component.role, evidence_refs=component.evidence_refs
-        )
+        return _ActualField()
     if field_name == "effective_runtime_command":
         conflict = next(
             (
@@ -539,27 +585,46 @@ def _extract_component_field(
                 state="resolved",
                 value=component.command.value,
                 evidence_refs=component.command.evidence_refs,
+                source=component.command.source,
+                confidence=component.command.confidence,
+                classification=component.command.classification,
             )
     if field_name == "runtime_port" and len(component.ports) == 1:
         port = component.ports[0]
-        return _ActualField(state="resolved", value=port.value, evidence_refs=port.evidence_refs)
+        return _ActualField(
+            state="resolved",
+            value=port.value,
+            evidence_refs=port.evidence_refs,
+            source=port.source,
+            confidence=port.confidence,
+            classification=port.classification,
+        )
     if field_name == "build_strategy" and component.runtime is not None:
         return _ActualField(
             state="resolved",
             value=component.runtime.build_strategy,
             evidence_refs=component.runtime.evidence_refs,
+            source=component.runtime.source,
+            confidence=component.runtime.confidence,
+            classification=component.runtime.classification,
         )
     if field_name == "runtime_language" and component.runtime is not None:
         return _ActualField(
             state="resolved",
             value=component.runtime.language,
             evidence_refs=component.runtime.evidence_refs,
+            source=component.runtime.source,
+            confidence=component.runtime.confidence,
+            classification=component.runtime.classification,
         )
     if field_name == "runtime_framework" and component.runtime is not None:
         return _ActualField(
             state="resolved",
             value=component.runtime.framework,
             evidence_refs=component.runtime.evidence_refs,
+            source=component.runtime.source,
+            confidence=component.runtime.confidence,
+            classification=component.runtime.classification,
         )
     if field_name == "root_path" and component.root_path is not None:
         return _ActualField(
@@ -574,7 +639,11 @@ def _extract_component_field(
         )
         if secret is not None:
             return _ActualField(
-                state="resolved", value="secret", evidence_refs=secret.evidence_refs
+                state="resolved",
+                value="secret",
+                evidence_refs=secret.evidence_refs,
+                source=secret.source,
+                classification=secret.classification,
             )
     return _ActualField()
 
@@ -590,12 +659,19 @@ def _calculate_metrics(cases: list[CaseScore]) -> ScorecardMetrics:
     clear_extended = [
         field for field in extended if field.expected_state in clear_states
     ]
-    auto_confirmed = [field for field in fields if field.actual_state in clear_states]
+    auto_confirmed = [
+        field
+        for field in extended
+        if field.actual_state in clear_states
+    ]
     evidence_scored = [field for field in auto_confirmed if field.evidence_correct is not None]
+    all_auto_confirmed = [field for field in fields if field.actual_state in clear_states]
     ungrounded = sum(
         not field.evidence_references
         or any(reference.locator is None for reference in field.evidence_references)
-        for field in auto_confirmed
+        or field.source is None
+        or field.classification is None
+        for field in all_auto_confirmed
     )
     return ScorecardMetrics(
         core_field_accountability_rate=_ratio(accountable_core, len(core)),
@@ -654,6 +730,59 @@ def _write_report(report: RepositoryScorecardReport, output_dir: Path) -> None:
 
 def _content_hash(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+def repository_content_sha256(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or ".git" in path.relative_to(root).parts:
+            continue
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(relative)
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _scoring_rules_hash() -> str:
+    payload = json.dumps(DEFAULT_QUALITY_THRESHOLDS, sort_keys=True) + "\n" + "\n".join(
+        inspect.getsource(function)
+        for function in (
+            _score_field,
+            _extract_actual_field,
+            _extract_component_field,
+            _calculate_metrics,
+            _passes_quality_gate,
+            _ratio,
+        )
+    )
+    return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
+
+
+def _contains_sensitive_value(value: Any) -> bool:
+    if isinstance(value, str):
+        return redacted(value) != value or contains_credentials(value)
+    if isinstance(value, list):
+        return any(_contains_sensitive_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(
+            is_secret_name(str(key)) or _contains_sensitive_value(item)
+            for key, item in value.items()
+        )
+    return False
+
+
+def _redact_value(value: Any) -> Any:
+    if isinstance(value, str):
+        if contains_credentials(value):
+            return "[REDACTED_CREDENTIAL_URI]"
+        return redacted(value)
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_value(item) for key, item in value.items()}
+    return value
 
 
 def _write_corpus_lock(lock_path: Path, lock: RepositoryCorpusLock) -> None:

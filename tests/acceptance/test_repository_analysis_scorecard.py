@@ -200,14 +200,24 @@ class RepositoryAnalysisScorecardAcceptanceTests(unittest.TestCase):
 
             self.assertEqual(report.corpus_version, "2026-07-14.1")
             self.assertEqual(report.case_count, 1)
-            self.assertEqual(report.metrics.core_field_accountability_rate, 4 / 6)
-            self.assertEqual(report.metrics.core_resolution_rate, 4 / 6)
+            self.assertEqual(report.metrics.core_field_accountability_rate, 3 / 6)
+            self.assertEqual(report.metrics.core_resolution_rate, 3 / 6)
             self.assertEqual(report.metrics.extended_resolution_rate, 1 / 2)
             self.assertEqual(report.metrics.auto_confirmed_accuracy, 1.0)
             self.assertEqual(report.metrics.evidence_reference_accuracy, 0.0)
-            self.assertEqual(report.metrics.ungrounded_auto_confirmed_count, 5)
+            self.assertEqual(report.metrics.ungrounded_auto_confirmed_count, 4)
+            self.assertEqual(
+                report,
+                type(report).model_validate(report.model_dump(mode="json")),
+            )
             self.assertFalse(report.quality_gate_passed)
+            self.assertEqual(report.cases[0].fields[1].actual_state, "missing")
             self.assertEqual(report.cases[0].fields[2].actual_state, "missing")
+            self.assertEqual(report.cases[0].fields[3].source, "dockerfile_cmd")
+            self.assertEqual(report.cases[0].fields[3].confidence, "high")
+            self.assertEqual(
+                report.cases[0].fields[3].classification, "rule_inference"
+            )
             self.assertTrue((root / "report" / "repository-analysis-scorecard.json").is_file())
             markdown = (
                 root / "report" / "repository-analysis-scorecard.md"
@@ -226,15 +236,18 @@ class RepositoryAnalysisScorecardAcceptanceTests(unittest.TestCase):
                     "node-secret-absence": FIXTURES / "no-dockerfile-node",
                     "runtime-port-conflict": FIXTURES / "port-conflict-node",
                     "gradle-coverage-gap": FIXTURES / "gradle-spring-like",
+                    "maven-normal": FIXTURES / "java-spring-like",
+                    "python-normal": FIXTURES / "python-fastapi-like",
+                    "gradle-kotlin-coverage-gap": FIXTURES / "gradle-kotlin-like",
+                    "kubernetes-kustomize-coverage-gap": (
+                        FIXTURES / "kubernetes-kustomize-like"
+                    ),
                 },
                 output_dir=Path(tmp),
                 clock=lambda: FIXED_TIME,
             )
 
-        self.assertEqual(report.case_count, 4)
-        self.assertEqual(report.metrics.core_field_accountability_rate, 3 / 7)
-        self.assertEqual(report.metrics.core_resolution_rate, 3 / 5)
-        self.assertEqual(report.metrics.extended_resolution_rate, 1 / 3)
+        self.assertEqual(report.case_count, 8)
         self.assertFalse(report.quality_gate_passed)
         conflict = next(case for case in report.cases if case.case_id == "runtime-port-conflict")
         self.assertEqual(conflict.fields[0].actual_state, "missing")

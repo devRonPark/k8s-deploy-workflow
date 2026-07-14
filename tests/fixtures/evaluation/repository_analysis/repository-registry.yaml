@@ -19,6 +19,7 @@ repositories:
     repository_url_env: REPOSITORY_EVAL_INTERNAL_GRADLE_URL
     repository_path_env: REPOSITORY_EVAL_INTERNAL_GRADLE_PATH
     revision_env: REPOSITORY_EVAL_INTERNAL_GRADLE_REVISION
+    revision_sha256: sha256:e5cf08449f6589e440149c465f70dcdc483ff30346db9093ed0afeee3be51c8b
     expert_truth_path_env: REPOSITORY_EVAL_INTERNAL_GRADLE_TRUTH
   - case_id: internal-node-service
     visibility: internal
@@ -26,4 +27,5 @@ repositories:
     repository_url_env: REPOSITORY_EVAL_INTERNAL_NODE_URL
     repository_path_env: REPOSITORY_EVAL_INTERNAL_NODE_PATH
     revision_env: REPOSITORY_EVAL_INTERNAL_NODE_REVISION
+    revision_sha256: sha256:3a64303a20c417862eb57e819920cce5058e556b22ce5fa57bda5e9128771ceb
     expert_truth_path_env: REPOSITORY_EVAL_INTERNAL_NODE_TRUTH

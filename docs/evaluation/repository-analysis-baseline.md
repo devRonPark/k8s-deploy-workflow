@@ -18,50 +18,50 @@ as an unbiased final evaluation.
 - `public-spring-petclinic`: public Java/Maven/Gradle/Compose repository
 - `internal-gradle-service`: private Gradle/Spring repository
 - `internal-node-service`: private Node/TypeScript/Docker repository
-- local corpus version: `2026-07-14.1`
+- local corpus version: `2026-07-14.2`
 - implementation starting point: `f756f3df2d9b0aaeb460d75d1e3c26cf0435c1ee`
 
 ## Four-repository result
 
 | Metric | Current | Gate |
 |---|---:|---:|
-| Core field accountability | 37.50% | 100% |
-| Clear core field resolution | 42.86% | 90% |
+| Core field accountability | 25.00% | 100% |
+| Clear core field resolution | 28.57% | 90% |
 | Clear extended field resolution | 6.67% | 80% |
-| Auto-confirmed accuracy | 90.91% | 90% |
+| Extended auto-confirmed accuracy | 50.00% | 90% |
 | Precise evidence-reference accuracy | 0.00% | 100% |
-| Auto-confirmed fields without precise evidence | 11 | 0 |
+| Auto-confirmed fields without precise evidence/provenance | 8 | 0 |
 
 Overall quality gate: **fail**.
 
 Per-repository correct fields out of the ten sampled expert fields:
 
-- `public-fastapi-fullstack`: 4/10
-- `public-spring-petclinic`: 2/10
+- `public-fastapi-fullstack`: 3/10
+- `public-spring-petclinic`: 1/10
 - `internal-gradle-service`: 0/10
-- `internal-node-service`: 4/10
+- `internal-node-service`: 3/10
 
-The high auto-confirmed accuracy does not mean the analysis is broadly good. It
-means the old topology is usually right when it emits one of these sampled
-values, while emitting too few required fields. The 37.50% accountability and
-6.67% extended resolution rates expose that missing coverage.
+The old topology emits too few required fields, and only half of its sampled
+extended auto-confirmed values are correct. The 25.00% accountability and 6.67%
+extended resolution rates expose the missing coverage without allowing correct
+core values to inflate extended accuracy.
 
 ## Fixed contract result
 
 The committed normal, negative-finding, conflict, and Gradle coverage-gap cases
 also fail the gate:
 
-- Core field accountability: 42.86%
-- Clear core field resolution: 60.00%
-- Clear extended field resolution: 33.33%
-- Auto-confirmed accuracy: 100.00%
+- Core field accountability: 46.15%
+- Clear core field resolution: 54.55%
+- Clear extended field resolution: 25.00%
+- Extended auto-confirmed accuracy: 100.00%
 - Precise evidence-reference accuracy: 0.00%
-- Auto-confirmed fields without precise evidence: 4
+- Auto-confirmed fields without precise evidence/provenance: 7
 
-The current path handles the straightforward Node command and port, but it does
-not explicitly represent a proven Secret absence, does not preserve the two
-runtime-port candidates as a conflict, and discovers `build.gradle` without
-turning it into a component, dependency, framework, or port conclusion.
+The current path handles straightforward Node, Maven, and Python command/port
+facts, but it does not explicitly represent a proven Secret absence, preserve
+the two runtime-port candidates as a conflict, or turn Gradle, Kubernetes, and
+Kustomize discoveries into accountable topology conclusions.
 
 ## Reproduction and privacy
 

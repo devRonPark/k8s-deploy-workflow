@@ -2,6 +2,38 @@ schema_version: repository-analysis-expert-truth/v1
 case_id: public-fastapi-fullstack
 revision: 7d80b8534ecfff3d4c6cc631012298d6ef605ca0
 fields:
+  - field_id: components.frontend.present
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.frontend
+  - field_id: components.db.present
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.db
+  - field_id: components.adminer.present
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.adminer
+  - field_id: components.prestart.present
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.prestart
   - field_id: components.backend.present
     group: core
     variant: common
@@ -90,3 +122,11 @@ fields:
     expected_evidence:
       - artifact: backend/Dockerfile
         locator: full-document:image-build
+  - field_id: exposure_ports.backend.traefik
+    group: extended
+    variant: compose-default
+    expected_state: resolved
+    expected_value: 8000
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend.labels[loadbalancer.server.port]

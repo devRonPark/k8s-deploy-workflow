@@ -1,5 +1,5 @@
 schema_version: repository-analysis-corpus/v1
-corpus_version: 2026-07-14.2
+corpus_version: 2026-07-14.3
 change_history:
   - version: 2026-07-14.1
     reason: Lock normal, negative finding, conflict, and coverage-gap contracts.
@@ -12,11 +12,24 @@ change_history:
     reason: Require the Gradle fixture to produce an explicit component boundary.
     affected_cases:
       - gradle-coverage-gap
+  - version: 2026-07-14.3
+    reason: Bind fixture contents and cover every officially supported artifact family.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+      - maven-normal
+      - python-normal
+      - gradle-kotlin-coverage-gap
+      - kubernetes-kustomize-coverage-gap
 cases:
   - case_id: node-normal
     visibility: contract
     revision: fixture-v1
     scenario: normal
+    content_sha256: sha256:1cd80a18ca893a9f553e6ca2dbdc9a0f1a22ce8d17d867fe19df7beb4bc7de53
+    artifact_types: [dockerfile, node_package]
     fields:
       - field_id: components.root.present
         group: core
@@ -50,6 +63,8 @@ cases:
     visibility: contract
     revision: fixture-v1
     scenario: absence
+    content_sha256: sha256:1ca1d9f3ae012962d9eb68b5e05f9c4e87b5beac02416d9aa59f7fb7696331ad
+    artifact_types: [dockerfile, node_package]
     fields:
       - field_id: components.root.secret_classification
         group: core
@@ -68,6 +83,8 @@ cases:
     visibility: contract
     revision: fixture-v1
     scenario: conflict
+    content_sha256: sha256:50088b23426813d1e47e9f938552f91e7661bc763b186b8a95b737765a5a712e
+    artifact_types: [dockerfile, docker_compose, node_package]
     fields:
       - field_id: components.web.runtime_port
         group: core
@@ -81,6 +98,8 @@ cases:
     visibility: contract
     revision: fixture-v1
     scenario: coverage_gap
+    content_sha256: sha256:00bb530956f101e4c730d86aeaf9b445781400b745bcf2ee59b9afe52bf28433
+    artifact_types: [gradle_groovy, application_config]
     fields:
       - field_id: components.root.present
         group: core
@@ -102,3 +121,80 @@ cases:
         expected_evidence:
           - artifact: build.gradle
             locator: gradle:dependencies.implementation[0]
+  - case_id: maven-normal
+    visibility: contract
+    revision: fixture-v1
+    scenario: normal
+    content_sha256: sha256:2021f82973fb5207dc54eb2b5410619c1446cba9b1d69ecf7d9a251e230d49aa
+    artifact_types: [maven]
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: pom.xml
+            locator: xpath:/project/packaging
+      - field_id: components.root.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["java", "-jar", "app.jar"]'
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:CMD
+  - case_id: python-normal
+    visibility: contract
+    revision: fixture-v1
+    scenario: normal
+    content_sha256: sha256:467839d1cd091bd9cc7dfe4a85cadc19c536c7232301bb51e71ab238c80f821c
+    artifact_types: [python_package]
+    fields:
+      - field_id: components.root.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]'
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:CMD
+      - field_id: package_dependencies.root.fastapi
+        group: extended
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: requirements.txt
+            locator: requirement:fastapi
+  - case_id: gradle-kotlin-coverage-gap
+    visibility: contract
+    revision: fixture-v1
+    scenario: coverage_gap
+    content_sha256: sha256:89cdec5a8b3432e6b31f7c299eff7b94863141ae03a5629c07706b626fec2f47
+    artifact_types: [gradle_kotlin]
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: build.gradle.kts
+            locator: gradle:plugins.org.springframework.boot
+  - case_id: kubernetes-kustomize-coverage-gap
+    visibility: contract
+    revision: fixture-v1
+    scenario: coverage_gap
+    content_sha256: sha256:7f0e23c57d93fe153cab800ea074eeb14c7d061dc226691fa56f625efcbb05f8
+    artifact_types: [kubernetes_manifest, kustomize]
+    fields:
+      - field_id: components.web.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["node", "server.js"]'
+        expected_evidence:
+          - artifact: base/deployment.yaml
+            locator: yamlpath:$.spec.template.spec.containers[0].command
+      - field_id: components.web.runtime_port
+        group: core
+        expected_state: resolved
+        expected_value: 3000
+        expected_evidence:
+          - artifact: base/deployment.yaml
+            locator: yamlpath:$.spec.template.spec.containers[0].ports[0].containerPort
