@@ -34,6 +34,7 @@ class FullOutputTests(unittest.TestCase):
             )
 
             for name in [
+                "04-application-topology.yaml",
                 "05-reconciliation-report.yaml",
                 "06-component-model.yaml",
                 "07-runtime-model.yaml",
@@ -45,6 +46,20 @@ class FullOutputTests(unittest.TestCase):
                 self.assertTrue((output_dir / name).is_file(), name)
             self.assertTrue((output_dir / "12-generated-manifests").is_dir())
             self.assertIn(report.achieved_level, (0, 1))
+            topology = yaml.safe_load(
+                (output_dir / "04-application-topology.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )["application_topology"]
+            self.assertEqual(topology["repository_modules"][0]["module_id"], "root")
+            self.assertEqual(topology["deployment_variants"][0]["variant_id"], "common")
+            self.assertIn("analysis_coverage", topology)
+            topology_text = (output_dir / "04-application-topology.yaml").read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn("policy_default", topology_text)
+            self.assertNotIn("target_policy", topology_text)
+            self.assertNotIn("replicas", topology_text)
 
     def test_determinism_two_runs_identical(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
@@ -59,7 +74,11 @@ class FullOutputTests(unittest.TestCase):
                     profile_path=PROFILE,
                 )
 
-            for name in ["06-component-model.yaml", "09-kubernetes-intent.yaml"]:
+            for name in [
+                "04-application-topology.yaml",
+                "06-component-model.yaml",
+                "09-kubernetes-intent.yaml",
+            ]:
                 self.assertEqual(
                     Path(first, name).read_bytes(),
                     Path(second, name).read_bytes(),

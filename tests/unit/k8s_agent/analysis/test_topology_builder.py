@@ -11,6 +11,7 @@ from k8s_agent.models.source import GitMetadata, RepositorySource, SourceFingerp
 from k8s_agent.run.store import RunStore
 from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.models.rule_inference import ComponentCandidate, RuleInferenceSet, RuntimeCommandCandidate
+from preanalyzer.reconciliation.engine import AcceptedSemanticCommand, reconcile
 
 
 FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "repos"
@@ -50,6 +51,100 @@ class TopologyBuilderTests(unittest.TestCase):
         self.assertIn("F", component.ports[0].evidence_refs[0])
         self.assertEqual(component.command.value, '["node", "server.js"]')
         self.assertEqual(topology.conflicts, [])
+
+    def test_node_topology_contains_canonical_modules_fields_variants_and_coverage(self):
+        topology = phase1_for("node-express-like")
+        component = topology.component("root")
+
+        self.assertEqual([module.module_id for module in topology.repository_modules], ["root"])
+        module = topology.repository_modules[0]
+        self.assertEqual(module.root_path, ".")
+        self.assertEqual(module.build_system, "npm")
+        self.assertEqual([item.value for item in module.package_dependencies], ["express"])
+        self.assertEqual([variant.variant_id for variant in topology.deployment_variants], ["common"])
+
+        fields = {field.field_path: field for field in component.fields}
+        self.assertEqual(fields["/components/root/present"].state, "resolved")
+        self.assertEqual(fields["/components/root/deployment_role"].value, "application")
+        self.assertEqual(fields["/components/root/effective_runtime_command"].value, '["node", "server.js"]')
+        self.assertEqual(fields["/components/root/runtime_port"].value, 3000)
+        self.assertEqual(fields["/components/root/secret_classification"].state, "not_applicable")
+        self.assertEqual(fields["/components/root/build_strategy"].group, "extended")
+        self.assertEqual(fields["/repository_modules/root/package_dependencies/express"].state, "resolved")
+        self.assertTrue(all(field.variant_id == "common" for field in component.fields))
+        self.assertTrue(all(field.evidence_refs or field.state == "unresolved" for field in component.fields))
+
+        coverage = {item.artifact_ref: item for item in topology.analysis_coverage}
+        self.assertEqual(coverage["Dockerfile"].status, "analyzed")
+        self.assertIn("/components/root/runtime_port", coverage["Dockerfile"].field_paths)
+        self.assertEqual(coverage["package.json"].status, "analyzed")
+
+        serialized = topology.model_dump_json()
+        self.assertNotIn("policy_default", serialized)
+        self.assertNotIn("target_policy", serialized)
+        self.assertNotIn("manifest", serialized)
+
+    def test_build_from_reconciliation_uses_accepted_semantic_command(self):
+        evidence = EvidenceModel(
+            facts=[
+                EvidenceFact(
+                    evidence_id="F001",
+                    fact_type="artifact_presence",
+                    artifact_ref="package.json",
+                    source="inventory",
+                    classification="observed_fact",
+                    value={"type": "nodejs", "present": True},
+                ),
+                EvidenceFact(
+                    evidence_id="F002",
+                    fact_type="package_dependency",
+                    artifact_ref="package.json",
+                    source="package_json_dependencies",
+                    classification="observed_fact",
+                    value={"package": "express"},
+                ),
+            ]
+        )
+        rules = RuleInferenceSet(
+            component_candidates=[ComponentCandidate("root", ".", "package.json", ["F001"])]
+        )
+        reconciliation = reconcile(
+            rules,
+            evidence,
+            [AcceptedSemanticCommand("root", '["npm", "start"]', ["F002"])],
+        )
+
+        topology = TopologyBuilder().build_from_reconciliation(evidence, rules, reconciliation)
+        fields = {field.field_path: field for field in topology.component("root").fields}
+        command = fields["/components/root/effective_runtime_command"]
+
+        self.assertEqual(command.state, "resolved")
+        self.assertEqual(command.value, '["npm", "start"]')
+        self.assertEqual(command.source, "llm_semantic_inference")
+        self.assertEqual(command.confidence, "medium")
+        self.assertEqual(command.classification, "llm_interpretation")
+        self.assertEqual(command.evidence_refs, ["F002"])
+
+    def test_supported_artifact_without_interpreted_fields_is_coverage_gap(self):
+        evidence = EvidenceModel(
+            facts=[
+                EvidenceFact(
+                    evidence_id="F001",
+                    fact_type="artifact_presence",
+                    artifact_ref="package.json",
+                    source="inventory",
+                    classification="observed_fact",
+                    value={"type": "nodejs", "present": True},
+                )
+            ]
+        )
+        rules = RuleInferenceSet()
+
+        topology = TopologyBuilder().build_from_models(evidence, rules)
+
+        self.assertEqual(len(topology.analysis_coverage), 1)
+        self.assertEqual(topology.analysis_coverage[0].status, "coverage_gap")
+        self.assertEqual(topology.analysis_coverage[0].field_paths, [])
 
     def test_fastapi_monorepo_components_dependencies_and_secret_names_only(self):
         topology = phase1_for("fastapi-fullstack-like")
