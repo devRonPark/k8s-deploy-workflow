@@ -173,6 +173,15 @@ def run_analysis(
         _write_yaml(output_dir / "04-semantic-analysis.yaml", {"semantic_analysis": semantic_audit})
 
         result = reconcile(rules, evidence, accepted_commands)
+        from k8s_agent.analysis.topology_builder import (
+            TOPOLOGY_ARTIFACT,
+            TopologyBuilder,
+            write_topology_artifact,
+        )
+
+        topology = TopologyBuilder().build_from_reconciliation(evidence, rules, result)
+        write_topology_artifact(output_dir / TOPOLOGY_ARTIFACT, topology)
+
         intent = result.intent
         questions = result.questions
         ready_for_level2 = False
