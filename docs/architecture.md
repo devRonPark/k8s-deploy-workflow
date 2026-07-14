@@ -299,7 +299,7 @@ profile.yaml ────────────▶ │  Repository ──▶ A
 | `08-dependency-model.yaml` | Reconciliation Engine | Intent Builder, Solution Architect | 내부 엣지/외부 시스템 + env 분류 |
 | `09-kubernetes-intent.yaml` | Reconciliation Engine / Merger(갱신) | Renderer, Repair Loop(patch 대상) | 리소스 의도. **YAML 아님** |
 | `10-unresolved-questions.yaml` | Reconciliation Engine / Merger(재계산) | 사용자, Profile 템플릿 | runtime gap과 semantic conflict의 명시적 표현 |
-| `11-deployment-profile.template.yaml` | Reconciliation Engine | 사용자(복사해 Profile 작성) | 질문 id 주석이 달린 입력 템플릿 |
+| `11-deployment-profile.yaml` | Reconciliation Engine | 사용자, Merger | 실행에 사용된 Profile 값. Agent MVP에서는 `profile/deployment-profile.yaml`에 대응 |
 | deployment-profile.yaml | (사용자 작성) | Merger | 환경별 값. Secret은 **참조**로만 |
 | `12-generated-manifests/` | Renderer | Validator, 클러스터 적용 | 유일한 최종 YAML 경로 |
 | `13-validation-report.yaml` | Validator(+Checker/Smoke 병합) | 사용자, CI 게이트, Repair Loop | 공식 배포 가능성 수준 |
@@ -537,7 +537,7 @@ Renderer는 (a) 버전 관리되는 리소스별 템플릿 세트와 (b) 렌더 
 |---|---|---|
 | **Helm output** | Renderer 뒤 | Intent Model은 출력 형식 중립적이다. Helm chart 렌더러를 Template Renderer의 두 번째 구현체로 추가(values.yaml = Profile 필드의 재배치). Analyzer·Validator 무변경 |
 | **Kustomize overlay** | Renderer 뒤 | base(Intent의 환경 중립 값) + overlay(Profile별 값)로 분해하는 렌더러 추가. 환경별 Profile → 환경별 overlay의 자연 대응 |
-| **CI/CD integration** | Orchestrator/CLI | `analyze`/`merge-profile`/`validate`가 파일 산출물과 종료 코드로 동작하므로 파이프라인 게이트로 직결. validation report를 아티팩트로 보존, `achieved_level`을 배포 승인 조건으로 사용 |
+| **CI/CD integration** | Orchestrator/CLI | Agent MVP의 `prepare`/`resume`/`status`/`export`와 단계별 `analyze`/`plan`/`generate`/`validate`가 파일 산출물과 종료 코드로 동작하므로 파이프라인 게이트로 직결. validation report를 아티팩트로 보존, `achieved_level` 또는 `manifest_ready`를 배포 승인 조건으로 사용 |
 | **Policy engine** | Validator 체인 ⑤ | OPA/Gatekeeper·Kyverno 규칙 평가를 검증 체인의 플러그인 단계로 추가. 결과는 동일 report에 누적 |
 | **추가 언어 지원** | Rule Inference Engine | 탐지 규칙 테이블에 행 추가(Go: `go.mod`, .NET: `.sln`/`.csproj` 등) + 대응 parser 추가. Buildpacks detect 스타일이므로 기존 규칙과 독립 |
 | **추가 LLM provider** | Provider Interface 뒤 | 5개 연산 계약을 구현하는 어댑터 추가(비호환 사내 API 포함). 파이프라인 코드 무변경, 설정으로 선택. 모델 교체 시 5장 회귀 세트로 동등성 검증 |

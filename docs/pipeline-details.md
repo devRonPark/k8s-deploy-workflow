@@ -46,6 +46,8 @@ export SEMANTIC_LLM_TIMEOUT_SECONDS="30"
 
 `SEMANTIC_LLM_API_KEY` 값은 커밋하지 않는다. 실제 값은 `.env`처럼 git에서 제외되는 로컬 파일이나 실행 환경에만 둔다. `.env.example`은 이름과 예시 형식만 남긴다.
 
+Agent MVP CLI(`k8s-agent`)는 같은 OpenAI-compatible 계열 설정을 읽되 `K8S_AGENT_LLM_*`를 우선한다. 모델 ID가 없으면 `GET /models`로 첫 번째 모델 ID를 확인하고, API key가 설정되지 않은 로컬 endpoint에는 `Authorization` 헤더를 넣지 않는다. 기존 `SEMANTIC_LLM_*`는 호환 경로로만 사용한다.
+
 Provider 생성:
 
 ```python

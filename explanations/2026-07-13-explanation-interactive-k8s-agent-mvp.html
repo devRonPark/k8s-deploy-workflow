@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interactive Kubernetes Agent MVP Explained</title>
+  <style>
+    :root {
+      --bg: #f7f8f5;
+      --paper: #ffffff;
+      --ink: #1d2428;
+      --muted: #5f6b70;
+      --line: #d9dfda;
+      --accent: #0f766e;
+      --accent-soft: #dff3ef;
+      --gold: #9a6b12;
+      --gold-soft: #fff1cc;
+      --rose: #a33a3a;
+      --rose-soft: #f9dddd;
+      --blue: #285f9f;
+      --blue-soft: #e2eefb;
+      --code: #102027;
+      --code-bg: #eef3f1;
+      --shadow: 0 12px 34px rgba(29, 36, 40, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    a { color: var(--accent); }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 20px 72px;
+    }
+
+    header {
+      padding: 42px 0 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+      margin: 0 0 10px;
+      text-transform: uppercase;
+      font-size: 0.82rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.1rem, 5vw, 4.6rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+      max-width: 920px;
+    }
+
+    .subtitle {
+      margin: 18px 0 0;
+      max-width: 780px;
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 0.9rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 32px;
+      align-items: start;
+      margin-top: 28px;
+    }
+
+    nav.toc {
+      position: sticky;
+      top: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(12px);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    nav.toc h2 {
+      margin: 0 0 10px;
+      font-size: 0.98rem;
+    }
+
+    nav.toc ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    nav.toc li { margin: 8px 0; color: var(--muted); }
+
+    main {
+      min-width: 0;
+    }
+
+    section {
+      padding: 34px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 1.25rem;
+      line-height: 1.3;
+      letter-spacing: 0;
+    }
+
+    p { margin: 0 0 16px; }
+
+    ul, ol { padding-left: 22px; }
+
+    li { margin: 8px 0; }
+
+    code {
+      background: var(--code-bg);
+      color: var(--code);
+      border-radius: 4px;
+      padding: 0.12rem 0.32rem;
+      font-size: 0.94em;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-x: auto;
+      background: #172124;
+      color: #e8f0ed;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      border: 1px solid #2b383b;
+    }
+
+    .callout {
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 16px 18px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .callout.warning {
+      border-left-color: var(--gold);
+      background: var(--gold-soft);
+    }
+
+    .callout.danger {
+      border-left-color: var(--rose);
+      background: var(--rose-soft);
+    }
+
+    .callout strong { display: block; margin-bottom: 4px; }
+
+    .diagram {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 22px 0;
+      box-shadow: var(--shadow);
+    }
+
+    .diagram-title {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .flow.three {
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+    }
+
+    .node {
+      position: relative;
+      min-height: 118px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfb;
+    }
+
+    .node strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+
+    .node small {
+      display: block;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .node.accent { border-color: #8fc7bd; background: #effaf7; }
+    .node.blue { border-color: #9ec1e8; background: var(--blue-soft); }
+    .node.gold { border-color: #e0bf6e; background: #fff8e6; }
+
+    .arrow-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin: -6px 0 2px;
+    }
+
+    .arrow {
+      height: 22px;
+      position: relative;
+    }
+
+    .arrow::before {
+      content: "";
+      position: absolute;
+      left: 12%;
+      right: 14px;
+      top: 10px;
+      height: 2px;
+      background: var(--line);
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      right: 8px;
+      top: 5px;
+      width: 10px;
+      height: 10px;
+      border-right: 2px solid var(--line);
+      border-top: 2px solid var(--line);
+      transform: rotate(45deg);
+    }
+
+    .lanes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      padding: 16px;
+    }
+
+    .lane h4 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .mini-table th,
+    .mini-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .mini-table th {
+      background: #edf2ef;
+      font-size: 0.92rem;
+    }
+
+    .mini-table tr:last-child td { border-bottom: none; }
+
+    .quiz-card {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 18px 0;
+      box-shadow: var(--shadow);
+    }
+
+    .quiz-card h3 {
+      margin-top: 0;
+      font-size: 1.08rem;
+    }
+
+    .choices {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .choice {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: #fbfcfb;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 11px 12px;
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .choice:hover,
+    .choice:focus {
+      outline: 2px solid #9edbd0;
+      outline-offset: 2px;
+    }
+
+    .choice.correct {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .choice.incorrect {
+      border-color: var(--rose);
+      background: var(--rose-soft);
+    }
+
+    .feedback {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #eef3f1;
+      color: var(--ink);
+      display: none;
+    }
+
+    .feedback.show { display: block; }
+
+    .file-list {
+      display: grid;
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    .file-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      padding: 14px;
+    }
+
+    .file-item strong { display: block; }
+    .file-item span { color: var(--muted); }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      nav.toc {
+        position: static;
+      }
+
+      .flow,
+      .flow.three,
+      .lanes {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow-row { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <p class="eyebrow">Diff explanation · 2026-07-13</p>
+      <h1>Interactive Kubernetes Agent MVP</h1>
+      <p class="subtitle">
+        이 변경은 기존의 결정론적 Kubernetes 사전분석기 위에, 사용자가 저장소를 넣고 질문에 답하면 안전하게 매니페스트까지 도달하도록 안내하는 새 대화형 에이전트의 첫 설계와 첫 테스트를 추가한다.
+      </p>
+      <div class="meta">
+        <span class="pill">설명 대상: 현재 작업트리의 새 파일</span>
+        <span class="pill">핵심 파일: MVP 계획서, 쉬운 설명 문서, 설정 테스트</span>
+        <span class="pill">상태: 설계 중심 + 첫 실패 테스트</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="toc" aria-label="Table of contents">
+        <h2>목차</h2>
+        <ol>
+          <li><a href="#background">Background</a></li>
+          <li><a href="#intuition">Intuition</a></li>
+          <li><a href="#code">Code</a></li>
+          <li><a href="#edge-cases">Safety Notes</a></li>
+          <li><a href="#quiz">Quiz</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <section id="background">
+          <h2>Background</h2>
+          <p>
+            Kubernetes 매니페스트 생성기는 보기보다 위험한 도구다. 저장소를 읽고 곧바로 YAML을 뱉는 방식은 편해 보이지만, 작은 추측 하나가 운영 설정이 된다. 포트를 잘못 고르면 서비스가 열리지 않고, Secret 값을 실수로 기록하면 보안 사고가 된다. 이 저장소의 기존 설계가 아주 강하게 반복하는 말은 그래서 하나다. 먼저 사실을 모으고, 그 사실에서만 결론을 내린다.
+          </p>
+
+          <h3>초심자용 큰 그림</h3>
+          <p>
+            현재 시스템의 이름은 `preanalyzer`다. 하는 일은 “애플리케이션 저장소를 읽어서 Kubernetes 배포에 필요한 후보 정보를 정리하는 것”이다. 중요한 점은 이 단계가 배포 버튼이 아니라 관찰과 정리의 단계라는 것이다.
+          </p>
+
+          <div class="diagram">
+            <p class="diagram-title">기존 preanalyzer의 데이터 흐름</p>
+            <div class="flow">
+              <div class="node">
+                <strong>Repository</strong>
+                <small>Dockerfile, docker-compose.yml, package.json 같은 파일</small>
+              </div>
+              <div class="node">
+                <strong>Snapshot & Inventory</strong>
+                <small>어떤 파일이 있는지, 어떤 commit을 봤는지 고정</small>
+              </div>
+              <div class="node">
+                <strong>Evidence</strong>
+                <small>“Dockerfile에 EXPOSE 8080이 있다” 같은 관찰 사실</small>
+              </div>
+              <div class="node">
+                <strong>Rules & Reconcile</strong>
+                <small>규칙으로 후보를 만들고 충돌은 질문으로 남김</small>
+              </div>
+              <div class="node accent">
+                <strong>Intent & YAML</strong>
+                <small>검증 가능한 중간 모델에서만 최종 YAML 생성</small>
+              </div>
+            </div>
+          </div>
+
+          <p>
+            코드상으로 이 흐름은 `src/preanalyzer/pipeline.py`의 `run_phase1_analysis()`와 `run_analysis()`에 들어 있다. `run_phase1_analysis()`는 `00-repository-snapshot.yaml`부터 `04-semantic-analysis.yaml`까지 만들고, `run_analysis()`는 그 결과를 조정해서 Intent, 매니페스트, 검증 리포트까지 이어 간다.
+          </p>
+
+          <pre><code>repo_snapshot = snapshot(...)
+inventory = build_inventory(...)
+evidence = build_evidence(...)
+rules = infer(evidence)
+semantic_audit, accepted_commands = _build_semantic_analysis_audit(...)
+
+result = reconcile(rules, evidence, accepted_commands)
+render = TemplateRenderer(...).render(intent)
+report = ValidationPipeline().run(manifest_dir)</code></pre>
+
+          <h3>이번 변경과 직접 맞닿은 배경</h3>
+          <p>
+            이번 새 계획은 이 기존 흐름을 지우지 않는다. 대신 그 위에 `k8sagent`라는 별도 오케스트레이션 계층을 얹는다. 사용자는 저장소를 지정하고, 컴포넌트를 고르고, 빠진 값을 질문으로 채운다. 에이전트는 그 답변을 검증 가능한 모델 변경으로 바꾸고, Python 렌더러가 Kubernetes YAML을 만든다.
+          </p>
+
+          <div class="diagram">
+            <p class="diagram-title">새 k8sagent가 놓이는 위치</p>
+            <div class="lanes">
+              <div class="lane">
+                <h4>기존 preanalyzer</h4>
+                <ul>
+                  <li>저장소를 결정론적으로 분석한다.</li>
+                  <li>근거, 후보, 질문, 기본 Intent를 만든다.</li>
+                  <li>LLM이 최종 YAML을 만들지 못하게 한다.</li>
+                </ul>
+              </div>
+              <div class="lane">
+                <h4>새 k8sagent</h4>
+                <ul>
+                  <li>저장소 획득, 세션, 대화형 질문을 맡는다.</li>
+                  <li>사용자 답변을 검증된 ChangeSet으로 바꾼다.</li>
+                  <li>검증 실패 시 수정 제안을 승인 흐름으로 돌린다.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>핵심 정의</strong>
+            “Intent”는 Kubernetes YAML 그 자체가 아니다. 어떤 컴포넌트를 어떤 이미지, 포트, 환경변수, 서비스로 배포할지 담는 중간 모델이다. 이 프로젝트의 중요한 규칙은 저장소에서 YAML로 바로 뛰지 않고, 항상 이런 중간 모델을 거친다는 점이다.
+          </div>
+        </section>
+
+        <section id="intuition">
+          <h2>Intuition</h2>
+          <p>
+            이 변경의 직관은 간단하다. 기존 시스템은 눈이 좋다. 저장소를 보고 근거를 수집할 수 있다. 그러나 사용자의 의도를 묻고, 선택을 저장하고, 실패를 다시 수정으로 연결하는 진행자는 아직 없다. 새 에이전트는 그 진행자다.
+          </p>
+
+          <h3>장난감 예시: 작은 Node 앱</h3>
+          <p>
+            저장소에 다음 세 파일이 있다고 하자.
+          </p>
+
+          <pre><code>Dockerfile:        EXPOSE 3000
+package.json:      "start": "node server.js"
+docker-compose.yml: ports: ["8080:3000"]</code></pre>
+
+          <p>
+            기존 분석기는 “컨테이너 안의 포트는 3000일 가능성이 높다”, “실행 명령은 node server.js다”, “호스트 8080은 외부 노출 포트일 수 있다” 같은 사실과 후보를 만든다. 그러나 배포 namespace, 이미지 registry, ingress host는 저장소 안에 없을 수 있다. 이때 정답을 꾸며내면 안 된다.
+          </p>
+
+          <div class="diagram">
+            <p class="diagram-title">질문으로 남겨야 하는 값과 자동으로 채택할 수 있는 값</p>
+            <div class="flow three">
+              <div class="node blue">
+                <strong>관찰됨</strong>
+                <small>EXPOSE 3000, start command, component path</small>
+              </div>
+              <div class="node gold">
+                <strong>사용자에게 질문</strong>
+                <small>registry, namespace, ingress host, 충돌하는 포트</small>
+              </div>
+              <div class="node accent">
+                <strong>검증된 Intent</strong>
+                <small>근거 있는 값 + 사용자가 승인한 값만 포함</small>
+              </div>
+            </div>
+          </div>
+
+          <p>
+            여기서 LLM의 역할은 답을 만드는 일이 아니다. “어떤 namespace를 쓰시겠습니까?”라는 문장을 더 자연스럽게 만들거나, kubeconform 오류를 사람이 읽기 쉽게 설명하거나, 자연어 요청을 ChangeSet 후보로 바꾸는 데 도움을 줄 수 있다. 하지만 최종 결정은 스키마와 승인 흐름을 통과해야 한다.
+          </p>
+
+          <h3>왜 별도 패키지인가</h3>
+          <p>
+            `preanalyzer`는 분석기다. 여기에 세션, Git clone 캐시, 대화형 REPL, 사용자 승인 루프를 넣으면 분석기와 제품 흐름이 섞인다. 이번 계획은 `k8sagent → preanalyzer` 방향의 단방향 의존만 허용한다. 말하자면 분석기는 도서관이고, 에이전트는 사서다. 책의 내용을 바꾸지 않고도 사용자가 필요한 장을 찾도록 안내할 수 있다.
+          </p>
+        </section>
+
+        <section id="code">
+          <h2>Code</h2>
+          <p>
+            현재 작업트리에는 추적되지 않은 새 파일들이 있다. 그중 이 변경의 중심은 구현 코드가 아니라 구현 계획과 첫 단위 테스트다. 따라서 이 diff는 “완성된 에이전트”가 아니라 “어떤 에이전트를 어떤 안전 장치로 만들 것인가”를 고정하는 변경으로 읽어야 한다.
+          </p>
+
+          <div class="file-list">
+            <div class="file-item">
+              <strong>docs/superpowers/plans/2026-07-13-interactive-k8s-agent-mvp.md</strong>
+              <span>새 `k8sagent`의 목표, 범위, 아키텍처 결정, 파일 구조, 17개 구현 태스크를 담은 중심 계획서.</span>
+            </div>
+            <div class="file-item">
+              <strong>tests/unit/agent/test_config.py</strong>
+              <span>Task 1의 첫 테스트. 아직 `src/k8sagent/` 구현이 없으므로, 다음 구현을 요구하는 실패 테스트 역할을 한다.</span>
+            </div>
+            <div class="file-item">
+              <strong>tests/unit/agent/__init__.py</strong>
+              <span>새 agent 단위 테스트 패키지를 열기 위한 빈 초기화 파일.</span>
+            </div>
+            <div class="file-item">
+              <strong>explanations/2026-07-13-interactive-k8s-agent-mvp-explained.md</strong>
+              <span>MVP 계획을 비개발자도 읽을 수 있게 요약한 보조 설명 문서.</span>
+            </div>
+          </div>
+
+          <h3>1. 계획서는 제품 경계부터 못 박는다</h3>
+          <p>
+            계획서의 목표는 “저장소 분석 → 컴포넌트 선택 → Kubernetes Intent 구축 → 질문/답변 → 매니페스트 생성 → 로컬 검증 → 수정 제안”까지 안내하는 CLI 에이전트다. 하지만 무엇을 하지 않을지도 분명히 한다. 새 의존성 추가, Secret 값 생성, Helm/Kustomize 지원, 실제 클러스터 배포, 무승인 자동 수정은 MVP 범위 밖이다.
+          </p>
+
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>결정</th>
+                <th>의미</th>
+                <th>왜 중요한가</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>새 패키지 `src/k8sagent/`</td>
+                <td>오케스트레이션을 분석기 밖으로 분리</td>
+                <td>`preanalyzer`의 결정론적 성격을 보존</td>
+              </tr>
+              <tr>
+                <td>LLM은 YAML 생성 금지</td>
+                <td>질문 문안, 설명, ChangeSet 후보까지만 허용</td>
+                <td>동일 입력에서 동일 출력이 나오는 재현성 보장</td>
+              </tr>
+              <tr>
+                <td>ChangeSet 승인 흐름</td>
+                <td>자연어 요청도 검증된 변경 후보와 diff를 거침</td>
+                <td>무심코 운영 설정이 바뀌는 일을 막음</td>
+              </tr>
+              <tr>
+                <td>산출물은 `k8s-agent-output/`</td>
+                <td>분석 대상 저장소 안에 결과를 쓰되 스캔 제외 예정</td>
+                <td>재분석 때 생성 YAML이 다시 evidence로 섞이지 않게 함</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>2. 첫 테스트는 설정 우선순위를 고정한다</h3>
+          <p>
+            `tests/unit/agent/test_config.py`는 아직 없는 `k8sagent.config.load_config()`가 어떤 동작을 해야 하는지 먼저 적는다. 이것은 테스트 주도 개발에서 흔히 쓰는 방식이다. 구현이 없으므로 지금은 import 단계에서 실패할 가능성이 높지만, 그 실패가 다음 작업의 시작점을 선명하게 만든다.
+          </p>
+
+          <pre><code>cfg = load_config(env={}, home_override=Path("/tmp/x"))
+self.assertEqual(cfg.k8s_version, "1.29")
+self.assertTrue(cfg.llm_enabled)
+self.assertEqual(cfg.git_token_env, "K8S_AGENT_GIT_TOKEN")
+self.assertEqual(cfg.home, Path("/tmp/x"))</code></pre>
+
+          <p>
+            더 중요한 테스트는 우선순위다. 파일 설정보다 환경변수가 세고, 환경변수보다 CLI 값이 세다. 운영 도구에서는 이 순서가 자주 문제가 된다. 설정 출처가 명확하지 않으면 사용자는 “왜 내 값이 먹지 않았지?”라는 상태에 빠진다.
+          </p>
+
+          <pre><code>(home / "config.yaml").write_text("k8s_version: '1.27'\n", encoding="utf-8")
+env = {"K8S_AGENT_K8S_VERSION": "1.28"}
+self.assertEqual(load_config(env=env, home_override=home).k8s_version, "1.28")
+
+cfg = load_config(cli_overrides={"k8s_version": "1.30"}, env=env, home_override=home)
+self.assertEqual(cfg.k8s_version, "1.30")</code></pre>
+
+          <h3>3. 오류 분류도 API의 일부가 된다</h3>
+          <p>
+            테스트는 `ConfigError("x").code == "config_error"`도 요구한다. 단순한 예외처럼 보이지만, CLI 제품에서는 오류 코드가 사용자 경험의 일부다. 나중에 `repo_acquisition_error`, `validation_run_error`, `llm_unavailable` 같은 오류를 exit code나 메시지로 매핑할 수 있기 때문이다.
+          </p>
+
+          <pre><code>self.assertEqual(ConfigError("x").code, "config_error")
+self.assertIsInstance(ConfigError("x"), AgentError)</code></pre>
+
+          <h3>4. 기존 코드와의 연결점</h3>
+          <p>
+            계획서가 기존 `preanalyzer`에서 빌려 쓰려는 중요한 자산은 세 가지다. 첫째, `run_phase1_analysis()`의 결정론적 분석 흐름. 둘째, `Tracked[T]`가 강제하는 값의 출처와 신뢰도 계약. 셋째, kubeconform과 kubectl dry-run으로 이어지는 검증 체인이다.
+          </p>
+
+          <div class="diagram">
+            <p class="diagram-title">새 에이전트가 기존 자산을 소비하는 방식</p>
+            <div class="flow">
+              <div class="node">
+                <strong>k8sagent.repo</strong>
+                <small>local path 또는 Git URL을 분석 가능한 checkout으로 고정</small>
+              </div>
+              <div class="node">
+                <strong>preanalyzer</strong>
+                <small>snapshot, inventory, evidence, rules 생성</small>
+              </div>
+              <div class="node blue">
+                <strong>k8sagent.intent</strong>
+                <small>사용자 선택과 질문 답변으로 확장된 Intent</small>
+              </div>
+              <div class="node accent">
+                <strong>k8sagent.render</strong>
+                <small>Python dict 렌더러가 YAML 생성</small>
+              </div>
+              <div class="node gold">
+                <strong>k8sagent.validate</strong>
+                <small>PASS, FAIL, PARTIAL로 결과 집계</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="edge-cases">
+          <h2>Safety Notes</h2>
+          <p>
+            이 변경에서 가장 흥미로운 부분은 기능 목록이 아니라 경계 설정이다. Kubernetes 배포 도우미는 사용자가 편하게 느끼도록 해야 하지만, 편리함 때문에 검증이나 승인을 건너뛰면 안 된다.
+          </p>
+
+          <div class="callout danger">
+            <strong>Secret 값은 데이터 흐름에 들어오면 안 된다</strong>
+            계획서는 Git 토큰을 환경변수 이름으로만 다루고, Secret 값은 LLM 요청, 로그, 세션 파일, 산출물에 쓰지 않는다고 명시한다. 기존 `preanalyzer`도 Secret 후보 타입에 실제 값을 두지 않는 방식으로 같은 원칙을 지킨다.
+          </div>
+
+          <div class="callout warning">
+            <strong>현재 diff는 완성 기능이 아니다</strong>
+            `tests/unit/agent/test_config.py`는 새 패키지의 첫 계약을 적은 테스트다. 아직 `src/k8sagent/config.py`가 없으므로 이 테스트는 구현 전에는 실패하는 것이 자연스럽다.
+          </div>
+
+          <div class="callout">
+            <strong>검증 완료와 검증 생략은 다르다</strong>
+            기존 검증 파이프라인에서 `kubeconform: skipped`는 Kubernetes 스키마 검증이 끝났다는 뜻이 아니다. 새 에이전트 계획은 이를 `PASS`/`FAIL`/`PARTIAL` 집계로 더 분명하게 드러내려 한다.
+          </div>
+        </section>
+
+        <section id="quiz">
+          <h2>Quiz</h2>
+          <p>
+            아래 질문은 이 변경의 핵심을 이해했는지 점검하기 위한 것이다. 선택지를 누르면 바로 피드백이 나온다.
+          </p>
+
+          <div class="quiz-card" data-answer="1">
+            <h3>1. 새 `k8sagent`를 `preanalyzer` 내부가 아니라 별도 패키지로 두려는 주된 이유는?</h3>
+            <div class="choices">
+              <button class="choice">Python import 속도를 높이기 위해서</button>
+              <button class="choice">분석기의 결정론적 책임과 대화형 오케스트레이션 책임을 분리하기 위해서</button>
+              <button class="choice">기존 테스트를 모두 삭제하고 새 테스트 체계로 바꾸기 위해서</button>
+            </div>
+            <div class="feedback"></div>
+          </div>
+
+          <div class="quiz-card" data-answer="2">
+            <h3>2. 이 계획에서 LLM이 해도 되는 일은 무엇인가?</h3>
+            <div class="choices">
+              <button class="choice">최종 Kubernetes YAML을 자유롭게 작성한다</button>
+              <button class="choice">Secret 값을 추정해 placeholder 대신 채운다</button>
+              <button class="choice">질문 문안, 오류 설명, ChangeSet 후보 생성을 돕되 검증과 승인을 거친다</button>
+            </div>
+            <div class="feedback"></div>
+          </div>
+
+          <div class="quiz-card" data-answer="0">
+            <h3>3. `test_config.py`가 요구하는 설정 우선순위는?</h3>
+            <div class="choices">
+              <button class="choice">CLI 플래그 &gt; 환경변수 &gt; config.yaml &gt; 기본값</button>
+              <button class="choice">config.yaml &gt; CLI 플래그 &gt; 기본값 &gt; 환경변수</button>
+              <button class="choice">기본값 &gt; 환경변수 &gt; config.yaml &gt; CLI 플래그</button>
+            </div>
+            <div class="feedback"></div>
+          </div>
+
+          <div class="quiz-card" data-answer="1">
+            <h3>4. `Tracked[T]` 같은 출처 추적 모델이 중요한 이유는?</h3>
+            <div class="choices">
+              <button class="choice">YAML 파일 크기를 줄이기 위해서</button>
+              <button class="choice">각 값이 어디서 왔고 얼마나 신뢰할 수 있는지 보존하기 위해서</button>
+              <button class="choice">모든 값을 문자열로 바꿔 Kubernetes가 쉽게 읽게 하기 위해서</button>
+            </div>
+            <div class="feedback"></div>
+          </div>
+
+          <div class="quiz-card" data-answer="2">
+            <h3>5. `k8s-agent-output/`을 스캔 제외 대상으로 추가하려는 이유는?</h3>
+            <div class="choices">
+              <button class="choice">출력 파일 이름을 더 짧게 만들기 위해서</button>
+              <button class="choice">사용자가 파일을 열지 못하게 숨기기 위해서</button>
+              <button class="choice">생성된 매니페스트가 다음 분석 때 다시 입력 evidence로 섞이는 것을 막기 위해서</button>
+            </div>
+            <div class="feedback"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const feedback = [
+      [
+        "아닙니다. 이 변경의 핵심은 성능보다 책임 분리입니다.",
+        "맞습니다. 분석기는 사실과 후보를 만들고, 에이전트는 세션과 사용자 결정을 다룹니다.",
+        "아닙니다. 계획은 unittest 유지와 기존 테스트 보존을 전제로 합니다."
+      ],
+      [
+        "아닙니다. 최종 YAML은 검증된 모델과 렌더러에서 나와야 합니다.",
+        "아닙니다. Secret 값 생성과 저장은 명시적으로 금지됩니다.",
+        "맞습니다. LLM은 보조 역할을 할 수 있지만, 스키마 검증과 사용자 승인을 통과해야 합니다."
+      ],
+      [
+        "맞습니다. 가까운 입력일수록 더 강한 의도를 가진 것으로 봅니다.",
+        "아닙니다. 파일 설정은 기본값보다 강하지만 환경변수와 CLI보다 약합니다.",
+        "아닙니다. 기본값은 마지막 fallback입니다."
+      ],
+      [
+        "아닙니다. 출처 추적은 크기 최적화가 아니라 신뢰성 장치입니다.",
+        "맞습니다. 값, 출처, 신뢰도, evidence_refs가 함께 있어야 나중에 충돌과 질문을 안전하게 처리할 수 있습니다.",
+        "아닙니다. 타입 보존과 검증이 더 중요합니다."
+      ],
+      [
+        "아닙니다. 이름 길이는 핵심 문제가 아닙니다.",
+        "아닙니다. 출력은 사용자가 확인해야 하는 산출물입니다.",
+        "맞습니다. 생성물이 다시 입력으로 들어오면 분석 결과가 자기 자신에게 오염될 수 있습니다."
+      ]
+    ];
+
+    document.querySelectorAll(".quiz-card").forEach((card, cardIndex) => {
+      const answer = Number(card.dataset.answer);
+      const buttons = card.querySelectorAll(".choice");
+      const box = card.querySelector(".feedback");
+      buttons.forEach((button, buttonIndex) => {
+        button.addEventListener("click", () => {
+          buttons.forEach((candidate, idx) => {
+            candidate.classList.remove("correct", "incorrect");
+            if (idx === answer) candidate.classList.add("correct");
+          });
+          if (buttonIndex !== answer) button.classList.add("incorrect");
+          box.textContent = feedback[cardIndex][buttonIndex];
+          box.classList.add("show");
+        });
+      });
+    });
+  </script>
+</body>
+</html>
