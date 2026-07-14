@@ -5,8 +5,10 @@
 
 ## Scope · Priority
 
-`Superpowers` 플러그인이 설치돼 있다고 가정한다. Superpowers가 개발 프로세스를,
-이 파일이 프로젝트별 제약을 정의한다. 충돌은 조용히 해결하지 말고 표면화한다.
+Matt Pocock/Superpowers 계열 스킬은 이 repo의 `.agents/skills/`에 vendor되어 있다.
+다른 컴퓨터에서 repo를 clone한 뒤 Codex CLI를 실행하면 이 스킬들을 repo-local
+스킬로 사용할 수 있어야 한다. Superpowers가 개발 프로세스를, 이 파일이 프로젝트별
+제약을 정의한다. 충돌은 조용히 해결하지 말고 표면화한다.
 
 1. 현재 사용자 요청 → 2. `AGENTS.md` → 3. 호출된 Superpowers 스킬
 → 4. 승인된 문서·기존 테스트·코드 → 5. Codex 기본값
@@ -71,3 +73,17 @@ python3 scripts/validate_context_paths.py .
 
 > Don't: 서브에이전트 보고를 diff·검증 없이 신뢰하지 말 것. 미실행 테스트를 통과로 표현하지 말 것.
 > 최종 보고는 비개발자용 한국어 5단 구조 — [docs/codex-guidelines.md](./docs/codex-guidelines.md) 참고.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for `devRonPark/k8s-deploy-workflow`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo with `CONTEXT.md` at the root and ADRs in `docs/decisions/`. See `docs/agents/domain.md`.
