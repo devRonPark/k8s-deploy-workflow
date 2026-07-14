@@ -30,8 +30,12 @@
 
 4. **LLM provider 경계**
    - MVP는 OpenAI-compatible HTTP endpoint를 위한 adapter를 제공한다.
-   - `K8S_AGENT_LLM_BASE_URL`, `K8S_AGENT_LLM_MODEL`, `K8S_AGENT_LLM_API_KEY`를 환경변수로 받는다.
-   - API key는 로그, event, prompt snapshot, 산출물에 저장하지 않는다.
+   - 로컬 endpoint 기본값은 `http://192.168.30.167:30000/v1`이다.
+   - 로컬 endpoint 확인 시 `Authorization` 헤더를 보내지 않는다.
+   - 먼저 `GET /models`로 실제 모델 ID를 확인한 뒤, 확인된 ID로 `POST /chat/completions`를 호출한다.
+   - `K8S_AGENT_LLM_BASE_URL`, `K8S_AGENT_LLM_MODEL`을 환경변수로 받으며, `K8S_AGENT_LLM_API_KEY`는 외부 provider용 선택값이다.
+   - API key는 외부 provider에만 사용하고 로그, event, prompt snapshot, 산출물에 저장하지 않는다.
+   - API key 누락만으로 로컬 provider 실패를 판정하지 않는다.
    - provider 장애 시 결정론적 분석 결과는 보존하고 질문 또는 unresolved로 전환한다.
 
 5. **테스트 프레임워크**
@@ -61,6 +65,15 @@
 ---
 
 ## 2. 테스트 실행 원칙
+
+### 환경 준비
+
+구현 시작 전 `.venv/bin/python3`가 없으면 먼저 프로젝트 가상환경을 준비한다.
+
+```bash
+uv venv --system-site-packages .venv
+uv pip install --python .venv/bin/python3 "pydantic>=2.8" "PyYAML>=6.0" "jinja2>=3.1" "openai>=1.0"
+```
 
 ### 개발 중
 

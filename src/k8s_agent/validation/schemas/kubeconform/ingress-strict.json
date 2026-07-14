@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "networking.k8s.io/v1" },
+    "kind": { "const": "Ingress" },
+    "metadata": { "$ref": "#/definitions/metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["rules"],
+      "additionalProperties": false,
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["host", "http"],
+            "additionalProperties": false,
+            "properties": {
+              "host": { "type": "string", "minLength": 1 },
+              "http": {
+                "type": "object",
+                "required": ["paths"],
+                "additionalProperties": false,
+                "properties": {
+                  "paths": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "pathType", "backend"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": { "type": "string" },
+                        "pathType": { "enum": ["Exact", "Prefix", "ImplementationSpecific"] },
+                        "backend": {
+                          "type": "object",
+                          "required": ["service"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "service": {
+                              "type": "object",
+                              "required": ["name", "port"],
+                              "additionalProperties": false,
+                              "properties": {
+                                "name": { "type": "string", "minLength": 1 },
+                                "port": {
+                                  "type": "object",
+                                  "required": ["number"],
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "number": { "type": "integer", "minimum": 1, "maximum": 65535 }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "labels": { "$ref": "#/definitions/labels" }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
