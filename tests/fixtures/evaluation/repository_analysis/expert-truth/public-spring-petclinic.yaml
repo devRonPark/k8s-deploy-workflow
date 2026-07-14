@@ -1,0 +1,89 @@
+schema_version: repository-analysis-expert-truth/v1
+case_id: public-spring-petclinic
+revision: 51045d1648dad955df586150c1a1a6e22ef400c2
+fields:
+  - field_id: components.root.present
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: build.gradle
+        locator: gradle:plugins.org.springframework.boot
+  - field_id: components.root.deployment_role
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: application
+    expected_evidence:
+      - artifact: build.gradle
+        locator: gradle:plugins.org.springframework.boot
+  - field_id: components.root.workload_role
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: api
+    expected_evidence:
+      - artifact: build.gradle
+        locator: gradle:dependencies[spring-boot-starter-webmvc]
+  - field_id: components.root.effective_runtime_command
+    group: core
+    variant: common
+    expected_state: unresolved
+    expected_evidence:
+      - artifact: build.gradle
+        locator: gradle:plugins.org.springframework.boot
+  - field_id: components.root.runtime_port
+    group: core
+    variant: common
+    expected_state: unresolved
+    expected_evidence:
+      - artifact: src/main/resources/application.properties
+        locator: full-document:no-server-port
+  - field_id: components.root.secret_classification
+    group: core
+    variant: common
+    expected_state: not_applicable
+    expected_evidence:
+      - artifact: src/main/resources/application.properties
+        locator: full-document:no-secret-inputs
+  - field_id: repository_modules.root.present
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: settings.gradle
+        locator: gradle:rootProject.name
+  - field_id: package_dependencies.root.org.springframework.boot:spring-boot-starter-webmvc
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: build.gradle
+        locator: gradle:dependencies[spring-boot-starter-webmvc]
+  - field_id: runtime_dependencies.root.mysql.present
+    group: extended
+    variant: mysql
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: src/main/resources/application-mysql.properties
+        locator: properties:spring.datasource.url
+  - field_id: runtime_dependencies.root.postgres.present
+    group: extended
+    variant: postgres
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: src/main/resources/application-postgres.properties
+        locator: properties:spring.datasource.url
+  - field_id: components.root.build_strategy
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: boot_jar
+    expected_evidence:
+      - artifact: build.gradle
+        locator: gradle:plugins.org.springframework.boot

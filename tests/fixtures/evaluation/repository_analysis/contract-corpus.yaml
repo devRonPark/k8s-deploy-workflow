@@ -1,0 +1,104 @@
+schema_version: repository-analysis-corpus/v1
+corpus_version: 2026-07-14.2
+change_history:
+  - version: 2026-07-14.1
+    reason: Lock normal, negative finding, conflict, and coverage-gap contracts.
+    affected_cases:
+      - node-normal
+      - node-secret-absence
+      - runtime-port-conflict
+      - gradle-coverage-gap
+  - version: 2026-07-14.2
+    reason: Require the Gradle fixture to produce an explicit component boundary.
+    affected_cases:
+      - gradle-coverage-gap
+cases:
+  - case_id: node-normal
+    visibility: contract
+    revision: fixture-v1
+    scenario: normal
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: package.json
+            locator: jsonpath:$.dependencies.express
+      - field_id: components.root.effective_runtime_command
+        group: core
+        expected_state: resolved
+        expected_value: '["node", "server.js"]'
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:CMD
+      - field_id: components.root.runtime_port
+        group: core
+        expected_state: resolved
+        expected_value: 3000
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:EXPOSE[0]
+      - field_id: package_dependencies.root.express
+        group: extended
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: package.json
+            locator: jsonpath:$.dependencies.express
+  - case_id: node-secret-absence
+    visibility: contract
+    revision: fixture-v1
+    scenario: absence
+    fields:
+      - field_id: components.root.secret_classification
+        group: core
+        expected_state: not_applicable
+        expected_evidence:
+          - artifact: package.json
+            locator: full-document:no-secret-inputs
+      - field_id: components.root.build_strategy
+        group: extended
+        expected_state: resolved
+        expected_value: dockerfile_needed
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: inventory:absent
+  - case_id: runtime-port-conflict
+    visibility: contract
+    revision: fixture-v1
+    scenario: conflict
+    fields:
+      - field_id: components.web.runtime_port
+        group: core
+        expected_state: conflict
+        expected_evidence:
+          - artifact: Dockerfile
+            locator: dockerfile:EXPOSE[0]
+          - artifact: docker-compose.yml
+            locator: yamlpath:$.services.web.ports[0]
+  - case_id: gradle-coverage-gap
+    visibility: contract
+    revision: fixture-v1
+    scenario: coverage_gap
+    fields:
+      - field_id: components.root.present
+        group: core
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: build.gradle
+            locator: gradle:plugins.org.springframework.boot
+      - field_id: components.root.runtime_port
+        group: core
+        expected_state: unresolved
+        expected_evidence:
+          - artifact: src/main/resources/application.yml
+            locator: yamlpath:$.server.port
+      - field_id: package_dependencies.root.org.springframework.boot:spring-boot-starter-web
+        group: extended
+        expected_state: resolved
+        expected_value: true
+        expected_evidence:
+          - artifact: build.gradle
+            locator: gradle:dependencies.implementation[0]

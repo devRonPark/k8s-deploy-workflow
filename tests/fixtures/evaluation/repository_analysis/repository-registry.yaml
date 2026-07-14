@@ -1,0 +1,29 @@
+schema_version: repository-analysis-registry/v1
+registry_version: 2026-07-14.1
+repositories:
+  - case_id: public-fastapi-fullstack
+    visibility: public
+    stack: python-node-compose
+    repository_url: https://github.com/tiangolo/full-stack-fastapi-template
+    revision: 7d80b8534ecfff3d4c6cc631012298d6ef605ca0
+    expert_truth_path: expert-truth/public-fastapi-fullstack.yaml
+  - case_id: public-spring-petclinic
+    visibility: public
+    stack: java-maven-gradle-compose
+    repository_url: https://github.com/spring-projects/spring-petclinic
+    revision: 51045d1648dad955df586150c1a1a6e22ef400c2
+    expert_truth_path: expert-truth/public-spring-petclinic.yaml
+  - case_id: internal-gradle-service
+    visibility: internal
+    stack: java-gradle-spring
+    repository_url_env: REPOSITORY_EVAL_INTERNAL_GRADLE_URL
+    repository_path_env: REPOSITORY_EVAL_INTERNAL_GRADLE_PATH
+    revision_env: REPOSITORY_EVAL_INTERNAL_GRADLE_REVISION
+    expert_truth_path_env: REPOSITORY_EVAL_INTERNAL_GRADLE_TRUTH
+  - case_id: internal-node-service
+    visibility: internal
+    stack: node-typescript-docker
+    repository_url_env: REPOSITORY_EVAL_INTERNAL_NODE_URL
+    repository_path_env: REPOSITORY_EVAL_INTERNAL_NODE_PATH
+    revision_env: REPOSITORY_EVAL_INTERNAL_NODE_REVISION
+    expert_truth_path_env: REPOSITORY_EVAL_INTERNAL_NODE_TRUTH

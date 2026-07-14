@@ -1,0 +1,35 @@
+schema_version: repository-analysis-human-baseline/v1
+corpus_version: 2026-07-14.1
+cases:
+  - case_id: public-fastapi-fullstack
+    measurements:
+      - method: manual
+        operator_id: engineer-a
+        status: pending
+      - method: agent
+        operator_id: engineer-b
+        status: pending
+  - case_id: public-spring-petclinic
+    measurements:
+      - method: manual
+        operator_id: engineer-b
+        status: pending
+      - method: agent
+        operator_id: engineer-a
+        status: pending
+  - case_id: internal-gradle-service
+    measurements:
+      - method: manual
+        operator_id: engineer-a
+        status: pending
+      - method: agent
+        operator_id: engineer-b
+        status: pending
+  - case_id: internal-node-service
+    measurements:
+      - method: manual
+        operator_id: engineer-b
+        status: pending
+      - method: agent
+        operator_id: engineer-a
+        status: pending

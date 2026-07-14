@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "affected_cases": [
+        "node-normal",
+        "node-secret-absence",
+        "runtime-port-conflict",
+        "gradle-coverage-gap"
+      ],
+      "content_sha256": "sha256:ee8c5b9437761862770a621bff864c00a443b3d57febe64648352e859ce7952f",
+      "reason": "Lock normal, negative finding, conflict, and coverage-gap contracts.",
+      "version": "2026-07-14.1"
+    },
+    {
+      "affected_cases": [
+        "gradle-coverage-gap"
+      ],
+      "content_sha256": "sha256:db29775a39e72171b3cf3fd10548d64ed61d058dec2d64db280f56fa62faba5f",
+      "reason": "Require the Gradle fixture to produce an explicit component boundary.",
+      "version": "2026-07-14.2"
+    }
+  ],
+  "schema_version": "repository-analysis-corpus-lock/v1"
+}

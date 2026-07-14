@@ -1,0 +1,92 @@
+schema_version: repository-analysis-expert-truth/v1
+case_id: public-fastapi-fullstack
+revision: 7d80b8534ecfff3d4c6cc631012298d6ef605ca0
+fields:
+  - field_id: components.backend.present
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend
+  - field_id: components.backend.deployment_role
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: application
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend
+  - field_id: components.backend.workload_role
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: api
+    expected_evidence:
+      - artifact: backend/pyproject.toml
+        locator: tomlpath:$.project.dependencies[fastapi]
+  - field_id: components.backend.effective_runtime_command
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: '["fastapi", "run", "--workers", "4"]'
+    expected_evidence:
+      - artifact: backend/Dockerfile
+        locator: dockerfile:CMD
+  - field_id: components.backend.runtime_port
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: 8000
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend.healthcheck.test
+  - field_id: components.backend.secret.SECRET_KEY.classification
+    group: core
+    variant: common
+    expected_state: resolved
+    expected_value: secret
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend.environment.SECRET_KEY
+  - field_id: repository_modules.backend.present
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: backend/pyproject.toml
+        locator: tomlpath:$.project
+  - field_id: package_dependencies.backend.fastapi
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: backend/pyproject.toml
+        locator: tomlpath:$.project.dependencies[fastapi]
+  - field_id: runtime_dependencies.backend.db.present
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: true
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend.depends_on.db
+  - field_id: runtime_dependencies.backend.db.endpoint
+    group: extended
+    variant: compose-default
+    expected_state: resolved
+    expected_value: db
+    expected_evidence:
+      - artifact: compose.yml
+        locator: yamlpath:$.services.backend.environment.POSTGRES_SERVER
+  - field_id: components.backend.build_strategy
+    group: extended
+    variant: common
+    expected_state: resolved
+    expected_value: dockerfile
+    expected_evidence:
+      - artifact: backend/Dockerfile
+        locator: full-document:image-build
