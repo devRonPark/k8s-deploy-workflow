@@ -200,25 +200,30 @@ class RepositoryAnalysisScorecardAcceptanceTests(unittest.TestCase):
 
             self.assertEqual(report.corpus_version, "2026-07-14.1")
             self.assertEqual(report.case_count, 1)
-            self.assertEqual(report.metrics.core_field_accountability_rate, 3 / 6)
-            self.assertEqual(report.metrics.core_resolution_rate, 3 / 6)
-            self.assertEqual(report.metrics.extended_resolution_rate, 1 / 2)
+            self.assertEqual(report.metrics.core_field_accountability_rate, 1.0)
+            self.assertEqual(report.metrics.core_resolution_rate, 1.0)
+            self.assertEqual(report.metrics.extended_resolution_rate, 1.0)
             self.assertEqual(report.metrics.auto_confirmed_accuracy, 1.0)
-            self.assertEqual(report.metrics.evidence_reference_accuracy, 0.0)
-            self.assertEqual(report.metrics.ungrounded_auto_confirmed_count, 4)
+            self.assertEqual(report.metrics.evidence_reference_accuracy, 5 / 8)
+            self.assertEqual(report.metrics.ungrounded_auto_confirmed_count, 1)
             self.assertEqual(
                 report,
                 type(report).model_validate(report.model_dump(mode="json")),
             )
             self.assertFalse(report.quality_gate_passed)
-            self.assertEqual(report.cases[0].fields[1].actual_state, "missing")
-            self.assertEqual(report.cases[0].fields[2].actual_state, "missing")
+            self.assertEqual(report.cases[0].fields[1].actual_state, "resolved")
+            self.assertEqual(report.cases[0].fields[2].actual_state, "resolved")
             self.assertEqual(report.cases[0].fields[3].source, "dockerfile_cmd")
             self.assertEqual(report.cases[0].fields[3].confidence, "high")
             self.assertEqual(
                 report.cases[0].fields[3].classification, "rule_inference"
             )
             self.assertTrue((root / "report" / "repository-analysis-scorecard.json").is_file())
+            command_score = report.cases[0].fields[3]
+            self.assertEqual(
+                [(ref.artifact, ref.locator) for ref in command_score.evidence_references],
+                [("Dockerfile", "dockerfile:CMD")],
+            )
             markdown = (
                 root / "report" / "repository-analysis-scorecard.md"
             ).read_text(encoding="utf-8")
@@ -250,7 +255,46 @@ class RepositoryAnalysisScorecardAcceptanceTests(unittest.TestCase):
         self.assertEqual(report.case_count, 8)
         self.assertFalse(report.quality_gate_passed)
         conflict = next(case for case in report.cases if case.case_id == "runtime-port-conflict")
-        self.assertEqual(conflict.fields[0].actual_state, "missing")
+        self.assertEqual(conflict.fields[0].actual_state, "conflict")
+        self.assertEqual(report.metrics.evidence_reference_accuracy, 0.8)
+
+    def test_scorecard_report_is_byte_stable_for_same_inputs_and_clock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outputs = []
+            reports = []
+            for index in range(2):
+                output_dir = root / f"report-{index}"
+                report = run_repository_scorecard(
+                    corpus_path=EVALUATION_FIXTURES / "contract-corpus.yaml",
+                    lock_path=EVALUATION_FIXTURES / "contract-corpus.lock.json",
+                    repository_paths={
+                        "node-normal": FIXTURES / "node-express-like",
+                        "node-secret-absence": FIXTURES / "no-dockerfile-node",
+                        "runtime-port-conflict": FIXTURES / "port-conflict-node",
+                        "gradle-coverage-gap": FIXTURES / "gradle-spring-like",
+                        "maven-normal": FIXTURES / "java-spring-like",
+                        "python-normal": FIXTURES / "python-fastapi-like",
+                        "gradle-kotlin-coverage-gap": FIXTURES / "gradle-kotlin-like",
+                        "kubernetes-kustomize-coverage-gap": (
+                            FIXTURES / "kubernetes-kustomize-like"
+                        ),
+                    },
+                    output_dir=output_dir,
+                    clock=lambda: FIXED_TIME,
+                )
+                reports.append(report.model_dump(mode="json"))
+                outputs.append(
+                    (
+                        output_dir / "repository-analysis-scorecard.json"
+                    ).read_text(encoding="utf-8")
+                    + (
+                        output_dir / "repository-analysis-scorecard.md"
+                    ).read_text(encoding="utf-8")
+                )
+
+        self.assertEqual(reports[0], reports[1])
+        self.assertEqual(outputs[0], outputs[1])
 
 
 if __name__ == "__main__":

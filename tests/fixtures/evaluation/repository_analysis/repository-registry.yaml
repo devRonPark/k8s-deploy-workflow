@@ -1,5 +1,21 @@
 schema_version: repository-analysis-registry/v1
-registry_version: 2026-07-14.1
+registry_version: 2026-07-14.2
+corpus_version: 2026-07-14.2
+change_history:
+  - version: 2026-07-14.1
+    reason: Lock the initial four-repository evaluation registry.
+    affected_evaluations:
+      - public-fastapi-fullstack
+      - public-spring-petclinic
+      - internal-gradle-service
+      - internal-node-service
+  - version: 2026-07-14.2
+    reason: Bind the registry to the current materialized corpus version.
+    affected_evaluations:
+      - public-fastapi-fullstack
+      - public-spring-petclinic
+      - internal-gradle-service
+      - internal-node-service
 repositories:
   - case_id: public-fastapi-fullstack
     visibility: public

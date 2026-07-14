@@ -28,7 +28,7 @@ as an unbiased final evaluation.
 | Core field accountability | 25.00% | 100% |
 | Clear core field resolution | 28.57% | 90% |
 | Clear extended field resolution | 6.67% | 80% |
-| Extended auto-confirmed accuracy | 50.00% | 90% |
+| Auto-confirmed accuracy | 50.00% | 90% |
 | Precise evidence-reference accuracy | 0.00% | 100% |
 | Auto-confirmed fields without precise evidence/provenance | 8 | 0 |
 
@@ -48,20 +48,20 @@ core values to inflate extended accuracy.
 
 ## Fixed contract result
 
-The committed normal, negative-finding, conflict, and Gradle coverage-gap cases
-also fail the gate:
+The committed contract corpus version `2026-07-14.6` also fails the gate:
 
-- Core field accountability: 46.15%
-- Clear core field resolution: 54.55%
-- Clear extended field resolution: 25.00%
-- Extended auto-confirmed accuracy: 100.00%
-- Precise evidence-reference accuracy: 0.00%
-- Auto-confirmed fields without precise evidence/provenance: 7
+- Core field accountability: 61.54%
+- Clear core field resolution: 63.64%
+- Clear extended field resolution: 75.00%
+- Auto-confirmed accuracy: 100.00%
+- Precise evidence-reference accuracy: 80.00%
+- Auto-confirmed fields without precise evidence/provenance: 2
 
-The current path handles straightforward Node, Maven, and Python command/port
-facts, but it does not explicitly represent a proven Secret absence, preserve
-the two runtime-port candidates as a conflict, or turn Gradle, Kubernetes, and
-Kustomize discoveries into accountable topology conclusions.
+The current path handles straightforward Node, Maven, Python command/port facts,
+package dependency scorecard fields, proven Secret absence, and the runtime-port
+conflict. It still fails the gate because some exact evidence references and
+grounding metadata are intentionally incomplete, and Gradle, Kubernetes, and
+Kustomize discoveries do not yet become fully accountable topology conclusions.
 
 ## Reproduction and privacy
 

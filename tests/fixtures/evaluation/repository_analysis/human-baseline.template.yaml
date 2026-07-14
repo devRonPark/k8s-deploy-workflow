@@ -1,5 +1,21 @@
 schema_version: repository-analysis-human-baseline/v1
-corpus_version: 2026-07-14.1
+baseline_version: 2026-07-14.2
+corpus_version: 2026-07-14.2
+change_history:
+  - version: 2026-07-14.1
+    reason: Lock the initial manual-vs-Agent timing template.
+    affected_evaluations:
+      - public-fastapi-fullstack
+      - public-spring-petclinic
+      - internal-gradle-service
+      - internal-node-service
+  - version: 2026-07-14.2
+    reason: Bind the timing template to the current materialized corpus version.
+    affected_evaluations:
+      - public-fastapi-fullstack
+      - public-spring-petclinic
+      - internal-gradle-service
+      - internal-node-service
 cases:
   - case_id: public-fastapi-fullstack
     measurements:

@@ -1,0 +1,28 @@
+{
+  "contract_kind": "repository_registry",
+  "entries": [
+    {
+      "affected_evaluations": [
+        "public-fastapi-fullstack",
+        "public-spring-petclinic",
+        "internal-gradle-service",
+        "internal-node-service"
+      ],
+      "content_sha256": "sha256:934a008ba67cb5baaf7c534fd78c959bf13cce212cccc81bc736de4a8ff8332c",
+      "reason": "Lock the initial four-repository evaluation registry.",
+      "version": "2026-07-14.1"
+    },
+    {
+      "affected_evaluations": [
+        "public-fastapi-fullstack",
+        "public-spring-petclinic",
+        "internal-gradle-service",
+        "internal-node-service"
+      ],
+      "content_sha256": "sha256:934a008ba67cb5baaf7c534fd78c959bf13cce212cccc81bc736de4a8ff8332c",
+      "reason": "Bind the registry to the current materialized corpus version.",
+      "version": "2026-07-14.2"
+    }
+  ],
+  "schema_version": "repository-analysis-contract-lock/v1"
+}
