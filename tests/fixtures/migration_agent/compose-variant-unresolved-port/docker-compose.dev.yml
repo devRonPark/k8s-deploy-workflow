@@ -1,0 +1,4 @@
+services:
+  api:
+    ports:
+      - "${DEV_HOST_PORT}:${DEV_APP_PORT}"

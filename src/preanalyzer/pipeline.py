@@ -17,7 +17,7 @@ from preanalyzer.path_safety import resolve_repository_path
 
 from preanalyzer.analyzer.evidence_builder import build as build_evidence
 from preanalyzer.analyzer.parsers.compose import try_parse as try_parse_compose
-from preanalyzer.analyzer.parsers.compose import try_parse_with_override
+from preanalyzer.analyzer.parsers.compose import try_parse_with_overrides
 from preanalyzer.analyzer.parsers.dockerfile import try_parse as try_parse_dockerfile
 from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
 from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
@@ -575,11 +575,11 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
         path = str(item["path"])
         record(path, try_parse_dockerfile(repo / path))
 
-    for base_path, override_path in _pair_compose_files(inventory.compose_files):
-        if override_path is None:
-            record(base_path, try_parse_compose(repo / base_path))
+    for record_path, paths in _compose_parse_jobs(inventory.compose_files):
+        if len(paths) == 1:
+            record(record_path, try_parse_compose(repo / paths[0]))
         else:
-            record(base_path, try_parse_with_override(repo / base_path, repo / override_path))
+            record(record_path, try_parse_with_overrides(repo / paths[0], [repo / path for path in paths[1:]]))
 
     build_parsers = {
         "maven": try_parse_maven,
@@ -622,18 +622,21 @@ COMPOSE_BASE_NAMES = {
     "docker-compose.yml",
 }
 COMPOSE_OVERRIDE_NAMES = {
+    "compose.override.yaml",
+    "compose.override.yml",
     "docker-compose.override.yaml",
     "docker-compose.override.yml",
 }
 
 
-def _pair_compose_files(compose_files: list) -> list[tuple[str, str | None]]:
-    """Pair base compose files with a same-directory override file.
+def _compose_parse_jobs(compose_files: list) -> list[tuple[str, list[str]]]:
+    """Build deterministic Compose parse jobs.
 
-    Yields (base_path, override_path) tuples. When a directory holds exactly
-    one base and exactly one override file they are paired for merged parsing.
-    Every other compose file (no override, an orphan override, or an ambiguous
-    multi-base directory) is yielded as (path, None) for independent parsing.
+    A directory with one base file and at most one default override has a known
+    merge relationship. Variant files such as ``docker-compose.dev.yml`` are
+    parsed as base + default override + variant and recorded under the variant
+    path so coverage can explain which view contributed facts. Ambiguous
+    multi-base or multi-override directories fall back to independent parsing.
     """
     by_dir: dict[str, dict[str, list[str]]] = {}
     for item in compose_files:
@@ -648,16 +651,21 @@ def _pair_compose_files(compose_files: list) -> list[tuple[str, str | None]]:
         else:
             bucket["other"].append(path)
 
-    pairs: list[tuple[str, str | None]] = []
+    jobs: list[tuple[str, list[str]]] = []
     for bucket in by_dir.values():
-        if len(bucket["base"]) == 1 and len(bucket["override"]) == 1:
-            pairs.append((bucket["base"][0], bucket["override"][0]))
+        base = sorted(bucket["base"])
+        overrides = sorted(bucket["override"])
+        variants = sorted(bucket["other"])
+
+        if len(base) == 1 and len(overrides) <= 1:
+            default_chain = [base[0], *overrides]
+            jobs.append((base[0], default_chain))
+            for variant in variants:
+                jobs.append((variant, [*default_chain, variant]))
         else:
-            for path in bucket["base"] + bucket["override"]:
-                pairs.append((path, None))
-        for path in bucket["other"]:
-            pairs.append((path, None))
-    return sorted(pairs, key=lambda pair: pair[0])
+            for path in base + overrides + variants:
+                jobs.append((path, [path]))
+    return sorted(jobs, key=lambda job: job[0])
 
 
 def _write_yaml(path: Path, document: dict) -> None:

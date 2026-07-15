@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import fnmatch
 import hashlib
+import re
 import subprocess
 
 import yaml
@@ -31,6 +32,7 @@ COMPOSE_NAMES = {
     "docker-compose.override.yaml",
     "docker-compose.override.yml",
 }
+COMPOSE_VARIANT_RE = re.compile(r"^(?:docker-)?compose\.[^.]+(?:\.[^.]+)*\.ya?ml$")
 
 BUILD_FILE_TYPES = {
     "pom.xml": "maven",
@@ -127,7 +129,7 @@ def build_inventory(repo: Path, snapshot: RepositorySnapshot) -> ArtifactInvento
         if _is_dockerfile(path):
             container_files.append({"path": rel, "type": "dockerfile", "present": True})
 
-        if lower_name in COMPOSE_NAMES:
+        if _is_compose_file(path):
             compose_files.append({"path": rel, "type": "compose"})
 
         build_type = _build_file_type(path)
@@ -240,7 +242,7 @@ def _ci_cd_type(path: Path, rel: str) -> str | None:
 def _is_kubernetes_manifest(path: Path) -> bool:
     if path.suffix.lower() not in {".yaml", ".yml"}:
         return False
-    if path.name.lower() in COMPOSE_NAMES:
+    if _is_compose_file(path):
         return False
     try:
         text = path.read_text(encoding="utf-8")
@@ -251,6 +253,11 @@ def _is_kubernetes_manifest(path: Path) -> bool:
         return any(isinstance(doc, dict) and "apiVersion" in doc and "kind" in doc for doc in documents)
     except yaml.YAMLError:
         return False
+
+
+def _is_compose_file(path: Path) -> bool:
+    lower_name = path.name.lower()
+    return lower_name in COMPOSE_NAMES or bool(COMPOSE_VARIANT_RE.match(lower_name))
 
 
 def _format_utc(value: datetime) -> str:

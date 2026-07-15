@@ -350,7 +350,7 @@ def _build_command(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
 def _runtime_port(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
     candidates = artifacts.rule_inference.get("runtime_port_candidates", [])
     unresolved_refs, unresolved_details = _unresolved_compose_port_refs_and_details(artifacts)
-    if not candidates and unresolved_refs:
+    if unresolved_refs:
         return _unresolved(
             "Compose port evidence contains unresolved interpolation, so no runtime port was inferred.",
             unresolved_refs,

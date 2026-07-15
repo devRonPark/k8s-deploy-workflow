@@ -40,6 +40,15 @@ class SampleRepoScannerAcceptanceTests(unittest.TestCase):
                 "container_files": [{"path": "Dockerfile", "type": "dockerfile", "present": True}],
                 "compose_files": [],
             },
+            "compose-variant-like": {
+                "build_files": [],
+                "container_files": [{"path": "Dockerfile", "type": "dockerfile", "present": False}],
+                "compose_files": [
+                    {"path": "compose.override.yml", "type": "compose"},
+                    {"path": "compose.yaml", "type": "compose"},
+                    {"path": "docker-compose.dev.yml", "type": "compose"},
+                ],
+            },
         }
 
         with tempfile.TemporaryDirectory() as tmp:

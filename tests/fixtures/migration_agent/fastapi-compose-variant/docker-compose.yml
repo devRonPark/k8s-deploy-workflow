@@ -1,0 +1,6 @@
+services:
+  api:
+    build: ./backend
+    image: fastapi-app:latest
+    environment:
+      API_SECRET_KEY: "${API_SECRET_KEY}"

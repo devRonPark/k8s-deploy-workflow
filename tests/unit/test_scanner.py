@@ -116,14 +116,26 @@ class ScannerTests(unittest.TestCase):
     def test_compose_variants_detected(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            for name in ["docker-compose.yml", "docker-compose.override.yml", "compose.yaml"]:
+            for name in [
+                "docker-compose.yml",
+                "docker-compose.override.yml",
+                "docker-compose.dev.yml",
+                "compose.yaml",
+                "compose.prod.yaml",
+            ]:
                 (repo / name).write_text("services: {}\n", encoding="utf-8")
 
             inventory = build_inventory(repo, snapshot(repo, None, None, fixed_clock))
 
         self.assertEqual(
             paths(inventory.compose_files),
-            ["compose.yaml", "docker-compose.override.yml", "docker-compose.yml"],
+            [
+                "compose.prod.yaml",
+                "compose.yaml",
+                "docker-compose.dev.yml",
+                "docker-compose.override.yml",
+                "docker-compose.yml",
+            ],
         )
 
     def test_env_template_detected_but_env_value_not_inventoried(self):

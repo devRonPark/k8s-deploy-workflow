@@ -43,18 +43,27 @@ def _component_candidates_from_compose(evidence: EvidenceModel) -> list[Componen
         fact.value["service"]: _normalize_root(fact.value["context"])
         for fact in evidence.facts_by_type("compose_build_context")
     }
-    candidates = []
+    by_service: dict[str, ComponentCandidate] = {}
     for fact in evidence.facts_by_type("compose_service"):
         service = fact.value["service"]
-        candidates.append(
-            ComponentCandidate(
+        existing = by_service.get(service)
+        root_path = build_context_by_service.get(service)
+        if existing is None:
+            by_service[service] = ComponentCandidate(
                 component_id=service,
-                root_path=build_context_by_service.get(service),
+                root_path=root_path,
                 source="compose_service",
                 evidence_refs=[fact.evidence_id],
             )
+            continue
+        refs = [*existing.evidence_refs, fact.evidence_id]
+        by_service[service] = ComponentCandidate(
+            component_id=service,
+            root_path=existing.root_path or root_path,
+            source=existing.source,
+            evidence_refs=_distinct_ordered(refs),
         )
-    return candidates
+    return sorted(by_service.values(), key=lambda candidate: candidate.component_id)
 
 
 _PACKAGE_MANIFEST_FACTS = {
@@ -373,6 +382,17 @@ def _source_for_package_fact(fact: EvidenceFact) -> str:
     if fact.fact_type == "maven_packaging":
         return "pom.xml"
     return fact.source
+
+
+def _distinct_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeCandidate]:

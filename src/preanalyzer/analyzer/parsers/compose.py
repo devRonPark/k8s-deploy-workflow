@@ -140,11 +140,14 @@ def parse(path: Path) -> ParsedCompose:
 
 
 def parse_with_override(base_path: Path, override_path: Path | None) -> ParsedCompose:
-    base = _load(base_path)
-    if override_path is None:
-        document = base
-    else:
-        document = _merge_compose_documents(base, _load(override_path))
+    override_paths = [] if override_path is None else [override_path]
+    return parse_with_overrides(base_path, override_paths)
+
+
+def parse_with_overrides(base_path: Path, override_paths: list[Path]) -> ParsedCompose:
+    document = _load(base_path)
+    for override_path in override_paths:
+        document = _merge_compose_documents(document, _load(override_path))
     return _parse_document(base_path, document)
 
 
@@ -154,6 +157,10 @@ def try_parse(path: Path) -> ParsedCompose | ParseWarning:
 
 def try_parse_with_override(base_path: Path, override_path: Path | None) -> ParsedCompose | ParseWarning:
     return _guard(base_path, lambda: parse_with_override(base_path, override_path))
+
+
+def try_parse_with_overrides(base_path: Path, override_paths: list[Path]) -> ParsedCompose | ParseWarning:
+    return _guard(base_path, lambda: parse_with_overrides(base_path, override_paths))
 
 
 def _guard(path: Path, call) -> ParsedCompose | ParseWarning:

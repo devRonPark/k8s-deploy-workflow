@@ -104,6 +104,53 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertIn("partial", (output / "repository-assessment.md").read_text(encoding="utf-8"))
             self.assert_no_forbidden_outputs(output)
 
+    def test_compose_variant_files_contribute_runtime_port_without_secret_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "fastapi-compose-variant"
+
+            console, understanding, assessment = run_assess("fastapi-compose-variant", output)
+
+            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            coverage_items = {item["artifact_ref"]: item for item in assessment["coverage"]["items"]}
+            serialized = "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in (
+                    output / "discovery.json",
+                    output / "repository-understanding.yaml",
+                    output / "repository-assessment.json",
+                    output / "repository-assessment.md",
+                )
+            )
+
+            self.assertEqual(runtime_port["state"], "resolved")
+            self.assertEqual(runtime_port["value"], 8000)
+            self.assertEqual([component["component_id"] for component in understanding["topology"]["components"]], ["api"])
+            self.assertEqual(coverage_items["docker-compose.dev.yml"]["status"], "parsed")
+            self.assertIn("docker-compose.dev.yml", serialized)
+            self.assertNotIn("API_SECRET_KEY=", serialized)
+            self.assertIn("Coverage", console)
+            self.assert_no_forbidden_outputs(output)
+
+    def test_unresolved_compose_variant_port_stays_unknown_with_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "compose-variant-unresolved-port"
+
+            _, understanding, assessment = run_assess("compose-variant-unresolved-port", output)
+
+            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            runtime_port_unknown = next(
+                item
+                for item in understanding["unknowns"]
+                if item["field_path"] == "lifecycle.variants[0].runtime_port"
+            )
+            coverage_items = {item["artifact_ref"]: item for item in assessment["coverage"]["items"]}
+
+            self.assertEqual(runtime_port["state"], "unresolved")
+            self.assertEqual(runtime_port_unknown["reason_code"], "unresolved_interpolation")
+            self.assertTrue(runtime_port_unknown["evidence_refs"])
+            self.assertEqual(coverage_items["docker-compose.dev.yml"]["status"], "partial")
+            self.assert_no_forbidden_outputs(output)
+
     def test_same_input_outputs_are_semantically_stable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             first_output = Path(tmp) / "first"
