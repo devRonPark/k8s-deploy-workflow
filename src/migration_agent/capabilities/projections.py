@@ -778,6 +778,13 @@ def _fact_variant_id(fact: dict[str, Any]) -> str:
 
 def _artifact_variant_id(artifact_ref: str) -> str:
     name = Path(artifact_ref).name.lower()
+    for suffix in (".properties", ".yaml", ".yml"):
+        if name == f"application{suffix}":
+            return "common"
+        prefix = "application-"
+        if name.startswith(prefix) and name.endswith(suffix):
+            variant = name.removeprefix(prefix).removesuffix(suffix)
+            return variant or "common"
     for prefix in ("docker-compose.", "compose."):
         if not name.startswith(prefix):
             continue
@@ -890,6 +897,10 @@ def _supported_fact_types() -> set[str]:
         "dotnet_launch_environment",
         "dotnet_configuration_key",
         "dotnet_connection_string_name",
+        "spring_configuration_key",
+        "spring_application_name",
+        "spring_server_port",
+        "spring_dependency_hint",
         "kubernetes_resource",
         "kubernetes_service_port",
         "kubernetes_container_image",
@@ -1003,6 +1014,8 @@ def _is_supported_inventory_item(bucket: str, artifact_type: str) -> bool:
         ("container_files", "dockerfile"),
         ("app_configs", "dotnet_appsettings"),
         ("app_configs", "dotnet_launch_settings"),
+        ("app_configs", "application_yaml"),
+        ("app_configs", "java_properties"),
         ("build_files", "dotnet_build_metadata"),
         ("build_files", "dotnet_project"),
         ("build_files", "dotnet_solution"),
@@ -1101,6 +1114,14 @@ def _locator_for_fact(fact: dict[str, Any], index: int, compose_counts: dict[tup
         return f"jsonpath:$.{str(value.get('key', '')).replace(':', '.')}"
     if fact_type == "dotnet_connection_string_name" and isinstance(value, dict):
         return f"jsonpath:$.ConnectionStrings.{value.get('name', '')}"
+    if fact_type == "spring_configuration_key" and isinstance(value, dict):
+        return f"config:{value.get('key', '')}"
+    if fact_type == "spring_application_name":
+        return "config:spring.application.name"
+    if fact_type == "spring_server_port":
+        return "config:server.port"
+    if fact_type == "spring_dependency_hint" and isinstance(value, dict):
+        return f"config:{value.get('key', '')}"
     if fact_type == "kubernetes_resource" and isinstance(value, dict):
         return f"yamlpath:{value.get('kind', 'Resource')}.{value.get('name', '')}.metadata"
     if fact_type == "kubernetes_service_port" and isinstance(value, dict):

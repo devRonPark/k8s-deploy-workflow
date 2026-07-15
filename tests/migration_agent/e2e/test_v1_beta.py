@@ -228,6 +228,46 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertNotIn("${API_TOKEN}", serialized)
             self.assert_no_forbidden_outputs(output)
 
+    def test_spring_configuration_inputs_reduce_unknowns_without_secret_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "spring-config-hints"
+
+            _, understanding, assessment = run_assess("spring-config-hints", output)
+
+            variants = {
+                (variant["component_id"], variant["variant_id"]): variant
+                for variant in understanding["lifecycle"]["variants"]
+            }
+            discovery = json.loads((output / "discovery.json").read_text(encoding="utf-8"))
+            fact_types = {fact["fact_type"] for fact in discovery["evidence_model"]["facts"]}
+            coverage_items = {
+                item["artifact_ref"]: item
+                for item in assessment["coverage"]["items"]
+            }
+            serialized = "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in (
+                    output / "discovery.json",
+                    output / "repository-understanding.yaml",
+                    output / "repository-assessment.json",
+                    output / "repository-assessment.md",
+                )
+            )
+
+            self.assertEqual([component["component_id"] for component in understanding["topology"]["components"]], ["catalog-service"])
+            self.assertEqual(variants[("catalog-service", "common")]["runtime_port"]["state"], "resolved")
+            self.assertEqual(variants[("catalog-service", "common")]["runtime_port"]["value"], 8081)
+            self.assertEqual(variants[("catalog-service", "test")]["runtime_port"]["state"], "resolved")
+            self.assertEqual(variants[("catalog-service", "test")]["runtime_port"]["value"], 18081)
+            self.assertIn("spring_application_name", fact_types)
+            self.assertIn("spring_server_port", fact_types)
+            self.assertIn("spring_dependency_hint", fact_types)
+            self.assertEqual(coverage_items["src/main/resources/application.yml"]["status"], "parsed")
+            self.assertEqual(coverage_items["src/test/resources/application-test.yml"]["status"], "parsed")
+            self.assertNotIn("${CONFIG_PASSWORD}", serialized)
+            self.assertNotIn("${SPRING_SECRET_TOKEN}", serialized)
+            self.assert_no_forbidden_outputs(output)
+
     def test_lifecycle_facts_are_scoped_to_components(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "multi-compose-scoped-lifecycle"

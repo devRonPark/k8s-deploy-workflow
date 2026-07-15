@@ -35,9 +35,12 @@ def infer(evidence: EvidenceModel) -> RuleInferenceSet:
     compose_components = _component_candidates_from_compose(evidence)
     kubernetes_components = _component_candidates_from_kubernetes(evidence)
     dotnet_components = _component_candidates_from_dotnet(evidence)
+    spring_components = _component_candidates_from_spring(evidence)
     package_components = _component_candidates_from_packages(evidence)
     component_candidates = _reconcile_components(
-        _merge_component_candidates(compose_components + kubernetes_components + dotnet_components),
+        _merge_component_candidates(
+            compose_components + kubernetes_components + dotnet_components + spring_components
+        ),
         package_components,
     )
     root_by_component = {candidate.component_id: candidate.root_path for candidate in component_candidates}
@@ -49,7 +52,7 @@ def infer(evidence: EvidenceModel) -> RuleInferenceSet:
         runtime_version_candidates=_runtime_version_candidates(evidence, component_candidates),
         runtime_port_candidates=_runtime_port_candidates(evidence, component_candidates),
         runtime_command_candidates=_runtime_command_candidates(evidence, component_candidates),
-        dependency_edge_candidates=_dependency_edge_candidates(evidence),
+        dependency_edge_candidates=_dependency_edge_candidates(evidence, component_candidates),
         env_classification=EnvClassification(secret_candidates=_secret_candidates(evidence)),
     )
 
@@ -118,6 +121,25 @@ def _component_candidates_from_dotnet(evidence: EvidenceModel) -> list[Component
                 component_id=project_name,
                 root_path=_artifact_root(fact.artifact_ref),
                 source="dotnet_project",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
+    return sorted(candidates, key=lambda candidate: candidate.component_id)
+
+
+def _component_candidates_from_spring(evidence: EvidenceModel) -> list[ComponentCandidate]:
+    candidates: list[ComponentCandidate] = []
+    for fact in evidence.facts_by_type("spring_application_name"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        service_name = fact.value.get("name")
+        if not isinstance(service_name, str) or not service_name:
+            continue
+        candidates.append(
+            ComponentCandidate(
+                component_id=service_name,
+                root_path=_spring_config_root(fact.artifact_ref),
+                source="spring_config",
                 evidence_refs=[fact.evidence_id],
             )
         )
@@ -240,6 +262,14 @@ def _role_candidates(evidence: EvidenceModel) -> list[RoleCandidate]:
             candidates.append(
                 RoleCandidate(project_name, "application", "dotnet_project", "medium", [fact.evidence_id])
             )
+    for fact in evidence.facts_by_type("spring_application_name"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence)
+        if component_id is not None:
+            candidates.append(
+                RoleCandidate(component_id, "application", "spring_config", "medium", [fact.evidence_id])
+            )
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.role))
 
 
@@ -339,6 +369,24 @@ def _runtime_candidates(
                 evidence_refs=[fact.evidence_id],
             )
         )
+    for fact in evidence.facts_by_type("spring_application_name"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence, component_candidates)
+        if component_id is None:
+            continue
+        candidates.append(
+            RuntimeCandidate(
+                component_id=component_id,
+                language="java",
+                framework="spring",
+                build_tool=_build_tool_for(component_id, root_by_component, evidence),
+                build_strategy=_build_strategy_for(component_id, root_by_component, evidence),
+                source="spring_config",
+                confidence="medium",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
     return sorted(candidates, key=lambda candidate: candidate.component_id)
 
 
@@ -422,6 +470,11 @@ def _runtime_port_candidates(
             continue
         if component_id is not None and isinstance(port, int):
             candidates.append(RuntimePortCandidate(component_id, port, fact.source, "medium", [fact.evidence_id]))
+    for fact in evidence.facts_by_type("spring_server_port"):
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence, component_candidates)
+        port = fact.value.get("port")
+        if component_id is not None and isinstance(port, int):
+            candidates.append(RuntimePortCandidate(component_id, port, fact.source, "medium", [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
 
 
@@ -455,6 +508,19 @@ def _component_for_artifact(artifact_ref: str, component_candidates: list[Compon
     return _owning_component(artifact_ref, component_candidates)
 
 
+def _spring_component_for_artifact(
+    artifact_ref: str,
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate] | None = None,
+) -> str | None:
+    candidates = component_candidates or _component_candidates_from_spring(evidence)
+    root = _spring_config_root(artifact_ref)
+    matches = [candidate.component_id for candidate in candidates if candidate.root_path == root]
+    if len(matches) == 1:
+        return matches[0]
+    return _owning_component(artifact_ref, candidates)
+
+
 def _owning_component(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
     """Return the component that owns ``artifact_ref`` by longest-prefix root.
 
@@ -486,6 +552,24 @@ def _owning_component(artifact_ref: str, component_candidates: list[ComponentCan
 def _artifact_root(artifact_ref: str) -> str:
     parent = artifact_ref.rsplit("/", 1)[0] if "/" in artifact_ref else "."
     return parent or "."
+
+
+def _spring_config_root(artifact_ref: str) -> str:
+    for marker in ("src/main/resources/", "src/test/resources/"):
+        if marker in artifact_ref:
+            root = artifact_ref.split(marker, 1)[0].rstrip("/")
+            return root or "."
+    return _artifact_root(artifact_ref)
+
+
+def _spring_config_variant_id(artifact_ref: str) -> str:
+    name = artifact_ref.rsplit("/", 1)[-1].lower()
+    for suffix in (".properties", ".yaml", ".yml"):
+        if name == f"application{suffix}":
+            return "common"
+        if name.startswith("application-") and name.endswith(suffix):
+            return name.removeprefix("application-").removesuffix(suffix) or "common"
+    return "common"
 
 
 def _component_id_for_root(root: str) -> str:
@@ -524,6 +608,30 @@ def _build_strategy_for(component_id: str, root_by_component: dict[str, str | No
     return "dockerfile_needed"
 
 
+def _build_tool_for(component_id: str, root_by_component: dict[str, str | None], evidence: EvidenceModel) -> str:
+    root_path = root_by_component.get(component_id)
+    for fact in evidence.facts_by_type("artifact_presence"):
+        if not fact.value.get("present", True):
+            continue
+        artifact_type = fact.value.get("type")
+        artifact_path = fact.value.get("path")
+        if not isinstance(artifact_path, str):
+            continue
+        if not _artifact_is_in_root(artifact_path, root_path):
+            continue
+        if artifact_type == "maven":
+            return "maven"
+        if artifact_type == "gradle":
+            return "gradle"
+    return "unknown"
+
+
+def _artifact_is_in_root(artifact_ref: str, root_path: str | None) -> bool:
+    if root_path in {None, "."}:
+        return "/" not in artifact_ref
+    return artifact_ref == root_path or artifact_ref.startswith(f"{root_path}/")
+
+
 def _fact_for_package(facts: list[EvidenceFact], package_name: str) -> EvidenceFact | None:
     for fact in facts:
         if fact.value["package"].lower() == package_name:
@@ -552,7 +660,10 @@ def _distinct_ordered(values: list[str]) -> list[str]:
     return result
 
 
-def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeCandidate]:
+def _dependency_edge_candidates(
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate],
+) -> list[DependencyEdgeCandidate]:
     candidates: list[DependencyEdgeCandidate] = []
     compose_services = {fact.value["service"] for fact in evidence.facts_by_type("compose_service")}
     for fact in evidence.facts_by_type("compose_depends_on"):
@@ -581,6 +692,23 @@ def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeC
                         evidence_refs=[fact.evidence_id],
                     )
                 )
+    for fact in evidence.facts_by_type("spring_dependency_hint"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence, component_candidates)
+        target = fact.value.get("target")
+        dependency_type = fact.value.get("kind")
+        if component_id is not None and isinstance(target, str) and isinstance(dependency_type, str):
+            candidates.append(
+                DependencyEdgeCandidate(
+                    source_component=component_id,
+                    target=target,
+                    dependency_type=dependency_type,
+                    source=fact.source,
+                    confidence="medium",
+                    evidence_refs=[fact.evidence_id],
+                )
+            )
     return sorted(candidates, key=lambda c: (c.source_component, c.target, c.dependency_type))
 
 

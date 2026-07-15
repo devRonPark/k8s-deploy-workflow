@@ -32,6 +32,7 @@ from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
 from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
 from preanalyzer.analyzer.parsers.python_pkg import try_parse_pyproject, try_parse_requirements
 from preanalyzer.analyzer.parsers.result import ParseWarning
+from preanalyzer.analyzer.parsers.spring import try_parse_spring_config
 from preanalyzer.analyzer.rule_inference import infer
 from preanalyzer.analyzer.runtime_command_resolver import analyze_runtime_commands
 from preanalyzer.analyzer.scanner import build_inventory, snapshot
@@ -620,6 +621,8 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
     app_config_parsers = {
         "dotnet_appsettings": try_parse_appsettings,
         "dotnet_launch_settings": try_parse_launch_settings,
+        "application_yaml": try_parse_spring_config,
+        "java_properties": try_parse_spring_config,
     }
     for item in inventory.app_configs:
         path = str(item["path"])

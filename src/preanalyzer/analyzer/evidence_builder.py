@@ -17,6 +17,7 @@ from preanalyzer.analyzer.parsers.kubernetes import ParsedKubernetesManifest
 from preanalyzer.analyzer.parsers.maven import ParsedMaven
 from preanalyzer.analyzer.parsers.nodejs import ParsedNodePackage
 from preanalyzer.analyzer.parsers.python_pkg import ParsedPythonPackage
+from preanalyzer.analyzer.parsers.spring import ParsedSpringConfig
 from preanalyzer.models.evidence import EvidenceFact, EvidenceModel
 from preanalyzer.models.inventory import ArtifactInventory, ArtifactItem
 
@@ -60,6 +61,8 @@ def build(inventory: ArtifactInventory, parsed_artifacts: dict[str, object]) -> 
             _append_dotnet_launch_settings_facts(append, artifact_ref, parsed)
         elif isinstance(parsed, ParsedDotnetAppSettings):
             _append_dotnet_appsettings_facts(append, artifact_ref, parsed)
+        elif isinstance(parsed, ParsedSpringConfig):
+            _append_spring_config_facts(append, artifact_ref, parsed)
         elif isinstance(parsed, ParsedKubernetesManifest):
             _append_kubernetes_facts(append, artifact_ref, parsed)
         elif isinstance(parsed, ParsedHelmChart):
@@ -225,6 +228,22 @@ def _append_dotnet_appsettings_facts(append, artifact_ref: str, parsed: ParsedDo
         append("dotnet_configuration_key", artifact_ref, "dotnet_appsettings", {"key": key})
     for name in parsed.connection_string_names:
         append("dotnet_connection_string_name", artifact_ref, "dotnet_appsettings", {"name": name})
+
+
+def _append_spring_config_facts(append, artifact_ref: str, parsed: ParsedSpringConfig) -> None:
+    for key in parsed.configuration_keys:
+        append("spring_configuration_key", artifact_ref, "spring_config", {"key": key})
+    if parsed.service_name is not None:
+        append("spring_application_name", artifact_ref, "spring_config", {"name": parsed.service_name})
+    if parsed.server_port is not None:
+        append("spring_server_port", artifact_ref, "spring_config", {"port": parsed.server_port})
+    for hint in parsed.dependency_hints:
+        append(
+            "spring_dependency_hint",
+            artifact_ref,
+            "spring_config",
+            {"kind": hint.kind, "target": hint.target, "key": hint.key},
+        )
 
 
 def _append_kubernetes_facts(append, artifact_ref: str, parsed: ParsedKubernetesManifest) -> None:

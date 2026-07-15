@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: catalog-service-test
+server:
+  port: 18081
