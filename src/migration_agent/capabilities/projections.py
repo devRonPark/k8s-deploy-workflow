@@ -420,6 +420,12 @@ def _environment_variable_names(artifacts: LegacyAnalysisArtifacts) -> list[str]
         name = fact["value"].get("name")
         if name:
             names.append(name)
+    for fact in artifacts.evidence_model.get("facts", []):
+        if fact.get("fact_type") != "dotnet_launch_environment" or not isinstance(fact.get("value"), dict):
+            continue
+        name = fact["value"].get("name")
+        if name:
+            names.append(name)
 
     env_classification = artifacts.rule_inference.get("env_classification", {})
     for candidates in env_classification.values():
@@ -528,6 +534,16 @@ def _supported_fact_types() -> set[str]:
         "compose_port",
         "compose_environment",
         "compose_volume",
+        "dotnet_project_metadata",
+        "dotnet_target_framework",
+        "dotnet_package_reference",
+        "dotnet_solution_project",
+        "dotnet_build_property",
+        "dotnet_launch_profile",
+        "dotnet_launch_port",
+        "dotnet_launch_environment",
+        "dotnet_configuration_key",
+        "dotnet_connection_string_name",
         "kubernetes_resource",
         "kubernetes_service_port",
         "kubernetes_container_image",
@@ -627,6 +643,11 @@ def _is_supported_inventory_item(bucket: str, artifact_type: str) -> bool:
         ("build_files", "python_pyproject"),
         ("compose_files", "compose"),
         ("container_files", "dockerfile"),
+        ("app_configs", "dotnet_appsettings"),
+        ("app_configs", "dotnet_launch_settings"),
+        ("build_files", "dotnet_build_metadata"),
+        ("build_files", "dotnet_project"),
+        ("build_files", "dotnet_solution"),
         ("helm_charts", "helm_chart"),
         ("kubernetes_manifests", "kubernetes_manifest"),
     }
@@ -697,6 +718,26 @@ def _locator_for_fact(fact: dict[str, Any], index: int, compose_counts: dict[tup
         return f"requirement-include:{value.get('kind', '')}:{value.get('path', '')}"
     if fact_type == "python_direct_reference" and isinstance(value, dict):
         return f"direct-reference:{value.get('kind', '')}:{value.get('package', '')}"
+    if fact_type == "dotnet_project_metadata" and isinstance(value, dict):
+        return "xmlpath:/Project"
+    if fact_type == "dotnet_target_framework" and isinstance(value, dict):
+        return "xmlpath:/Project/PropertyGroup/TargetFramework"
+    if fact_type == "dotnet_package_reference" and isinstance(value, dict):
+        return f"xmlpath:/Project/ItemGroup/PackageReference[@Include='{value.get('package', '')}']"
+    if fact_type == "dotnet_solution_project" and isinstance(value, dict):
+        return f"sln:Project[{value.get('name', '')}]"
+    if fact_type == "dotnet_build_property" and isinstance(value, dict):
+        return f"xmlpath:/Project/PropertyGroup/{value.get('name', '')}"
+    if fact_type == "dotnet_launch_profile" and isinstance(value, dict):
+        return f"jsonpath:$.profiles.{value.get('profile', '')}"
+    if fact_type == "dotnet_launch_port" and isinstance(value, dict):
+        return f"jsonpath:$.profiles.{value.get('profile', '')}.applicationUrl"
+    if fact_type == "dotnet_launch_environment" and isinstance(value, dict):
+        return f"jsonpath:$.profiles.{value.get('profile', '')}.environmentVariables.{value.get('name', '')}"
+    if fact_type == "dotnet_configuration_key" and isinstance(value, dict):
+        return f"jsonpath:$.{str(value.get('key', '')).replace(':', '.')}"
+    if fact_type == "dotnet_connection_string_name" and isinstance(value, dict):
+        return f"jsonpath:$.ConnectionStrings.{value.get('name', '')}"
     if fact_type == "kubernetes_resource" and isinstance(value, dict):
         return f"yamlpath:{value.get('kind', 'Resource')}.{value.get('name', '')}.metadata"
     if fact_type == "kubernetes_service_port" and isinstance(value, dict):

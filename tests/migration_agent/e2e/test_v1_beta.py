@@ -179,6 +179,46 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertEqual(coverage_items["chart/Chart.yaml"]["status"], "parsed")
             self.assert_no_forbidden_outputs(output)
 
+    def test_dotnet_configuration_inputs_reduce_unknowns_without_secret_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "dotnet-web-config"
+
+            _, understanding, assessment = run_assess("dotnet-web-config", output)
+
+            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            discovery = json.loads((output / "discovery.json").read_text(encoding="utf-8"))
+            fact_types = {fact["fact_type"] for fact in discovery["evidence_model"]["facts"]}
+            coverage_items = {
+                item["artifact_ref"]: item
+                for item in assessment["coverage"]["items"]
+            }
+            serialized = "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in (
+                    output / "discovery.json",
+                    output / "repository-understanding.yaml",
+                    output / "repository-assessment.json",
+                    output / "repository-assessment.md",
+                )
+            )
+
+            self.assertEqual(
+                [component["component_id"] for component in understanding["topology"]["components"]],
+                ["Catalog.Api"],
+            )
+            self.assertEqual(runtime_port["state"], "resolved")
+            self.assertEqual(runtime_port["value"], 5000)
+            self.assertIn("dotnet_project_metadata", fact_types)
+            self.assertIn("dotnet_launch_port", fact_types)
+            self.assertIn("dotnet_connection_string_name", fact_types)
+            self.assertEqual(coverage_items["src/Catalog.Api/Catalog.Api.csproj"]["status"], "parsed")
+            self.assertEqual(coverage_items["src/Catalog.Api/appsettings.json"]["status"], "parsed")
+            self.assertEqual(coverage_items["src/Catalog.Api/Properties/launchSettings.json"]["status"], "parsed")
+            self.assertNotIn("Password=", serialized)
+            self.assertNotIn("${DB_PASSWORD}", serialized)
+            self.assertNotIn("${API_TOKEN}", serialized)
+            self.assert_no_forbidden_outputs(output)
+
     def test_same_input_outputs_are_semantically_stable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             first_output = Path(tmp) / "first"
@@ -214,11 +254,12 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertIn(sha, report)
 
     def assert_no_forbidden_outputs(self, output: Path) -> None:
-        names = [path.name for path in output.rglob("*") if path.is_file()]
-        self.assertFalse(any("manifest" in name and name != "repository-assessment.md" for name in names), names)
-        self.assertFalse(any("proposal" in name for name in names), names)
-        self.assertFalse(any("decision" in name for name in names), names)
-        self.assertFalse(any("validation" in name for name in names), names)
+        paths = [path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()]
+        allowed = {"repository-assessment.md"}
+        self.assertFalse(any("manifest" in path and Path(path).name not in allowed for path in paths), paths)
+        self.assertFalse(any("proposal" in path for path in paths), paths)
+        self.assertFalse(any("decision" in path for path in paths), paths)
+        self.assertFalse(any("validation" in path for path in paths), paths)
 
 
 if __name__ == "__main__":

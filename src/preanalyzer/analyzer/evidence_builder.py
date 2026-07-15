@@ -5,6 +5,13 @@ from typing import Any
 from preanalyzer.analyzer.env_safety import build_env_fact
 from preanalyzer.analyzer.parsers.compose import ParsedCompose
 from preanalyzer.analyzer.parsers.dockerfile import ParsedDockerfile
+from preanalyzer.analyzer.parsers.dotnet import (
+    ParsedDotnetAppSettings,
+    ParsedDotnetBuildMetadata,
+    ParsedDotnetLaunchSettings,
+    ParsedDotnetProject,
+    ParsedDotnetSolution,
+)
 from preanalyzer.analyzer.parsers.helm import ParsedHelmChart
 from preanalyzer.analyzer.parsers.kubernetes import ParsedKubernetesManifest
 from preanalyzer.analyzer.parsers.maven import ParsedMaven
@@ -43,6 +50,16 @@ def build(inventory: ArtifactInventory, parsed_artifacts: dict[str, object]) -> 
             _append_dockerfile_facts(append, artifact_ref, parsed)
         elif isinstance(parsed, ParsedCompose):
             _append_compose_facts(append, artifact_ref, parsed)
+        elif isinstance(parsed, ParsedDotnetProject):
+            _append_dotnet_project_facts(append, artifact_ref, parsed)
+        elif isinstance(parsed, ParsedDotnetSolution):
+            _append_dotnet_solution_facts(append, artifact_ref, parsed)
+        elif isinstance(parsed, ParsedDotnetBuildMetadata):
+            _append_dotnet_build_metadata_facts(append, artifact_ref, parsed)
+        elif isinstance(parsed, ParsedDotnetLaunchSettings):
+            _append_dotnet_launch_settings_facts(append, artifact_ref, parsed)
+        elif isinstance(parsed, ParsedDotnetAppSettings):
+            _append_dotnet_appsettings_facts(append, artifact_ref, parsed)
         elif isinstance(parsed, ParsedKubernetesManifest):
             _append_kubernetes_facts(append, artifact_ref, parsed)
         elif isinstance(parsed, ParsedHelmChart):
@@ -133,6 +150,81 @@ def _append_compose_facts(append, artifact_ref: str, parsed: ParsedCompose) -> N
             append("compose_volume", artifact_ref, "compose_volumes", {"service": service.name, "volume": volume})
     for warning in parsed.warnings:
         append("parse_warning", artifact_ref, "compose_parser", warning)
+
+
+def _append_dotnet_project_facts(append, artifact_ref: str, parsed: ParsedDotnetProject) -> None:
+    append(
+        "dotnet_project_metadata",
+        artifact_ref,
+        "dotnet_project",
+        {
+            "project_name": parsed.project_name,
+            "sdk": parsed.sdk,
+            "assembly_name": parsed.assembly_name,
+            "root_namespace": parsed.root_namespace,
+            "target_frameworks": parsed.target_frameworks,
+        },
+    )
+    for target_framework in parsed.target_frameworks:
+        append(
+            "dotnet_target_framework",
+            artifact_ref,
+            "dotnet_project",
+            {"project_name": parsed.project_name, "target_framework": target_framework},
+        )
+    for package in parsed.package_references:
+        append(
+            "dotnet_package_reference",
+            artifact_ref,
+            "dotnet_project",
+            {"project_name": parsed.project_name, "package": package},
+        )
+
+
+def _append_dotnet_solution_facts(append, artifact_ref: str, parsed: ParsedDotnetSolution) -> None:
+    for project in parsed.projects:
+        append(
+            "dotnet_solution_project",
+            artifact_ref,
+            "dotnet_solution",
+            {"name": project.name, "path": project.path},
+        )
+
+
+def _append_dotnet_build_metadata_facts(append, artifact_ref: str, parsed: ParsedDotnetBuildMetadata) -> None:
+    for name in parsed.property_names:
+        append("dotnet_build_property", artifact_ref, "dotnet_build_metadata", {"name": name})
+
+
+def _append_dotnet_launch_settings_facts(append, artifact_ref: str, parsed: ParsedDotnetLaunchSettings) -> None:
+    for profile in parsed.profiles:
+        append(
+            "dotnet_launch_profile",
+            artifact_ref,
+            "dotnet_launch_settings",
+            {"profile": profile.name, "command_name": profile.command_name},
+        )
+        for port in profile.ports:
+            append(
+                "dotnet_launch_port",
+                artifact_ref,
+                "dotnet_launch_settings",
+                {"profile": port.profile, "port": port.port, "scheme": port.scheme},
+            )
+        for name in profile.environment_names:
+            append(
+                "dotnet_launch_environment",
+                artifact_ref,
+                "dotnet_launch_settings",
+                {"profile": profile.name, "name": name},
+            )
+
+
+def _append_dotnet_appsettings_facts(append, artifact_ref: str, parsed: ParsedDotnetAppSettings) -> None:
+    for key in parsed.configuration_keys:
+        append("dotnet_configuration_key", artifact_ref, "dotnet_appsettings", {"key": key})
+    for name in parsed.connection_string_names:
+        append("dotnet_connection_string_name", artifact_ref, "dotnet_appsettings", {"name": name})
 
 
 def _append_kubernetes_facts(append, artifact_ref: str, parsed: ParsedKubernetesManifest) -> None:

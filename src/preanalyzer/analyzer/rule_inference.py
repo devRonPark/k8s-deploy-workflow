@@ -34,9 +34,10 @@ KUBERNETES_COMPONENT_KINDS = KUBERNETES_WORKLOAD_KINDS | {"Service"}
 def infer(evidence: EvidenceModel) -> RuleInferenceSet:
     compose_components = _component_candidates_from_compose(evidence)
     kubernetes_components = _component_candidates_from_kubernetes(evidence)
+    dotnet_components = _component_candidates_from_dotnet(evidence)
     package_components = _component_candidates_from_packages(evidence)
     component_candidates = _reconcile_components(
-        _merge_component_candidates(compose_components + kubernetes_components),
+        _merge_component_candidates(compose_components + kubernetes_components + dotnet_components),
         package_components,
     )
     root_by_component = {candidate.component_id: candidate.root_path for candidate in component_candidates}
@@ -104,6 +105,23 @@ def _component_candidates_from_kubernetes(evidence: EvidenceModel) -> list[Compo
             evidence_refs=_distinct_ordered([*existing.evidence_refs, fact.evidence_id]),
         )
     return sorted(by_name.values(), key=lambda candidate: candidate.component_id)
+
+
+def _component_candidates_from_dotnet(evidence: EvidenceModel) -> list[ComponentCandidate]:
+    candidates: list[ComponentCandidate] = []
+    for fact in evidence.facts_by_type("dotnet_project_metadata"):
+        project_name = fact.value.get("project_name")
+        if not isinstance(project_name, str) or not project_name:
+            continue
+        candidates.append(
+            ComponentCandidate(
+                component_id=project_name,
+                root_path=_artifact_root(fact.artifact_ref),
+                source="dotnet_project",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
+    return sorted(candidates, key=lambda candidate: candidate.component_id)
 
 
 _PACKAGE_MANIFEST_FACTS = {
@@ -215,6 +233,13 @@ def _role_candidates(evidence: EvidenceModel) -> list[RoleCandidate]:
             candidates.append(
                 RoleCandidate(name, "application", "kubernetes_workload", "medium", [fact.evidence_id])
             )
+    for fact in evidence.facts_by_type("dotnet_project_metadata"):
+        project_name = fact.value.get("project_name")
+        sdk = str(fact.value.get("sdk") or "")
+        if isinstance(project_name, str) and project_name and sdk.endswith(".Sdk.Web"):
+            candidates.append(
+                RoleCandidate(project_name, "application", "dotnet_project", "medium", [fact.evidence_id])
+            )
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.role))
 
 
@@ -226,6 +251,7 @@ def _runtime_candidates(
     candidates: list[RuntimeCandidate] = []
     package_dependencies = evidence.facts_by_type("package_dependency")
     maven_packaging = evidence.facts_by_type("maven_packaging")
+    dotnet_projects = evidence.facts_by_type("dotnet_project_metadata")
 
     for fact in maven_packaging:
         component_id = _owning_component(fact.artifact_ref, component_candidates)
@@ -293,6 +319,26 @@ def _runtime_candidates(
                     [first.evidence_id],
                 )
             )
+    for fact in dotnet_projects:
+        component_id = _owning_component(fact.artifact_ref, component_candidates)
+        if component_id is None:
+            continue
+        target_frameworks = fact.value.get("target_frameworks")
+        if not isinstance(target_frameworks, list) or not target_frameworks:
+            continue
+        sdk = str(fact.value.get("sdk") or "")
+        candidates.append(
+            RuntimeCandidate(
+                component_id=component_id,
+                language="dotnet",
+                framework="aspnetcore" if sdk.endswith(".Sdk.Web") else None,
+                build_tool="dotnet",
+                build_strategy=_build_strategy_for(component_id, root_by_component, evidence),
+                source="dotnet_project",
+                confidence="high",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
     return sorted(candidates, key=lambda candidate: candidate.component_id)
 
 
@@ -369,6 +415,13 @@ def _runtime_port_candidates(
             if (workload, port) in service_backed_container_ports:
                 continue
             candidates.append(RuntimePortCandidate(workload, port, fact.source, "medium", [fact.evidence_id]))
+    for fact in evidence.facts_by_type("dotnet_launch_port"):
+        component_id = _owning_component(fact.artifact_ref, component_candidates)
+        port = fact.value.get("port")
+        if fact.value.get("scheme") != "http":
+            continue
+        if component_id is not None and isinstance(port, int):
+            candidates.append(RuntimePortCandidate(component_id, port, fact.source, "medium", [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
 
 

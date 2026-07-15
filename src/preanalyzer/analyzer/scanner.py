@@ -35,6 +35,9 @@ COMPOSE_NAMES = {
 COMPOSE_VARIANT_RE = re.compile(r"^(?:docker-)?compose\.[^.]+(?:\.[^.]+)*\.ya?ml$")
 
 BUILD_FILE_TYPES = {
+    "Directory.Build.props": "dotnet_build_metadata",
+    "Directory.Build.targets": "dotnet_build_metadata",
+    "Directory.Packages.props": "dotnet_build_metadata",
     "pom.xml": "maven",
     "build.gradle": "gradle",
     "build.gradle.kts": "gradle",
@@ -208,7 +211,7 @@ def _is_dockerfile(path: Path) -> bool:
 def _build_file_type(path: Path) -> str | None:
     if path.name in BUILD_FILE_TYPES:
         return BUILD_FILE_TYPES[path.name]
-    if path.suffix == ".csproj":
+    if path.suffix in {".csproj", ".fsproj", ".vbproj"}:
         return "dotnet_project"
     if path.suffix == ".sln":
         return "dotnet_solution"
@@ -220,6 +223,10 @@ def _app_config_type(path: Path) -> str | None:
     lower_name = name.lower()
     if lower_name.startswith(".env"):
         return "env"
+    if name == "launchSettings.json":
+        return "dotnet_launch_settings"
+    if lower_name.startswith("appsettings") and lower_name.endswith(".json"):
+        return "dotnet_appsettings"
     if name in APP_CONFIG_NAMES:
         return APP_CONFIG_NAMES[name]
     if lower_name.startswith("application") and lower_name.endswith((".yml", ".yaml")):

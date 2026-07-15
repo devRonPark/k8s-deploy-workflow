@@ -19,6 +19,13 @@ from preanalyzer.analyzer.evidence_builder import build as build_evidence
 from preanalyzer.analyzer.parsers.compose import try_parse as try_parse_compose
 from preanalyzer.analyzer.parsers.compose import try_parse_with_overrides
 from preanalyzer.analyzer.parsers.dockerfile import try_parse as try_parse_dockerfile
+from preanalyzer.analyzer.parsers.dotnet import (
+    try_parse_appsettings,
+    try_parse_build_metadata,
+    try_parse_launch_settings,
+    try_parse_project,
+    try_parse_solution,
+)
 from preanalyzer.analyzer.parsers.helm import try_parse as try_parse_helm
 from preanalyzer.analyzer.parsers.kubernetes import try_parse as try_parse_kubernetes
 from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
@@ -596,6 +603,9 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
         record(path, try_parse_helm(repo / path))
 
     build_parsers = {
+        "dotnet_build_metadata": try_parse_build_metadata,
+        "dotnet_project": try_parse_project,
+        "dotnet_solution": try_parse_solution,
         "maven": try_parse_maven,
         "nodejs": try_parse_nodejs,
         "python_pyproject": try_parse_pyproject,
@@ -604,6 +614,16 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
     for item in inventory.build_files:
         path = str(item["path"])
         parser = build_parsers.get(item["type"])
+        if parser is not None:
+            record(path, parser(repo / path))
+
+    app_config_parsers = {
+        "dotnet_appsettings": try_parse_appsettings,
+        "dotnet_launch_settings": try_parse_launch_settings,
+    }
+    for item in inventory.app_configs:
+        path = str(item["path"])
+        parser = app_config_parsers.get(item["type"])
         if parser is not None:
             record(path, parser(repo / path))
 
