@@ -14,6 +14,21 @@
 - Secret 값은 산출물, 로그, LLM 입력에 넣지 않고 이름과 분류 정보만 남깁니다.
 - LLM 연동은 선택 사항이며, 켜더라도 제한된 semantic task 보강에만 사용합니다.
 
+## Repository Assessment Beta
+
+`repository-agent`는 v1 beta CLI입니다. 이 경로는 Repository Assessment Beta이며, not a complete migration agent입니다. 입력 저장소를 분석해 Confirmed, Unknown, Conflict가 분리된 평가 보고서를 만들지만 Kubernetes manifests are not generated in v1.
+
+```bash
+.venv/bin/repository-agent assess tests/fixtures/migration_agent/node-docker
+```
+
+기본 산출물은 `.repository-agent/runs/<run-id>` 아래에 저장됩니다.
+
+- `discovery.json`
+- `repository-understanding.yaml`
+- `repository-assessment.json`
+- `repository-assessment.md`
+
 ## When to use it
 
 다음 상황에서 유용합니다.
@@ -43,11 +58,12 @@ python3 -m venv .venv
 .venv/bin/python3 -m pip install -e .
 ```
 
-설치가 끝나면 두 CLI를 사용할 수 있습니다.
+설치가 끝나면 세 CLI를 사용할 수 있습니다.
 
 ```bash
 .venv/bin/k8s-agent --help
 .venv/bin/preanalyzer --help
+.venv/bin/repository-agent --help
 ```
 
 Kubernetes schema 검증에는 프로젝트가 관리하는 `kubeconform` 바이너리가 필요합니다. 아래 명령은 없으면 설치하고, 실행 가능 여부까지 확인합니다.
