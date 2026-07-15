@@ -28,7 +28,7 @@ KUBERNETES_WORKLOAD_KINDS = {
     "ReplicationController",
     "StatefulSet",
 }
-KUBERNETES_COMPONENT_KINDS = KUBERNETES_WORKLOAD_KINDS | {"Service"}
+KUBERNETES_COMPONENT_KINDS = KUBERNETES_WORKLOAD_KINDS
 
 
 def infer(evidence: EvidenceModel) -> RuleInferenceSet:
@@ -424,6 +424,7 @@ def _runtime_port_candidates(
     candidates: list[RuntimePortCandidate] = []
     component_ids = {candidate.component_id for candidate in component_candidates}
     named_container_ports = _kubernetes_named_container_ports(evidence)
+    service_workload_matches = _kubernetes_service_workload_matches(evidence)
     service_backed_container_ports: set[tuple[str, int]] = set()
     for fact in evidence.facts_by_type("dockerfile_expose"):
         component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
@@ -440,13 +441,17 @@ def _runtime_port_candidates(
         service = fact.value.get("name")
         target_port = fact.value.get("target_port")
         service_port = fact.value.get("port")
-        if service not in component_ids:
+        match = service_workload_matches.get(service)
+        if match is None:
             continue
-        refs = [fact.evidence_id]
+        workload, selector_refs = match
+        if workload not in component_ids:
+            continue
+        refs = [fact.evidence_id, *selector_refs]
         if isinstance(target_port, int):
             port = target_port
         elif isinstance(target_port, str):
-            container_port_fact = named_container_ports.get((service, target_port))
+            container_port_fact = named_container_ports.get((workload, target_port))
             if container_port_fact is None:
                 continue
             port = container_port_fact.value["container_port"]
@@ -454,8 +459,8 @@ def _runtime_port_candidates(
         else:
             port = service_port
         if isinstance(port, int):
-            service_backed_container_ports.add((service, port))
-            candidates.append(RuntimePortCandidate(service, port, fact.source, "medium", refs))
+            service_backed_container_ports.add((workload, port))
+            candidates.append(RuntimePortCandidate(workload, port, fact.source, "medium", _distinct_ordered(refs)))
     for fact in evidence.facts_by_type("kubernetes_container_port"):
         workload = fact.value.get("workload")
         port = fact.value.get("container_port")
@@ -488,6 +493,45 @@ def _kubernetes_named_container_ports(evidence: EvidenceModel) -> dict[tuple[str
             continue
         named_ports.setdefault((workload, name), fact)
     return named_ports
+
+
+def _kubernetes_service_workload_matches(evidence: EvidenceModel) -> dict[str, tuple[str, list[str]]]:
+    workload_label_facts = []
+    for fact in evidence.facts_by_type("kubernetes_workload_pod_labels"):
+        kind = fact.value.get("kind")
+        workload = fact.value.get("name")
+        labels = fact.value.get("labels")
+        if kind not in KUBERNETES_WORKLOAD_KINDS:
+            continue
+        if not isinstance(workload, str) or not workload:
+            continue
+        if not isinstance(labels, dict) or not labels:
+            continue
+        workload_label_facts.append((workload, {str(key): str(value) for key, value in labels.items()}, fact))
+
+    matches: dict[str, tuple[str, list[str]]] = {}
+    for fact in evidence.facts_by_type("kubernetes_service_selector"):
+        service = fact.value.get("name")
+        selector = fact.value.get("selector")
+        if not isinstance(service, str) or not service:
+            continue
+        if not isinstance(selector, dict) or not selector:
+            continue
+        selector_values = {str(key): str(value) for key, value in selector.items()}
+        workload_matches = [
+            (workload, label_fact)
+            for workload, labels, label_fact in workload_label_facts
+            if _selector_matches(selector_values, labels)
+        ]
+        if len(workload_matches) != 1:
+            continue
+        workload, label_fact = workload_matches[0]
+        matches[service] = (workload, [fact.evidence_id, label_fact.evidence_id])
+    return matches
+
+
+def _selector_matches(selector: dict[str, str], labels: dict[str, str]) -> bool:
+    return all(labels.get(key) == value for key, value in selector.items())
 
 
 def _runtime_command_candidates(

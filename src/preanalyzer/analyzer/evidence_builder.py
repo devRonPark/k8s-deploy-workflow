@@ -290,6 +290,24 @@ def _append_kubernetes_facts(append, artifact_ref: str, parsed: ParsedKubernetes
                         "container_port": port.port,
                     },
                 )
+        if resource.pod_labels:
+            append(
+                "kubernetes_workload_pod_labels",
+                artifact_ref,
+                "kubernetes_manifest",
+                {
+                    "kind": resource.kind,
+                    "name": resource.name,
+                    "labels": resource.pod_labels,
+                },
+            )
+        if resource.selector:
+            append(
+                "kubernetes_service_selector",
+                artifact_ref,
+                "kubernetes_manifest",
+                {"name": resource.name, "selector": resource.selector},
+            )
 
 
 def _append_helm_facts(append, artifact_ref: str, parsed: ParsedHelmChart) -> None:

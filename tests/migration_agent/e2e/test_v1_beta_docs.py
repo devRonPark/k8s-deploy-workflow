@@ -21,7 +21,7 @@ class V1BetaDocumentationTests(unittest.TestCase):
         ):
             self.assertIn(expected, text)
         for expected in (
-            "Maven and Gradle project metadata",
+            "Maven project metadata and Gradle build-tool hints",
             "Spring application configuration",
             ".NET project, launch settings, and appsettings metadata",
             "Existing Kubernetes manifests and Helm chart metadata as read-only evidence",

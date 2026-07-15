@@ -649,6 +649,7 @@ def _lifecycle_component_aliases(artifacts: LegacyAnalysisArtifacts) -> dict[str
         for candidate in artifacts.rule_inference.get("role_candidates", [])
         if isinstance(candidate, dict) and candidate.get("role") in {"dependency", "infrastructure"}
     }
+    compose_images = _compose_images_by_service(artifacts)
     aliases: dict[str, str] = {}
     for candidate in candidates:
         component_id = candidate["component_id"]
@@ -658,8 +659,49 @@ def _lifecycle_component_aliases(artifacts: LegacyAnalysisArtifacts) -> dict[str
             continue
         if component_id in infrastructure_components:
             continue
+        if not _has_app_service_evidence(component_id, target_component_id, compose_images):
+            continue
         aliases[component_id] = target_component_id
     return aliases
+
+
+def _compose_images_by_service(artifacts: LegacyAnalysisArtifacts) -> dict[str, str]:
+    images: dict[str, str] = {}
+    for fact in artifacts.evidence_model.get("facts", []):
+        if not isinstance(fact, dict) or fact.get("fact_type") != "compose_image":
+            continue
+        value = fact.get("value")
+        if not isinstance(value, dict):
+            continue
+        service = value.get("service")
+        image = value.get("image")
+        if isinstance(service, str) and isinstance(image, str):
+            images[service] = image
+    return images
+
+
+def _has_app_service_evidence(
+    component_id: str,
+    target_component_id: str,
+    compose_images: dict[str, str],
+) -> bool:
+    if component_id == target_component_id:
+        return True
+    return _is_application_runtime_image(compose_images.get(component_id, ""))
+
+
+def _is_application_runtime_image(image: str) -> bool:
+    repository = image.lower().split("@", 1)[0].split(":", 1)[0]
+    name = repository.rsplit("/", 1)[-1]
+    return name in {
+        "aspnet",
+        "eclipse-temurin",
+        "node",
+        "openjdk",
+        "python",
+        "runtime",
+        "sdk",
+    }
 
 
 def _candidates_for_component(
@@ -903,6 +945,8 @@ def _supported_fact_types() -> set[str]:
         "spring_dependency_hint",
         "kubernetes_resource",
         "kubernetes_service_port",
+        "kubernetes_service_selector",
+        "kubernetes_workload_pod_labels",
         "kubernetes_container_image",
         "kubernetes_container_port",
         "helm_chart_metadata",
@@ -1126,6 +1170,13 @@ def _locator_for_fact(fact: dict[str, Any], index: int, compose_counts: dict[tup
         return f"yamlpath:{value.get('kind', 'Resource')}.{value.get('name', '')}.metadata"
     if fact_type == "kubernetes_service_port" and isinstance(value, dict):
         return f"yamlpath:Service.{value.get('name', '')}.spec.ports[{index}]"
+    if fact_type == "kubernetes_service_selector" and isinstance(value, dict):
+        return f"yamlpath:Service.{value.get('name', '')}.spec.selector"
+    if fact_type == "kubernetes_workload_pod_labels" and isinstance(value, dict):
+        return (
+            f"yamlpath:{value.get('kind', 'workload')}"
+            f".{value.get('name', '')}.spec.template.metadata.labels"
+        )
     if fact_type == "kubernetes_container_image" and isinstance(value, dict):
         return (
             f"yamlpath:{value.get('workload', 'workload')}"

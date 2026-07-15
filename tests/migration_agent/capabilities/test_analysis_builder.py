@@ -240,6 +240,42 @@ class RepositoryUnderstandingBuilderTests(unittest.TestCase):
         self.assertIn("lifecycle.variants[0].runtime_port", unknown_paths)
         self.assertIn("lifecycle.variants[0].container_build_strategy", unknown_paths)
 
+    def test_unknown_image_only_sidecar_port_is_not_aliased_to_root_app(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repository_path = Path(tmp)
+            (repository_path / "package.json").write_text(
+                '{"name": "root", "dependencies": {"express": "^4"}}',
+                encoding="utf-8",
+            )
+            (repository_path / "docker-compose.yml").write_text(
+                "services:\n"
+                "  mailhog:\n"
+                "    image: mailhog/mailhog:v1.0.1\n"
+                "    ports:\n"
+                "      - \"8025:8025\"\n",
+                encoding="utf-8",
+            )
+            artifacts = run_legacy_analysis(
+                repository_path=repository_path,
+                output_dir=repository_path / "out",
+            )
+            result = build_repository_understanding(
+                repository_path=repository_path,
+                artifacts=artifacts,
+            )
+
+        variants = {
+            variant.component_id: variant
+            for variant in result.lifecycle.variants
+        }
+
+        self.assertEqual(variants["root"].runtime_port.state, FieldState.UNRESOLVED)
+        self.assertEqual(variants["mailhog"].runtime_port.state, FieldState.RESOLVED)
+        self.assertEqual(variants["mailhog"].runtime_port.value, 8025)
+        self.assertTrue(
+            any(unknown.field_path.endswith(".runtime_port") for unknown in result.unknowns)
+        )
+
     def test_package_build_script_projects_to_build_command(self) -> None:
         artifacts = legacy_artifacts("node-docker")
         with_build_script = artifacts.model_copy(

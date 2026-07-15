@@ -41,6 +41,8 @@ class KubernetesResource:
     kind: str
     name: str
     labels: dict[str, str] = field(default_factory=dict)
+    pod_labels: dict[str, str] = field(default_factory=dict)
+    selector: dict[str, str] = field(default_factory=dict)
     containers: list[KubernetesContainer] = field(default_factory=list)
     service_ports: list[KubernetesServicePort] = field(default_factory=list)
 
@@ -86,6 +88,8 @@ def _parse_resource(document: dict[str, Any]) -> KubernetesResource | None:
         kind=kind,
         name=name,
         labels=_string_map(metadata.get("labels")),
+        pod_labels=_pod_labels(document, kind, metadata),
+        selector=_service_selector(document, kind),
         containers=_containers(document, kind, name),
         service_ports=_service_ports(document, kind, name),
     )
@@ -135,6 +139,31 @@ def _pod_spec(document: dict[str, Any], kind: str) -> dict[str, Any]:
         return {}
     pod_spec = template.get("spec")
     return pod_spec if isinstance(pod_spec, dict) else {}
+
+
+def _pod_labels(document: dict[str, Any], kind: str, metadata: dict[str, Any]) -> dict[str, str]:
+    if kind == "Pod":
+        return _string_map(metadata.get("labels"))
+    spec = document.get("spec") if isinstance(document.get("spec"), dict) else {}
+    if kind == "CronJob":
+        job_template = spec.get("jobTemplate")
+        job_spec = job_template.get("spec") if isinstance(job_template, dict) else {}
+        template = job_spec.get("template") if isinstance(job_spec, dict) else {}
+    else:
+        template = spec.get("template", {})
+    if not isinstance(template, dict):
+        return {}
+    template_metadata = template.get("metadata")
+    if not isinstance(template_metadata, dict):
+        return {}
+    return _string_map(template_metadata.get("labels"))
+
+
+def _service_selector(document: dict[str, Any], kind: str) -> dict[str, str]:
+    if kind != "Service":
+        return {}
+    spec = document.get("spec") if isinstance(document.get("spec"), dict) else {}
+    return _string_map(spec.get("selector"))
 
 
 def _container_ports(raw_container: dict[str, Any]) -> list[KubernetesContainerPort]:

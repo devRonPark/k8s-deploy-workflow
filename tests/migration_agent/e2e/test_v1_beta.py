@@ -348,7 +348,7 @@ class V1BetaEndToEndTests(unittest.TestCase):
         self.assertIn("repository-agent assess tests/fixtures/migration_agent/node-docker", report)
         self.assertIn("repository-agent assess tests/fixtures/migration_agent/node-compose-conflict", report)
         self.assertIn("repository-agent assess tests/fixtures/migration_agent/node-no-dockerfile", report)
-        self.assertIn("61 tests passed", report)
+        self.assertIn("62 tests passed", report)
         for repository, sha in (
             ("mybatis/jpetstore-6", "5a7cc780505b88a60779b3e3c0a50b0e404cfb2d"),
             ("fastapi/full-stack-fastapi-template", "4d3d5e92c1ea6b3fa0fab02c41124844ec45bca8"),
@@ -361,7 +361,7 @@ class V1BetaEndToEndTests(unittest.TestCase):
         for expected in (
             "Passed: 1 component, execution complete, 3 unknown, 0 conflicts; coverage parsed 2, partial 1, unsupported 8, ignored 1",
             "Passed: 9 components, execution conflicted, 89 unknown, 5 conflicts; coverage parsed 8, partial 2, unsupported 15, ignored 11",
-            "Passed: 22 components, execution partial, 107 unknown, 1 conflict; coverage parsed 97, partial 0, unsupported 34, ignored 43",
+            "Passed: 21 components, execution partial, 101 unknown, 1 conflict; coverage parsed 97, partial 0, unsupported 34, ignored 43",
             "Passed: 20 components, execution partial, 124 unknown, 0 conflicts; coverage parsed 18, partial 8, unsupported 2, ignored 4",
             "Passed: 25 components, execution partial, 157 unknown, 0 conflicts; coverage parsed 57, partial 5, unsupported 4, ignored 4",
         ):
