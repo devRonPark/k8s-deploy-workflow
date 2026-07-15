@@ -89,29 +89,51 @@ def project_topology(artifacts: LegacyAnalysisArtifacts) -> ApplicationTopology:
 
 
 def project_lifecycle(artifacts: LegacyAnalysisArtifacts) -> LifecycleModel:
-    build_command = _build_command(artifacts)
+    scopes = _lifecycle_scopes(artifacts)
+    if not scopes:
+        scopes = [(None, "common")]
+
+    return LifecycleModel(
+        variants=[
+            _lifecycle_variant(artifacts=artifacts, component_id=component_id, variant_id=variant_id)
+            for component_id, variant_id in scopes
+        ]
+    )
+
+
+def _lifecycle_variant(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None,
+    variant_id: str,
+) -> LifecycleVariant:
     runtime_command = _tracked_from_candidates(
-        candidates=artifacts.rule_inference.get("runtime_command_candidates", []),
+        candidates=_candidates_for_scope(
+            artifacts=artifacts,
+            candidates=artifacts.rule_inference.get("runtime_command_candidates", []),
+            component_id=component_id,
+            variant_id=variant_id,
+            aliases=_lifecycle_component_aliases(artifacts),
+        ),
         value_key="command",
         missing_reason="No runtime command evidence was found.",
         conflict_reason="Multiple runtime command candidates were found.",
     )
-    runtime_port = _runtime_port(artifacts)
-    container_strategy = _container_build_strategy(artifacts)
 
-    return LifecycleModel(
-        variants=[
-            LifecycleVariant(
-                build_command=build_command,
-                package_command=_unresolved("No package command evidence was found."),
-                run_command=runtime_command,
-                runtime_port=runtime_port,
-                environment_variable_names=_environment_variable_names(artifacts),
-                external_dependencies=_external_dependencies(artifacts),
-                container_build_strategy=container_strategy,
-                container_entrypoint=_container_entrypoint(artifacts),
-            )
-        ]
+    return LifecycleVariant(
+        component_id=component_id,
+        variant_id=variant_id,
+        build_command=_build_command(artifacts, component_id=component_id, variant_id=variant_id),
+        package_command=_unresolved("No package command evidence was found."),
+        run_command=runtime_command,
+        runtime_port=_runtime_port(artifacts, component_id=component_id, variant_id=variant_id),
+        environment_variable_names=_environment_variable_names(artifacts, component_id=component_id),
+        external_dependencies=_external_dependencies(artifacts, component_id=component_id),
+        container_build_strategy=_container_build_strategy(
+            artifacts,
+            component_id=component_id,
+            variant_id=variant_id,
+        ),
+        container_entrypoint=_container_entrypoint(artifacts, component_id=component_id, variant_id=variant_id),
     )
 
 
@@ -123,15 +145,19 @@ def project_findings(
     unknowns: list[UnknownFinding] = []
     conflicts: list[ConflictFinding] = []
 
-    variant = lifecycle.variants[0]
-    tracked_fields = {
-        "lifecycle.variants[0].build_command": variant.build_command,
-        "lifecycle.variants[0].package_command": variant.package_command,
-        "lifecycle.variants[0].run_command": variant.run_command,
-        "lifecycle.variants[0].runtime_port": variant.runtime_port,
-        "lifecycle.variants[0].container_build_strategy": variant.container_build_strategy,
-        "lifecycle.variants[0].container_entrypoint": variant.container_entrypoint,
-    }
+    tracked_fields = {}
+    for index, variant in enumerate(lifecycle.variants):
+        prefix = f"lifecycle.variants[{index}]"
+        tracked_fields.update(
+            {
+                f"{prefix}.build_command": variant.build_command,
+                f"{prefix}.package_command": variant.package_command,
+                f"{prefix}.run_command": variant.run_command,
+                f"{prefix}.runtime_port": variant.runtime_port,
+                f"{prefix}.container_build_strategy": variant.container_build_strategy,
+                f"{prefix}.container_entrypoint": variant.container_entrypoint,
+            }
+        )
     for index, component in enumerate(topology.components):
         tracked_fields[f"topology.components[{index}].role"] = component.role
 
@@ -304,11 +330,17 @@ def _tracked_from_candidates(
     )
 
 
-def _container_build_strategy(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
+def _container_build_strategy(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+    variant_id: str = "common",
+) -> TrackedValue:
+    del variant_id
     dockerfiles = [
         item
         for item in artifacts.artifact_inventory.get("container_files", [])
         if item.get("type") == "dockerfile" and item.get("present", True)
+        and _path_belongs_to_component(artifacts, str(item.get("path", "")), component_id)
     ]
     if not dockerfiles:
         return _unresolved("No Dockerfile evidence was found.")
@@ -319,6 +351,7 @@ def _container_build_strategy(artifacts: LegacyAnalysisArtifacts) -> TrackedValu
         if fact.get("fact_type") == "artifact_presence"
         and fact.get("value", {}).get("type") == "dockerfile"
         and fact.get("value", {}).get("present", True)
+        and _fact_belongs_to_component(artifacts, fact, component_id)
     ]
     return TrackedValue(
         state=FieldState.RESOLVED,
@@ -330,14 +363,20 @@ def _container_build_strategy(artifacts: LegacyAnalysisArtifacts) -> TrackedValu
     )
 
 
-def _build_command(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
+def _build_command(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+    variant_id: str = "common",
+) -> TrackedValue:
     build_command = _package_script_command(
         artifacts=artifacts,
+        component_id=component_id,
+        variant_id=variant_id,
         script_name="build",
         missing_reason="No build command evidence was found.",
         conflict_reason="Multiple build command candidates were found.",
     )
-    unsupported_refs = _unsupported_artifact_evidence_refs(artifacts, bucket="build_files")
+    unsupported_refs = _unsupported_artifact_evidence_refs(artifacts, bucket="build_files", component_id=component_id)
     if build_command.state == FieldState.UNRESOLVED and unsupported_refs:
         return _unresolved(
             "Unsupported build artifacts were discovered, so build command evidence may be incomplete.",
@@ -347,9 +386,23 @@ def _build_command(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
     return build_command
 
 
-def _runtime_port(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
-    candidates = artifacts.rule_inference.get("runtime_port_candidates", [])
-    unresolved_refs, unresolved_details = _unresolved_compose_port_refs_and_details(artifacts)
+def _runtime_port(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+    variant_id: str = "common",
+) -> TrackedValue:
+    candidates = _candidates_for_scope(
+        artifacts=artifacts,
+        candidates=artifacts.rule_inference.get("runtime_port_candidates", []),
+        component_id=component_id,
+        variant_id=variant_id,
+        aliases=_lifecycle_component_aliases(artifacts),
+    )
+    unresolved_refs, unresolved_details = _unresolved_compose_port_refs_and_details(
+        artifacts,
+        component_id=component_id,
+        variant_id=variant_id,
+    )
     if unresolved_refs:
         return _unresolved(
             "Compose port evidence contains unresolved interpolation, so no runtime port was inferred.",
@@ -364,7 +417,11 @@ def _runtime_port(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
     )
 
 
-def _container_entrypoint(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
+def _container_entrypoint(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+    variant_id: str = "common",
+) -> TrackedValue:
     candidates = [
         {
             "entrypoint": fact["value"],
@@ -373,8 +430,16 @@ def _container_entrypoint(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
             "classification": fact["classification"],
             "evidence_refs": [fact["evidence_id"]],
         }
-        for fact in artifacts.evidence_model.get("facts", [])
-        if fact.get("fact_type") == "dockerfile_entrypoint"
+        for fact in _facts_for_scope(
+            artifacts,
+            [
+                fact
+                for fact in artifacts.evidence_model.get("facts", [])
+                if fact.get("fact_type") == "dockerfile_entrypoint"
+            ],
+            component_id=component_id,
+            variant_id=variant_id,
+        )
     ]
     return _tracked_from_candidates(
         candidates=candidates,
@@ -386,6 +451,8 @@ def _container_entrypoint(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
 
 def _package_script_command(
     artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None,
+    variant_id: str,
     script_name: str,
     missing_reason: str,
     conflict_reason: str,
@@ -398,11 +465,19 @@ def _package_script_command(
             "classification": fact["classification"],
             "evidence_refs": [fact["evidence_id"]],
         }
-        for fact in artifacts.evidence_model.get("facts", [])
-        if fact.get("fact_type") == "package_script"
-        and isinstance(fact.get("value"), dict)
-        and fact["value"].get("name") == script_name
-        and fact["value"].get("command")
+        for fact in _facts_for_scope(
+            artifacts,
+            [
+                fact
+                for fact in artifacts.evidence_model.get("facts", [])
+                if fact.get("fact_type") == "package_script"
+                and isinstance(fact.get("value"), dict)
+                and fact["value"].get("name") == script_name
+                and fact["value"].get("command")
+            ],
+            component_id=component_id,
+            variant_id=variant_id,
+        )
     ]
     return _tracked_from_candidates(
         candidates=candidates,
@@ -412,16 +487,23 @@ def _package_script_command(
     )
 
 
-def _environment_variable_names(artifacts: LegacyAnalysisArtifacts) -> list[str]:
+def _environment_variable_names(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+) -> list[str]:
     names: list[str] = []
     for fact in artifacts.evidence_model.get("facts", []):
         if fact.get("fact_type") != "compose_environment" or not isinstance(fact.get("value"), dict):
+            continue
+        if not _compose_fact_belongs_to_component(artifacts, fact, component_id):
             continue
         name = fact["value"].get("name")
         if name:
             names.append(name)
     for fact in artifacts.evidence_model.get("facts", []):
         if fact.get("fact_type") != "dotnet_launch_environment" or not isinstance(fact.get("value"), dict):
+            continue
+        if not _fact_belongs_to_component(artifacts, fact, component_id):
             continue
         name = fact["value"].get("name")
         if name:
@@ -432,17 +514,31 @@ def _environment_variable_names(artifacts: LegacyAnalysisArtifacts) -> list[str]
         if not isinstance(candidates, list):
             continue
         for candidate in candidates:
+            if not _candidate_belongs_to_component(
+                candidate,
+                component_id,
+                aliases=_lifecycle_component_aliases(artifacts),
+            ):
+                continue
             if isinstance(candidate, dict) and candidate.get("name"):
                 names.append(candidate["name"])
     return _distinct_ordered(names)
 
 
-def _external_dependencies(artifacts: LegacyAnalysisArtifacts) -> list[str]:
+def _external_dependencies(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+) -> list[str]:
     return _distinct_ordered(
         [
             candidate["target"]
             for candidate in artifacts.rule_inference.get("dependency_edge_candidates", [])
             if candidate.get("target")
+            and _candidate_belongs_to_component(
+                candidate,
+                component_id,
+                aliases=_lifecycle_component_aliases(artifacts),
+            )
         ]
     )
 
@@ -499,6 +595,256 @@ def _distinct_ordered(values: list[Any]) -> list[Any]:
         seen.add(normalized)
         result.append(value)
     return result
+
+
+def _component_candidates(artifacts: LegacyAnalysisArtifacts) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for candidate in artifacts.rule_inference.get("component_candidates", []):
+        if isinstance(candidate, dict) and isinstance(candidate.get("component_id"), str):
+            candidates.append(candidate)
+    return candidates
+
+
+def _lifecycle_component_ids(artifacts: LegacyAnalysisArtifacts) -> list[str]:
+    aliases = _lifecycle_component_aliases(artifacts)
+    return [
+        candidate["component_id"]
+        for candidate in _component_candidates(artifacts)
+        if candidate["component_id"] not in aliases
+    ]
+
+
+def _lifecycle_scopes(artifacts: LegacyAnalysisArtifacts) -> list[tuple[str | None, str]]:
+    scopes: list[tuple[str | None, str]] = []
+    aliases = _lifecycle_component_aliases(artifacts)
+    candidates_with_variants = [
+        *artifacts.rule_inference.get("runtime_command_candidates", []),
+        *artifacts.rule_inference.get("runtime_port_candidates", []),
+    ]
+    for component_id in _lifecycle_component_ids(artifacts):
+        variant_ids = {"common"}
+        for candidate in candidates_with_variants:
+            if _candidate_belongs_to_component(candidate, component_id, aliases=aliases):
+                variant_ids.update(_candidate_variant_ids(artifacts, candidate))
+        for variant_id in _sort_variant_ids(variant_ids):
+            scopes.append((component_id, variant_id))
+    return scopes
+
+
+def _lifecycle_component_aliases(artifacts: LegacyAnalysisArtifacts) -> dict[str, str]:
+    """Map image-only Compose app services to the sole source component.
+
+    Older single-app fixtures often have a package root plus a Compose service
+    with only ``image``/``ports``. Treat that service as deployment evidence for
+    the package component, while dependency/infrastructure images stay separate.
+    """
+    candidates = _component_candidates(artifacts)
+    rooted = [candidate for candidate in candidates if candidate.get("root_path") is not None]
+    if len(rooted) != 1:
+        return {}
+
+    target_component_id = rooted[0]["component_id"]
+    infrastructure_components = {
+        candidate.get("component_id")
+        for candidate in artifacts.rule_inference.get("role_candidates", [])
+        if isinstance(candidate, dict) and candidate.get("role") in {"dependency", "infrastructure"}
+    }
+    aliases: dict[str, str] = {}
+    for candidate in candidates:
+        component_id = candidate["component_id"]
+        if candidate.get("root_path") is not None:
+            continue
+        if candidate.get("source") != "compose_service":
+            continue
+        if component_id in infrastructure_components:
+            continue
+        aliases[component_id] = target_component_id
+    return aliases
+
+
+def _candidates_for_component(
+    candidates: list[dict[str, Any]],
+    component_id: str | None,
+    aliases: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        candidate
+        for candidate in candidates
+        if _candidate_belongs_to_component(candidate, component_id, aliases=aliases)
+    ]
+
+
+def _candidates_for_scope(
+    artifacts: LegacyAnalysisArtifacts,
+    candidates: list[dict[str, Any]],
+    component_id: str | None,
+    variant_id: str,
+    aliases: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    component_candidates = _candidates_for_component(candidates, component_id, aliases=aliases)
+    if variant_id == "common":
+        return [
+            candidate
+            for candidate in component_candidates
+            if _candidate_variant_ids(artifacts, candidate) == ["common"]
+        ]
+
+    variant_candidates = [
+        candidate
+        for candidate in component_candidates
+        if variant_id in _candidate_variant_ids(artifacts, candidate)
+    ]
+    if variant_candidates:
+        return variant_candidates
+    return [
+        candidate
+        for candidate in component_candidates
+        if _candidate_variant_ids(artifacts, candidate) == ["common"]
+    ]
+
+
+def _candidate_belongs_to_component(
+    candidate: dict[str, Any],
+    component_id: str | None,
+    aliases: dict[str, str] | None = None,
+) -> bool:
+    if component_id is None:
+        return True
+    aliases = aliases or {}
+    for key in ("component_id", "source_component"):
+        candidate_component = candidate.get(key)
+        if candidate_component == component_id or aliases.get(str(candidate_component)) == component_id:
+            return True
+    return False
+
+
+def _facts_for_scope(
+    artifacts: LegacyAnalysisArtifacts,
+    facts: list[dict[str, Any]],
+    component_id: str | None,
+    variant_id: str,
+) -> list[dict[str, Any]]:
+    component_facts = [
+        fact
+        for fact in facts
+        if _fact_belongs_to_component(artifacts, fact, component_id)
+    ]
+    if variant_id == "common":
+        return [fact for fact in component_facts if _fact_variant_id(fact) == "common"]
+
+    variant_facts = [fact for fact in component_facts if _fact_variant_id(fact) == variant_id]
+    if variant_facts:
+        return variant_facts
+    return [fact for fact in component_facts if _fact_variant_id(fact) == "common"]
+
+
+def _fact_belongs_to_component(
+    artifacts: LegacyAnalysisArtifacts,
+    fact: dict[str, Any],
+    component_id: str | None,
+) -> bool:
+    if component_id is None:
+        return True
+    artifact_ref = fact.get("artifact_ref")
+    if not isinstance(artifact_ref, str):
+        return False
+    return _owning_component(artifacts, artifact_ref) == component_id
+
+
+def _candidate_variant_ids(artifacts: LegacyAnalysisArtifacts, candidate: dict[str, Any]) -> list[str]:
+    facts_by_id = _facts_by_evidence_id(artifacts)
+    variant_ids: list[str] = []
+    for evidence_ref in candidate.get("evidence_refs", []):
+        fact = facts_by_id.get(str(evidence_ref))
+        if fact is not None:
+            variant_ids.append(_fact_variant_id(fact))
+    return _distinct_ordered(variant_ids) or ["common"]
+
+
+def _facts_by_evidence_id(artifacts: LegacyAnalysisArtifacts) -> dict[str, dict[str, Any]]:
+    return {
+        str(fact["evidence_id"]): fact
+        for fact in artifacts.evidence_model.get("facts", [])
+        if fact.get("evidence_id")
+    }
+
+
+def _fact_variant_id(fact: dict[str, Any]) -> str:
+    artifact_ref = fact.get("artifact_ref")
+    if not isinstance(artifact_ref, str):
+        return "common"
+    return _artifact_variant_id(artifact_ref)
+
+
+def _artifact_variant_id(artifact_ref: str) -> str:
+    name = Path(artifact_ref).name.lower()
+    for prefix in ("docker-compose.", "compose."):
+        if not name.startswith(prefix):
+            continue
+        suffix = name.removeprefix(prefix)
+        if suffix.endswith(".yaml"):
+            variant = suffix.removesuffix(".yaml")
+        elif suffix.endswith(".yml"):
+            variant = suffix.removesuffix(".yml")
+        else:
+            return "common"
+        if variant and variant != "override":
+            return variant
+    return "common"
+
+
+def _sort_variant_ids(variant_ids: set[str]) -> list[str]:
+    return sorted(variant_ids, key=lambda value: (value != "common", value))
+
+
+def _path_belongs_to_component(
+    artifacts: LegacyAnalysisArtifacts,
+    artifact_ref: str,
+    component_id: str | None,
+) -> bool:
+    if component_id is None:
+        return True
+    return _owning_component(artifacts, artifact_ref) == component_id
+
+
+def _compose_fact_belongs_to_component(
+    artifacts: LegacyAnalysisArtifacts,
+    fact: dict[str, Any],
+    component_id: str | None,
+) -> bool:
+    if component_id is None:
+        return True
+    value = fact.get("value")
+    if not isinstance(value, dict):
+        return False
+    service = value.get("service")
+    aliases = _lifecycle_component_aliases(artifacts)
+    if service == component_id or aliases.get(str(service)) == component_id:
+        return True
+    return _fact_belongs_to_component(artifacts, fact, component_id)
+
+
+def _owning_component(artifacts: LegacyAnalysisArtifacts, artifact_ref: str) -> str | None:
+    best_id: str | None = None
+    best_specificity = -1
+    for candidate in _component_candidates(artifacts):
+        root_path = candidate.get("root_path")
+        component_id = candidate.get("component_id")
+        if not isinstance(component_id, str) or root_path is None:
+            continue
+        root = str(root_path)
+        if root == ".":
+            if "/" in artifact_ref:
+                continue
+            specificity = 0
+        elif artifact_ref == root or artifact_ref.startswith(f"{root}/"):
+            specificity = len(root)
+        else:
+            continue
+        if specificity > best_specificity:
+            best_id = component_id
+            best_specificity = specificity
+    return best_id
 
 
 def _unresolved(
@@ -599,14 +945,26 @@ def _unresolved_fact_details(facts: list[dict[str, Any]]) -> list[str]:
     return [warning for _, warning in _unresolved_facts(facts)]
 
 
-def _unresolved_compose_port_refs_and_details(artifacts: LegacyAnalysisArtifacts) -> tuple[list[str], list[str]]:
+def _unresolved_compose_port_refs_and_details(
+    artifacts: LegacyAnalysisArtifacts,
+    component_id: str | None = None,
+    variant_id: str = "common",
+) -> tuple[list[str], list[str]]:
     refs: list[str] = []
     details: list[str] = []
-    compose_port_facts = [
+    component_facts = [
         fact
         for fact in artifacts.evidence_model.get("facts", [])
         if fact.get("fact_type") == "compose_port"
+        and _compose_fact_belongs_to_component(artifacts, fact, component_id)
     ]
+    if variant_id == "common":
+        compose_port_facts = [fact for fact in component_facts if _fact_variant_id(fact) == "common"]
+    else:
+        variant_facts = [fact for fact in component_facts if _fact_variant_id(fact) == variant_id]
+        compose_port_facts = variant_facts or [
+            fact for fact in component_facts if _fact_variant_id(fact) == "common"
+        ]
     for evidence_id, warning in _unresolved_facts(compose_port_facts):
         refs.append(evidence_id)
         details.append(warning)
@@ -653,7 +1011,11 @@ def _is_supported_inventory_item(bucket: str, artifact_type: str) -> bool:
     }
 
 
-def _unsupported_artifact_evidence_refs(artifacts: LegacyAnalysisArtifacts, bucket: str) -> list[str]:
+def _unsupported_artifact_evidence_refs(
+    artifacts: LegacyAnalysisArtifacts,
+    bucket: str,
+    component_id: str | None = None,
+) -> list[str]:
     paths = {
         str(item.get("path"))
         for item in artifacts.artifact_inventory.get(bucket, [])
@@ -661,6 +1023,7 @@ def _unsupported_artifact_evidence_refs(artifacts: LegacyAnalysisArtifacts, buck
         and item.get("present", True)
         and not _is_supported_inventory_item(bucket, str(item.get("type", bucket)))
         and not _is_ignored_inventory_item(bucket, str(item.get("type", bucket)))
+        and _path_belongs_to_component(artifacts, str(item.get("path", "")), component_id)
     }
     refs: list[str] = []
     for fact in artifacts.evidence_model.get("facts", []):

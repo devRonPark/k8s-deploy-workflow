@@ -1,0 +1,11 @@
+services:
+  api:
+    build:
+      context: ./api
+    ports:
+      - "8000:8000"
+  worker:
+    build:
+      context: ./worker
+    ports:
+      - "9000:9000"

@@ -110,7 +110,11 @@ class V1BetaEndToEndTests(unittest.TestCase):
 
             console, understanding, assessment = run_assess("fastapi-compose-variant", output)
 
-            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            variants = {
+                (variant["component_id"], variant["variant_id"]): variant
+                for variant in understanding["lifecycle"]["variants"]
+            }
+            runtime_port = variants[("api", "dev")]["runtime_port"]
             coverage_items = {item["artifact_ref"]: item for item in assessment["coverage"]["items"]}
             serialized = "\n".join(
                 path.read_text(encoding="utf-8")
@@ -137,11 +141,16 @@ class V1BetaEndToEndTests(unittest.TestCase):
 
             _, understanding, assessment = run_assess("compose-variant-unresolved-port", output)
 
-            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            variant_index, variant = next(
+                (index, variant)
+                for index, variant in enumerate(understanding["lifecycle"]["variants"])
+                if variant["component_id"] == "api" and variant["variant_id"] == "dev"
+            )
+            runtime_port = variant["runtime_port"]
             runtime_port_unknown = next(
                 item
                 for item in understanding["unknowns"]
-                if item["field_path"] == "lifecycle.variants[0].runtime_port"
+                if item["field_path"] == f"lifecycle.variants[{variant_index}].runtime_port"
             )
             coverage_items = {item["artifact_ref"]: item for item in assessment["coverage"]["items"]}
 
@@ -217,6 +226,62 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertNotIn("Password=", serialized)
             self.assertNotIn("${DB_PASSWORD}", serialized)
             self.assertNotIn("${API_TOKEN}", serialized)
+            self.assert_no_forbidden_outputs(output)
+
+    def test_lifecycle_facts_are_scoped_to_components(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "multi-compose-scoped-lifecycle"
+
+            _, understanding, assessment = run_assess("multi-compose-scoped-lifecycle", output)
+
+            self.assertEqual(
+                [variant.get("component_id") for variant in understanding["lifecycle"]["variants"]],
+                ["api", "worker"],
+            )
+            variants = {variant["component_id"]: variant for variant in understanding["lifecycle"]["variants"]}
+            conflict_paths = {conflict["field_path"] for conflict in understanding["conflicts"]}
+
+            self.assertEqual([component["component_id"] for component in understanding["topology"]["components"]], ["api", "worker"])
+            self.assertEqual(set(variants), {"api", "worker"})
+            self.assertEqual(variants["api"]["run_command"]["state"], "resolved")
+            self.assertEqual(variants["api"]["run_command"]["value"], '["node", "api.js"]')
+            self.assertEqual(variants["api"]["runtime_port"]["state"], "resolved")
+            self.assertEqual(variants["api"]["runtime_port"]["value"], 8000)
+            self.assertEqual(variants["worker"]["run_command"]["state"], "resolved")
+            self.assertEqual(variants["worker"]["run_command"]["value"], '["node", "worker.js"]')
+            self.assertEqual(variants["worker"]["runtime_port"]["state"], "resolved")
+            self.assertEqual(variants["worker"]["runtime_port"]["value"], 9000)
+            self.assertEqual(assessment["execution"], "complete")
+            self.assertFalse(any(path.endswith(".run_command") for path in conflict_paths))
+            self.assertFalse(any(path.endswith(".runtime_port") for path in conflict_paths))
+            self.assert_no_forbidden_outputs(output)
+
+    def test_lifecycle_facts_are_scoped_to_deployment_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "compose-variant-scoped-lifecycle"
+
+            _, understanding, assessment = run_assess("compose-variant-scoped-lifecycle", output)
+
+            self.assertEqual(
+                [
+                    (variant.get("component_id"), variant.get("variant_id"))
+                    for variant in understanding["lifecycle"]["variants"]
+                ],
+                [("api", "common"), ("api", "dev")],
+            )
+            variants = {
+                (variant["component_id"], variant["variant_id"]): variant
+                for variant in understanding["lifecycle"]["variants"]
+            }
+            conflict_paths = {conflict["field_path"] for conflict in understanding["conflicts"]}
+
+            self.assertEqual(set(variants), {("api", "common"), ("api", "dev")})
+            self.assertEqual(variants[("api", "common")]["runtime_port"]["state"], "resolved")
+            self.assertEqual(variants[("api", "common")]["runtime_port"]["value"], 8080)
+            self.assertEqual(variants[("api", "dev")]["runtime_port"]["state"], "resolved")
+            self.assertEqual(variants[("api", "dev")]["runtime_port"]["value"], 9000)
+            self.assertEqual(assessment["execution"], "partial")
+            self.assertFalse(any(path.endswith(".runtime_port") for path in conflict_paths))
             self.assert_no_forbidden_outputs(output)
 
     def test_same_input_outputs_are_semantically_stable(self) -> None:

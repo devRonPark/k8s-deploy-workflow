@@ -49,6 +49,8 @@ def unresolved(reason: str = "No repository evidence was found.") -> TrackedValu
 
 def lifecycle_variant() -> LifecycleVariant:
     return LifecycleVariant(
+        component_id="root",
+        variant_id="common",
         build_command=unresolved("No build command evidence was found."),
         package_command=unresolved("No package command evidence was found."),
         run_command=resolved('["node", "server.js"]'),
@@ -119,6 +121,22 @@ def understanding(**overrides: object) -> RepositoryUnderstanding:
 
 
 class UnderstandingModelTests(unittest.TestCase):
+    def test_lifecycle_variant_component_id_is_validated_and_serialized(self) -> None:
+        variant = lifecycle_variant()
+
+        dumped = variant.model_dump(mode="json")
+        again = LifecycleVariant.model_validate(dumped)
+
+        self.assertEqual(dumped["component_id"], "root")
+        self.assertEqual(dumped["variant_id"], "common")
+        self.assertEqual(again.component_id, "root")
+        self.assertEqual(again.variant_id, "common")
+
+        with self.assertRaises(ValidationError):
+            LifecycleVariant.model_validate({**dumped, "component_id": 123})
+        with self.assertRaises(ValidationError):
+            LifecycleVariant.model_validate({**dumped, "variant_id": ""})
+
     def test_tracked_value_state_payloads_are_validated(self) -> None:
         with self.assertRaises(ValidationError):
             TrackedValue(state=FieldState.RESOLVED)
