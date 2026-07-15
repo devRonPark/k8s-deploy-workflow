@@ -23,6 +23,7 @@ def evidence(evidence_id: str = "F0001") -> EvidenceRef:
     return EvidenceRef(
         evidence_id=evidence_id,
         artifact_ref="Dockerfile",
+        locator="dockerfile:EXPOSE[0]",
         fact_type="dockerfile_expose",
         source="dockerfile_expose",
         classification="observed_fact",
@@ -71,7 +72,7 @@ def understanding(**overrides: object) -> RepositoryUnderstanding:
                 ApplicationComponent(
                     component_id="root",
                     root_path=".",
-                    role="application",
+                    role=resolved("application"),
                     evidence_refs=["F0001"],
                 )
             ]
@@ -118,6 +119,28 @@ class UnderstandingModelTests(unittest.TestCase):
             TrackedValue(state=FieldState.CONFLICT, value=3000, candidates=[3000, 8080])
 
         with self.assertRaises(ValidationError):
+            TrackedValue(
+                state=FieldState.CONFLICT,
+                candidates=[
+                    {
+                        "value": 3000,
+                        "source": "dockerfile_expose",
+                        "confidence": "high",
+                        "classification": "rule_inference",
+                        "evidence_refs": ["F0001"],
+                    },
+                    {
+                        "value": 8080,
+                        "source": "compose_ports",
+                        "classification": "rule_inference",
+                        "evidence_refs": ["F0002"],
+                    },
+                ],
+                evidence_refs=["F0001", "F0002"],
+                reason="Dockerfile and Compose expose different runtime ports.",
+            )
+
+        with self.assertRaises(ValidationError):
             TrackedValue(state=FieldState.UNRESOLVED)
 
         conflict = TrackedValue(
@@ -129,6 +152,13 @@ class UnderstandingModelTests(unittest.TestCase):
                     "confidence": "high",
                     "classification": "rule_inference",
                     "evidence_refs": ["F0001"],
+                },
+                {
+                    "value": 3000,
+                    "source": "compose_ports",
+                    "confidence": "medium",
+                    "classification": "rule_inference",
+                    "evidence_refs": ["F0003"],
                 },
                 {
                     "value": 8080,
@@ -143,7 +173,23 @@ class UnderstandingModelTests(unittest.TestCase):
         )
 
         self.assertIsNone(conflict.value)
-        self.assertEqual([candidate["value"] for candidate in conflict.candidates], [3000, 8080])
+        self.assertEqual([candidate["value"] for candidate in conflict.candidates], [3000, 3000, 8080])
+
+    def test_evidence_refs_require_human_verifiable_locator(self) -> None:
+        with self.assertRaises(ValidationError):
+            EvidenceRef(
+                evidence_id="F0001",
+                artifact_ref="Dockerfile",
+                locator="",
+                fact_type="dockerfile_expose",
+                source="dockerfile_expose",
+                classification="observed_fact",
+            )
+
+        ref = evidence()
+
+        self.assertEqual(ref.artifact_ref, "Dockerfile")
+        self.assertEqual(ref.locator, "dockerfile:EXPOSE[0]")
 
     def test_repository_understanding_requires_evidence_backed_facts(self) -> None:
         with self.assertRaises(ValidationError):

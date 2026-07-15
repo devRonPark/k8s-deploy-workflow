@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from .common import StrictBaseModel
+from .common import StrictBaseModel, TrackedValue
 
 
 class ApplicationComponent(StrictBaseModel):
     component_id: str
     root_path: str | None = None
-    role: str = "application"
+    role: TrackedValue
     evidence_refs: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
 

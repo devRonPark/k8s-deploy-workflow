@@ -36,7 +36,11 @@ class RepositoryUnderstandingBuilderTests(unittest.TestCase):
         self.assertEqual(result.schema_version, "repository-understanding/v1-beta")
         self.assertEqual(result.repository.path, str(repository_path))
         self.assertEqual(result.topology.components[0].component_id, "root")
-        self.assertEqual(result.topology.components[0].role, "application")
+        self.assertEqual(result.topology.components[0].role.state, FieldState.UNRESOLVED)
+        self.assertIn(
+            "topology.components[0].role",
+            {unknown.field_path for unknown in result.unknowns},
+        )
         self.assertEqual(variant.run_command.state, FieldState.RESOLVED)
         self.assertEqual(variant.run_command.value, '["node", "server.js"]')
         self.assertEqual(variant.run_command.source, "dockerfile_cmd")
@@ -63,7 +67,76 @@ class RepositoryUnderstandingBuilderTests(unittest.TestCase):
             self.assertTrue(fact.evidence_refs)
             self.assertLessEqual(set(fact.evidence_refs), evidence_ids)
 
-    def test_port_conflict_preserves_both_candidates_without_effective_value(self) -> None:
+        dockerfile_expose = next(item for item in result.evidence if item.evidence_id == "F0004")
+        self.assertEqual(dockerfile_expose.artifact_ref, "Dockerfile")
+        self.assertEqual(dockerfile_expose.locator, "dockerfile:EXPOSE[0]")
+
+    def test_role_candidate_projects_to_tracked_deployment_role(self) -> None:
+        artifacts = legacy_artifacts("node-docker")
+        with_role = artifacts.model_copy(
+            update={
+                "rule_inference": {
+                    **artifacts.rule_inference,
+                    "role_candidates": [
+                        {
+                            "component_id": "root",
+                            "role": "application",
+                            "source": "package_runtime",
+                            "confidence": "medium",
+                            "classification": "rule_inference",
+                            "evidence_refs": ["F0006"],
+                        }
+                    ],
+                }
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-docker",
+            artifacts=with_role,
+        )
+        role = result.topology.components[0].role
+
+        self.assertEqual(role.state, FieldState.RESOLVED)
+        self.assertEqual(role.value, "application")
+        self.assertEqual(role.source, "package_runtime")
+        self.assertEqual(role.confidence, "medium")
+        self.assertEqual(role.classification, "rule_inference")
+        self.assertEqual(role.evidence_refs, ["F0006"])
+        self.assertIn("topology.components[0].role", {fact.field_path for fact in result.confirmed_facts})
+
+    def test_candidate_with_missing_metadata_becomes_unresolved_not_defaulted(self) -> None:
+        artifacts = legacy_artifacts("node-docker")
+        with_missing_metadata = artifacts.model_copy(
+            update={
+                "rule_inference": {
+                    **artifacts.rule_inference,
+                    "runtime_port_candidates": [
+                        {
+                            "component_id": "root",
+                            "port": 3000,
+                            "classification": "rule_inference",
+                            "evidence_refs": ["F0004"],
+                        }
+                    ],
+                }
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-docker",
+            artifacts=with_missing_metadata,
+        )
+        runtime_port = result.lifecycle.variants[0].runtime_port
+
+        self.assertEqual(runtime_port.state, FieldState.UNRESOLVED)
+        self.assertIn("missing metadata", runtime_port.reason)
+        self.assertNotIn(
+            "lifecycle.variants[0].runtime_port",
+            {fact.field_path for fact in result.confirmed_facts},
+        )
+
+    def test_port_conflict_preserves_all_auditable_candidates_without_effective_value(self) -> None:
         result = build_repository_understanding(
             repository_path=FIXTURE_ROOT / "node-compose-conflict",
             artifacts=legacy_artifacts("node-compose-conflict"),
@@ -83,6 +156,60 @@ class RepositoryUnderstandingBuilderTests(unittest.TestCase):
             "lifecycle.variants[0].runtime_port",
             {fact.field_path for fact in result.confirmed_facts},
         )
+
+    def test_port_conflict_preserves_same_value_candidates_with_different_evidence(self) -> None:
+        artifacts = legacy_artifacts("node-compose-conflict")
+        duplicate_compose_port = {
+            "evidence_id": "F9998",
+            "fact_type": "compose_port",
+            "artifact_ref": "docker-compose.yml",
+            "source": "compose_ports",
+            "classification": "observed_fact",
+            "value": {
+                "service": "web",
+                "raw": "8081:8081",
+                "host_ip": None,
+                "host_port": 8081,
+                "container_port": 8081,
+                "protocol": None,
+                "resolved": True,
+                "resolution_source": "literal",
+                "warning": None,
+            },
+        }
+        with_duplicate_port = artifacts.model_copy(
+            update={
+                "evidence_model": {
+                    **artifacts.evidence_model,
+                    "facts": [*artifacts.evidence_model["facts"], duplicate_compose_port],
+                },
+                "rule_inference": {
+                    **artifacts.rule_inference,
+                    "runtime_port_candidates": [
+                        *artifacts.rule_inference["runtime_port_candidates"],
+                        {
+                            "component_id": "web",
+                            "port": 8081,
+                            "source": "compose_ports",
+                            "confidence": "medium",
+                            "classification": "rule_inference",
+                            "evidence_refs": ["F9998"],
+                        },
+                    ],
+                },
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-compose-conflict",
+            artifacts=with_duplicate_port,
+        )
+        runtime_port = result.lifecycle.variants[0].runtime_port
+
+        self.assertEqual(runtime_port.state, FieldState.CONFLICT)
+        self.assertEqual([candidate["value"] for candidate in runtime_port.candidates], [8080, 8081, 8081])
+        self.assertEqual(runtime_port.candidates[1]["evidence_refs"], ["F0009"])
+        self.assertEqual(runtime_port.candidates[2]["evidence_refs"], ["F9998"])
 
     def test_missing_port_and_missing_dockerfile_are_unknowns_not_failures(self) -> None:
         artifacts = legacy_artifacts("node-docker")
@@ -199,6 +326,157 @@ class RepositoryUnderstandingBuilderTests(unittest.TestCase):
             ["DATABASE_URL"],
         )
         self.assertNotIn("postgres://user:password@example/db", dumped)
+
+    def test_plain_compose_environment_variable_names_are_kept_without_values(self) -> None:
+        artifacts = legacy_artifacts("node-docker")
+        with_plain_env = artifacts.model_copy(
+            update={
+                "evidence_model": {
+                    **artifacts.evidence_model,
+                    "facts": [
+                        *artifacts.evidence_model["facts"],
+                        {
+                            "evidence_id": "F9997",
+                            "fact_type": "compose_environment",
+                            "artifact_ref": "docker-compose.yml",
+                            "source": "compose_environment",
+                            "classification": "observed_fact",
+                            "value": {
+                                "service": "web",
+                                "name": "NODE_ENV",
+                                "value_present": True,
+                                "contains_credentials": False,
+                                "value": "production",
+                            },
+                        },
+                    ],
+                },
+                "rule_inference": {
+                    **artifacts.rule_inference,
+                    "env_classification": {"secret_candidates": []},
+                },
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-docker",
+            artifacts=with_plain_env,
+        )
+        dumped = yaml.safe_dump(result.model_dump(mode="json"), sort_keys=False)
+
+        self.assertEqual(result.lifecycle.variants[0].environment_variable_names, ["NODE_ENV"])
+        self.assertNotIn("production", dumped)
+
+    def test_unsupported_artifacts_are_limitations_not_successfully_analyzed(self) -> None:
+        artifacts = legacy_artifacts("node-docker")
+        with_unsupported_artifact = artifacts.model_copy(
+            update={
+                "artifact_inventory": {
+                    **artifacts.artifact_inventory,
+                    "app_configs": [{"path": "config/app.yaml", "type": "yaml"}],
+                }
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-docker",
+            artifacts=with_unsupported_artifact,
+        )
+
+        self.assertEqual(result.coverage.supported_artifacts, 2)
+        self.assertEqual(result.coverage.analyzed_artifacts, 2)
+        self.assertEqual(result.coverage.unsupported_artifacts, ["config/app.yaml"])
+
+    def test_discovered_only_supported_bucket_artifacts_are_coverage_limitations(self) -> None:
+        artifacts = legacy_artifacts("node-docker")
+        with_discovered_only_build_file = artifacts.model_copy(
+            update={
+                "artifact_inventory": {
+                    **artifacts.artifact_inventory,
+                    "build_files": [
+                        *artifacts.artifact_inventory["build_files"],
+                        {"path": "go.mod", "type": "go_module"},
+                    ],
+                }
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-docker",
+            artifacts=with_discovered_only_build_file,
+        )
+
+        self.assertEqual(result.coverage.supported_artifacts, 2)
+        self.assertEqual(result.coverage.analyzed_artifacts, 2)
+        self.assertEqual(result.coverage.unsupported_artifacts, ["go.mod"])
+
+    def test_compose_locator_index_is_scoped_to_service_and_key(self) -> None:
+        artifacts = legacy_artifacts("node-compose-conflict")
+        second_service_port = {
+            "evidence_id": "F9996",
+            "fact_type": "compose_port",
+            "artifact_ref": "docker-compose.yml",
+            "source": "compose_ports",
+            "classification": "observed_fact",
+            "value": {
+                "service": "worker",
+                "raw": "9090:9090",
+                "host_ip": None,
+                "host_port": 9090,
+                "container_port": 9090,
+                "protocol": None,
+                "resolved": True,
+                "resolution_source": "literal",
+                "warning": None,
+            },
+        }
+        with_second_service = artifacts.model_copy(
+            update={
+                "evidence_model": {
+                    **artifacts.evidence_model,
+                    "facts": [*artifacts.evidence_model["facts"], second_service_port],
+                },
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-compose-conflict",
+            artifacts=with_second_service,
+        )
+        original_port = next(item for item in result.evidence if item.evidence_id == "F0009")
+        worker_port = next(item for item in result.evidence if item.evidence_id == "F9996")
+
+        self.assertEqual(original_port.locator, "yamlpath:$.services.web.ports[0]")
+        self.assertEqual(worker_port.locator, "yamlpath:$.services.worker.ports[0]")
+
+    def test_unmapped_evidence_locator_still_uses_structured_fact_key(self) -> None:
+        artifacts = legacy_artifacts("node-docker")
+        with_unmapped_fact = artifacts.model_copy(
+            update={
+                "evidence_model": {
+                    **artifacts.evidence_model,
+                    "facts": [
+                        *artifacts.evidence_model["facts"],
+                        {
+                            "evidence_id": "F9995",
+                            "fact_type": "custom_repository_signal",
+                            "artifact_ref": "custom.cfg",
+                            "source": "custom_parser",
+                            "classification": "observed_fact",
+                            "value": {"key": "runtime"},
+                        },
+                    ],
+                }
+            }
+        )
+
+        result = build_repository_understanding(
+            repository_path=FIXTURE_ROOT / "node-docker",
+            artifacts=with_unmapped_fact,
+        )
+        custom_signal = next(item for item in result.evidence if item.evidence_id == "F9995")
+
+        self.assertEqual(custom_signal.locator, "fact:custom_repository_signal[0]")
 
     def test_yaml_serialization_is_stable_and_has_no_target_or_manifest_values(self) -> None:
         result = build_repository_understanding(

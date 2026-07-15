@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 
-from .common import StrictBaseModel, has_at_least_two_distinct_values
+from .common import StrictBaseModel, has_at_least_two_distinct_values, validate_conflict_candidates
 from .lifecycle import LifecycleModel
 from .repository import RepositoryIdentity
 from .topology import ApplicationTopology
@@ -13,9 +13,17 @@ from .topology import ApplicationTopology
 class EvidenceRef(StrictBaseModel):
     evidence_id: str
     artifact_ref: str
+    locator: str
     fact_type: str
     source: str
     classification: str
+
+    @field_validator("artifact_ref", "locator")
+    @classmethod
+    def require_location(cls, value: str) -> str:
+        if not value:
+            raise ValueError("evidence references require artifact_ref and locator")
+        return value
 
 
 class ConfirmedFact(StrictBaseModel):
@@ -49,6 +57,7 @@ class ConflictFinding(StrictBaseModel):
 
     @model_validator(mode="after")
     def validate_conflict(self) -> "ConflictFinding":
+        validate_conflict_candidates(self.candidates)
         if not has_at_least_two_distinct_values(self.candidates):
             raise ValueError("conflicts require at least two distinct candidates")
         if not self.evidence_refs:

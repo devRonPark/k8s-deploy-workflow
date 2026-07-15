@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from migration_agent.adapters.models import LegacyAnalysisArtifacts
-from migration_agent.domain.common import FieldState, TrackedValue, distinct_values
+from migration_agent.domain.common import FieldState, TrackedValue, normalized_values
 from migration_agent.domain.lifecycle import LifecycleModel, LifecycleVariant
 from migration_agent.domain.repository import RepositoryIdentity
 from migration_agent.domain.topology import ApplicationComponent, ApplicationTopology
@@ -36,24 +36,31 @@ def project_repository(
 
 
 def project_evidence(artifacts: LegacyAnalysisArtifacts) -> list[EvidenceRef]:
-    return [
-        EvidenceRef(
-            evidence_id=fact["evidence_id"],
-            artifact_ref=fact["artifact_ref"],
-            fact_type=fact["fact_type"],
-            source=fact["source"],
-            classification=fact["classification"],
+    evidence: list[EvidenceRef] = []
+    fact_counts: dict[tuple[str, str], int] = {}
+    compose_counts: dict[tuple[str, str, str], int] = {}
+    for fact in artifacts.evidence_model.get("facts", []):
+        key = (str(fact.get("artifact_ref", "")), str(fact.get("fact_type", "")))
+        fact_index = fact_counts.get(key, 0)
+        fact_counts[key] = fact_index + 1
+        evidence.append(
+            EvidenceRef(
+                evidence_id=fact["evidence_id"],
+                artifact_ref=fact["artifact_ref"],
+                locator=_locator_for_fact(fact, fact_index, compose_counts),
+                fact_type=fact["fact_type"],
+                source=fact["source"],
+                classification=fact["classification"],
+            )
         )
-        for fact in artifacts.evidence_model.get("facts", [])
-    ]
+    return evidence
 
 
 def project_topology(artifacts: LegacyAnalysisArtifacts) -> ApplicationTopology:
     rules = artifacts.rule_inference
-    roles_by_component = {
-        candidate["component_id"]: candidate["role"]
-        for candidate in rules.get("role_candidates", [])
-    }
+    roles_by_component: dict[str, list[dict[str, Any]]] = {}
+    for candidate in rules.get("role_candidates", []):
+        roles_by_component.setdefault(candidate["component_id"], []).append(candidate)
     dependencies_by_component: dict[str, list[str]] = {}
     for candidate in rules.get("dependency_edge_candidates", []):
         dependencies_by_component.setdefault(candidate["source_component"], []).append(candidate["target"])
@@ -62,7 +69,13 @@ def project_topology(artifacts: LegacyAnalysisArtifacts) -> ApplicationTopology:
         ApplicationComponent(
             component_id=candidate["component_id"],
             root_path=candidate.get("root_path"),
-            role=roles_by_component.get(candidate["component_id"], "application"),
+            role=_tracked_from_candidates(
+                candidates=roles_by_component.get(candidate["component_id"], []),
+                value_key="role",
+                missing_reason="No deployment role evidence was found.",
+                conflict_reason="Multiple deployment role candidates were found.",
+                missing_evidence_refs=list(candidate.get("evidence_refs", [])),
+            ),
             evidence_refs=list(candidate.get("evidence_refs", [])),
             dependencies=dependencies_by_component.get(candidate["component_id"], []),
         )
@@ -126,6 +139,8 @@ def project_findings(
         "lifecycle.variants[0].container_build_strategy": variant.container_build_strategy,
         "lifecycle.variants[0].container_entrypoint": variant.container_entrypoint,
     }
+    for index, component in enumerate(topology.components):
+        tracked_fields[f"topology.components[{index}].role"] = component.role
 
     for field_path, tracked in tracked_fields.items():
         if tracked.state == FieldState.RESOLVED:
@@ -171,24 +186,26 @@ def project_findings(
 
 def project_coverage(artifacts: LegacyAnalysisArtifacts) -> UnderstandingCoverage:
     inventory = artifacts.artifact_inventory
-    supported_keys = {"build_files", "container_files", "compose_files"}
-    analyzed_artifacts = 0
-    supported_artifacts = 0
+    supported_paths = _supported_artifact_paths(artifacts)
     unsupported_artifacts: list[str] = []
 
     for key, value in inventory.items():
         if not isinstance(value, list):
             continue
-        analyzed_artifacts += len(value)
-        if key in supported_keys:
-            supported_artifacts += len(value)
-        elif value:
-            unsupported_artifacts.extend(item.get("path", key) for item in value if isinstance(item, dict))
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            if item.get("present") is False:
+                continue
+            path = str(item.get("path", key))
+            if path in supported_paths:
+                continue
+            unsupported_artifacts.append(path)
 
     return UnderstandingCoverage(
-        analyzed_artifacts=analyzed_artifacts,
-        supported_artifacts=supported_artifacts,
-        unsupported_artifacts=unsupported_artifacts,
+        analyzed_artifacts=len(supported_paths),
+        supported_artifacts=len(supported_paths),
+        unsupported_artifacts=_distinct_ordered(unsupported_artifacts),
     )
 
 
@@ -197,15 +214,27 @@ def _tracked_from_candidates(
     value_key: str,
     missing_reason: str,
     conflict_reason: str,
+    missing_evidence_refs: list[str] | None = None,
 ) -> TrackedValue:
-    value_candidates = [_candidate_value(candidate, value_key) for candidate in candidates if value_key in candidate]
+    value_candidates: list[dict[str, Any]] = []
+    missing_metadata: list[str] = []
+    for candidate in candidates:
+        projected, missing = _candidate_value(candidate, value_key)
+        if missing:
+            missing_metadata.extend(missing)
+            continue
+        value_candidates.append(projected)
+
     values = [candidate["value"] for candidate in value_candidates]
     evidence_refs = _merge_evidence_refs(candidates)
     distinct_values_only = _distinct_ordered(values)
     distinct_candidates = _distinct_candidates(value_candidates)
 
+    if missing_metadata:
+        fields = ", ".join(_distinct_ordered(missing_metadata))
+        return _unresolved(f"Candidate for {value_key} has missing metadata: {fields}.", evidence_refs)
     if not distinct_values_only:
-        return _unresolved(missing_reason)
+        return _unresolved(missing_reason, missing_evidence_refs or evidence_refs)
     if len(distinct_values_only) == 1:
         candidate = distinct_candidates[0]
         return TrackedValue(
@@ -300,6 +329,13 @@ def _package_script_command(
 
 def _environment_variable_names(artifacts: LegacyAnalysisArtifacts) -> list[str]:
     names: list[str] = []
+    for fact in artifacts.evidence_model.get("facts", []):
+        if fact.get("fact_type") != "compose_environment" or not isinstance(fact.get("value"), dict):
+            continue
+        name = fact["value"].get("name")
+        if name:
+            names.append(name)
+
     env_classification = artifacts.rule_inference.get("env_classification", {})
     for candidates in env_classification.values():
         if not isinstance(candidates, list):
@@ -327,21 +363,35 @@ def _merge_evidence_refs(candidates: list[dict[str, Any]]) -> list[str]:
     return _distinct_ordered(refs)
 
 
-def _candidate_value(candidate: dict[str, Any], value_key: str) -> dict[str, Any]:
-    return {
-        "value": candidate[value_key],
-        "source": candidate.get("source", "unknown"),
-        "confidence": candidate.get("confidence", "high"),
-        "classification": candidate.get("classification", "observed_fact"),
-        "evidence_refs": list(candidate.get("evidence_refs", [])),
-    }
+def _candidate_value(candidate: dict[str, Any], value_key: str) -> tuple[dict[str, Any], list[str]]:
+    missing: list[str] = []
+    if value_key not in candidate or candidate[value_key] is None:
+        missing.append(value_key)
+    for key in ("source", "confidence", "classification"):
+        if not candidate.get(key):
+            missing.append(key)
+    if not candidate.get("evidence_refs"):
+        missing.append("evidence_refs")
+    if missing:
+        return {}, missing
+
+    return (
+        {
+            "value": candidate[value_key],
+            "source": candidate["source"],
+            "confidence": candidate["confidence"],
+            "classification": candidate["classification"],
+            "evidence_refs": list(candidate["evidence_refs"]),
+        },
+        [],
+    )
 
 
 def _distinct_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     result: list[dict[str, Any]] = []
     for candidate in candidates:
-        normalized = distinct_values([candidate["value"]])[0]
+        normalized = normalized_values([candidate])[0]
         if normalized in seen:
             continue
         seen.add(normalized)
@@ -352,7 +402,7 @@ def _distinct_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any
 def _distinct_ordered(values: list[Any]) -> list[Any]:
     seen: set[str] = set()
     result: list[Any] = []
-    for value, normalized in zip(values, distinct_values(values), strict=False):
+    for value, normalized in zip(values, normalized_values(values), strict=False):
         if normalized in seen:
             continue
         seen.add(normalized)
@@ -360,5 +410,101 @@ def _distinct_ordered(values: list[Any]) -> list[Any]:
     return result
 
 
-def _unresolved(reason: str) -> TrackedValue:
-    return TrackedValue(state=FieldState.UNRESOLVED, reason=reason)
+def _unresolved(reason: str, evidence_refs: list[str] | None = None) -> TrackedValue:
+    return TrackedValue(state=FieldState.UNRESOLVED, reason=reason, evidence_refs=evidence_refs or [])
+
+
+def _supported_artifact_paths(artifacts: LegacyAnalysisArtifacts) -> set[str]:
+    supported_fact_types = {
+        "dockerfile_base_image",
+        "dockerfile_expose",
+        "dockerfile_cmd",
+        "dockerfile_entrypoint",
+        "dockerfile_user",
+        "maven_packaging",
+        "maven_module",
+        "package_dependency",
+        "package_script",
+        "python_requirement_include",
+        "python_direct_reference",
+        "compose_service",
+        "compose_image",
+        "compose_build_context",
+        "compose_depends_on",
+        "compose_port",
+        "compose_environment",
+        "compose_volume",
+    }
+    paths: set[str] = set()
+    for fact in artifacts.evidence_model.get("facts", []):
+        if fact.get("fact_type") in supported_fact_types:
+            paths.add(str(fact.get("artifact_ref")))
+    return paths
+
+
+def _locator_for_fact(fact: dict[str, Any], index: int, compose_counts: dict[tuple[str, str, str], int]) -> str:
+    value = fact.get("value")
+    fact_type = fact.get("fact_type")
+    if fact_type == "artifact_presence":
+        if isinstance(value, dict) and value.get("present") is False:
+            return "inventory:absent"
+        return "inventory:present"
+    if fact_type == "dockerfile_base_image":
+        return "dockerfile:FROM"
+    if fact_type == "dockerfile_expose":
+        return f"dockerfile:EXPOSE[{index}]"
+    if fact_type == "dockerfile_cmd":
+        return "dockerfile:CMD"
+    if fact_type == "dockerfile_entrypoint":
+        return "dockerfile:ENTRYPOINT"
+    if fact_type == "dockerfile_user":
+        return "dockerfile:USER"
+    if fact_type == "maven_packaging":
+        return "xpath:/project/packaging"
+    if fact_type == "maven_module":
+        return f"xpath:/project/modules/module[{index}]"
+    if fact_type == "package_dependency" and isinstance(value, dict):
+        package = str(value.get("package", ""))
+        if str(fact.get("artifact_ref", "")).endswith("package.json"):
+            return f"jsonpath:$.dependencies.{package}"
+        if str(fact.get("artifact_ref", "")).endswith("requirements.txt"):
+            return f"requirement:{package}"
+        return f"package:{package}"
+    if fact_type == "package_script" and isinstance(value, dict):
+        return f"jsonpath:$.scripts.{value.get('name', '')}"
+    if fact_type == "python_requirement_include" and isinstance(value, dict):
+        return f"requirement-include:{value.get('kind', '')}:{value.get('path', '')}"
+    if fact_type == "python_direct_reference" and isinstance(value, dict):
+        return f"direct-reference:{value.get('kind', '')}:{value.get('package', '')}"
+    if fact_type == "parse_warning":
+        return f"parser-warning:{fact.get('source', 'parser')}[{index}]"
+    if isinstance(fact_type, str) and fact_type.startswith("compose_") and isinstance(value, dict):
+        return _compose_locator(str(fact.get("artifact_ref", "")), fact_type, value, compose_counts)
+    return f"fact:{fact_type or 'unknown'}[{index}]"
+
+
+def _compose_locator(
+    artifact_ref: str,
+    fact_type: str,
+    value: dict[str, Any],
+    compose_counts: dict[tuple[str, str, str], int],
+) -> str:
+    service = str(value.get("service", ""))
+    if fact_type == "compose_service":
+        return f"yamlpath:$.services.{service}"
+    compose_key = {
+        "compose_image": "image",
+        "compose_build_context": "build",
+        "compose_depends_on": "depends_on",
+        "compose_port": "ports",
+        "compose_environment": "environment",
+        "compose_volume": "volumes",
+    }.get(fact_type)
+    if compose_key is None:
+        return fact_type
+    if compose_key in {"image", "build"}:
+        return f"yamlpath:$.services.{service}.{compose_key}"
+    key = (artifact_ref, service, compose_key)
+    index = compose_counts.get(key, 0)
+    compose_counts[key] = index + 1
+    return f"yamlpath:$.services.{service}.{compose_key}[{index}]"
