@@ -9,6 +9,11 @@ EXTRA_TEST_FILES = [
     Path(__file__).parent / "adapters" / "test_preanalyzer_adapter.py",
     Path(__file__).parent / "domain" / "test_understanding_models.py",
     Path(__file__).parent / "capabilities" / "test_analysis_builder.py",
+    Path(__file__).parent / "capabilities" / "test_repository_analysis.py",
+    Path(__file__).parent / "presentation" / "test_assessment_views.py",
+    Path(__file__).parent / "cli" / "test_assess_command.py",
+    Path(__file__).parent / "e2e" / "test_v1_beta.py",
+    Path(__file__).parent / "e2e" / "test_v1_beta_docs.py",
 ]
 
 

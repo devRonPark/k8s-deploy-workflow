@@ -13,6 +13,7 @@ dependencies = [
 [project.scripts]
 k8s-agent = "k8s_agent.cli:main"
 preanalyzer = "preanalyzer.cli:main"
+repository-agent = "migration_agent.cli.main:main"
 
 [build-system]
 requires = ["setuptools>=68"]
