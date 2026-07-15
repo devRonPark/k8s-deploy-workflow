@@ -17,7 +17,7 @@ bash scripts/verify-v1-beta.sh
 
 ## Results
 
-- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/migration_agent -v`: 47 tests passed.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests/migration_agent -v`: 61 tests passed.
 - `.venv/bin/repository-agent assess tests/fixtures/migration_agent/node-docker --output /tmp/repository-agent-node-docker-smoke`: exit code 0.
 - `.venv/bin/repository-agent assess tests/fixtures/migration_agent/node-compose-conflict --output /tmp/repository-agent-node-conflict-smoke`: exit code 0.
 - `.venv/bin/repository-agent assess tests/fixtures/migration_agent/node-no-dockerfile --output /tmp/repository-agent-node-no-dockerfile-smoke`: exit code 0.
@@ -30,11 +30,11 @@ These SHAs were fixed from `git ls-remote <repo> HEAD` on 2026-07-15.
 
 | Repository | Fixed Commit SHA | v1 beta role | Result |
 |---|---|---|---|
-| `mybatis/jpetstore-6` | `5a7cc780505b88a60779b3e3c0a50b0e404cfb2d` | Single application validation | Passed: 1 component, execution complete, 3 unknown, 0 conflicts |
-| `fastapi/full-stack-fastapi-template` | `4d3d5e92c1ea6b3fa0fab02c41124844ec45bca8` | Compose/monorepo-style validation | Passed: 5 components, execution unknown, 5 unknown, 0 conflicts |
-| `GoogleCloudPlatform/microservices-demo` | `9a4616e77f0f9cbcbecaf27d711c38890dda1404` | MSA Experimental | Passed: 6 components, execution conflicted, 9 unknown, 2 conflicts |
-| `spring-petclinic/spring-petclinic-microservices` | `305a1f13e4f961001d4e6cb50a9db51dc3fc5967` | MSA Experimental | Passed: 20 components, execution conflicted, 21 unknown, 1 conflict |
-| `dotnet/eShop` | `9b4f9434f46fdc5c1a6e9e936af2868340cdbc48` | Polyrepo Unsupported Scope probe | Passed: 1 component, execution unknown, 7 unknown, 0 conflicts |
+| `mybatis/jpetstore-6` | `5a7cc780505b88a60779b3e3c0a50b0e404cfb2d` | Single application validation | Passed: 1 component, execution complete, 3 unknown, 0 conflicts; coverage parsed 2, partial 1, unsupported 8, ignored 1 |
+| `fastapi/full-stack-fastapi-template` | `4d3d5e92c1ea6b3fa0fab02c41124844ec45bca8` | Compose/monorepo-style validation | Passed: 9 components, execution conflicted, 89 unknown, 5 conflicts; coverage parsed 8, partial 2, unsupported 15, ignored 11 |
+| `GoogleCloudPlatform/microservices-demo` | `9a4616e77f0f9cbcbecaf27d711c38890dda1404` | MSA Experimental | Passed: 22 components, execution partial, 107 unknown, 1 conflict; coverage parsed 97, partial 0, unsupported 34, ignored 43 |
+| `spring-petclinic/spring-petclinic-microservices` | `305a1f13e4f961001d4e6cb50a9db51dc3fc5967` | MSA Experimental | Passed: 20 components, execution partial, 124 unknown, 0 conflicts; coverage parsed 18, partial 8, unsupported 2, ignored 4 |
+| `dotnet/eShop` | `9b4f9434f46fdc5c1a6e9e936af2868340cdbc48` | Polyrepo Unsupported Scope probe | Passed: 25 components, execution partial, 157 unknown, 0 conflicts; coverage parsed 57, partial 5, unsupported 4, ignored 4 |
 
 Expected probe behavior:
 
