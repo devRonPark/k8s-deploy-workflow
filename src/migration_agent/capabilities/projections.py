@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +10,10 @@ from migration_agent.domain.lifecycle import LifecycleModel, LifecycleVariant
 from migration_agent.domain.repository import RepositoryIdentity
 from migration_agent.domain.topology import ApplicationComponent, ApplicationTopology
 from migration_agent.domain.understanding import (
+    ArtifactCoverage,
     ConfirmedFact,
     ConflictFinding,
+    CoverageStatus,
     EvidenceRef,
     UnderstandingCoverage,
     UnknownFinding,
@@ -86,24 +89,14 @@ def project_topology(artifacts: LegacyAnalysisArtifacts) -> ApplicationTopology:
 
 
 def project_lifecycle(artifacts: LegacyAnalysisArtifacts) -> LifecycleModel:
-    build_command = _package_script_command(
-        artifacts=artifacts,
-        script_name="build",
-        missing_reason="No build command evidence was found.",
-        conflict_reason="Multiple build command candidates were found.",
-    )
+    build_command = _build_command(artifacts)
     runtime_command = _tracked_from_candidates(
         candidates=artifacts.rule_inference.get("runtime_command_candidates", []),
         value_key="command",
         missing_reason="No runtime command evidence was found.",
         conflict_reason="Multiple runtime command candidates were found.",
     )
-    runtime_port = _tracked_from_candidates(
-        candidates=artifacts.rule_inference.get("runtime_port_candidates", []),
-        value_key="port",
-        missing_reason="No runtime port evidence was found.",
-        conflict_reason="Multiple runtime port candidates were found.",
-    )
+    runtime_port = _runtime_port(artifacts)
     container_strategy = _container_build_strategy(artifacts)
 
     return LifecycleModel(
@@ -160,6 +153,7 @@ def project_findings(
                 UnknownFinding(
                     field_path=field_path,
                     reason=tracked.reason or "No repository evidence was found.",
+                    reason_code=tracked.reason_code or "missing_evidence",
                     evidence_refs=tracked.evidence_refs,
                 )
             )
@@ -186,10 +180,12 @@ def project_findings(
 
 def project_coverage(artifacts: LegacyAnalysisArtifacts) -> UnderstandingCoverage:
     inventory = artifacts.artifact_inventory
-    supported_paths = _supported_artifact_paths(artifacts)
-    unsupported_artifacts: list[str] = []
+    facts_by_path = _facts_by_artifact_path(artifacts)
+    warning_details = _warning_details_by_artifact_path(artifacts)
+    items: list[ArtifactCoverage] = []
 
-    for key, value in inventory.items():
+    for key in sorted(inventory):
+        value = inventory[key]
         if not isinstance(value, list):
             continue
         for item in value:
@@ -198,14 +194,65 @@ def project_coverage(artifacts: LegacyAnalysisArtifacts) -> UnderstandingCoverag
             if item.get("present") is False:
                 continue
             path = str(item.get("path", key))
-            if path in supported_paths:
-                continue
-            unsupported_artifacts.append(path)
+            artifact_type = str(item.get("type", key))
+            path_facts = facts_by_path.get(path, [])
+            evidence_refs = [str(fact.get("evidence_id")) for fact in path_facts if fact.get("evidence_id")]
+            details = [*warning_details.get(path, []), *_unresolved_fact_details(path_facts)]
+
+            if _is_ignored_inventory_item(key, artifact_type):
+                items.append(
+                    ArtifactCoverage(
+                        artifact_ref=path,
+                        artifact_type=artifact_type,
+                        status=CoverageStatus.IGNORED,
+                        reason_code=_ignored_reason_code(artifact_type),
+                    )
+                )
+            elif _is_supported_inventory_item(key, artifact_type) or _has_supported_facts(path_facts):
+                if details:
+                    items.append(
+                        ArtifactCoverage(
+                            artifact_ref=path,
+                            artifact_type=artifact_type,
+                            status=CoverageStatus.PARTIAL,
+                            reason_code=_coverage_reason_code(details),
+                            details=_distinct_ordered(details),
+                            evidence_refs=_distinct_ordered(evidence_refs),
+                        )
+                    )
+                else:
+                    items.append(
+                        ArtifactCoverage(
+                            artifact_ref=path,
+                            artifact_type=artifact_type,
+                            status=CoverageStatus.PARSED,
+                            reason_code="parsed",
+                            evidence_refs=_distinct_ordered(evidence_refs),
+                        )
+                    )
+            else:
+                items.append(
+                    ArtifactCoverage(
+                        artifact_ref=path,
+                        artifact_type=artifact_type,
+                        status=CoverageStatus.UNSUPPORTED,
+                        reason_code="unsupported_artifact",
+                    )
+                )
+
+    items = sorted(items, key=lambda item: (item.artifact_ref, item.artifact_type, item.status.value))
+    analyzed = [item.artifact_ref for item in items if item.status in {CoverageStatus.PARSED, CoverageStatus.PARTIAL}]
+    partial = [item.artifact_ref for item in items if item.status == CoverageStatus.PARTIAL]
+    unsupported = [item.artifact_ref for item in items if item.status == CoverageStatus.UNSUPPORTED]
+    ignored = [item.artifact_ref for item in items if item.status == CoverageStatus.IGNORED]
 
     return UnderstandingCoverage(
-        analyzed_artifacts=len(supported_paths),
-        supported_artifacts=len(supported_paths),
-        unsupported_artifacts=_distinct_ordered(unsupported_artifacts),
+        analyzed_artifacts=len(_distinct_ordered(analyzed)),
+        supported_artifacts=len(_distinct_ordered(analyzed)),
+        unsupported_artifacts=_distinct_ordered(unsupported),
+        partial_artifacts=_distinct_ordered(partial),
+        ignored_artifacts=_distinct_ordered(ignored),
+        items=items,
     )
 
 
@@ -232,7 +279,11 @@ def _tracked_from_candidates(
 
     if missing_metadata:
         fields = ", ".join(_distinct_ordered(missing_metadata))
-        return _unresolved(f"Candidate for {value_key} has missing metadata: {fields}.", evidence_refs)
+        return _unresolved(
+            f"Candidate for {value_key} has missing metadata: {fields}.",
+            evidence_refs,
+            reason_code="partial_parser_coverage",
+        )
     if not distinct_values_only:
         return _unresolved(missing_reason, missing_evidence_refs or evidence_refs)
     if len(distinct_values_only) == 1:
@@ -276,6 +327,40 @@ def _container_build_strategy(artifacts: LegacyAnalysisArtifacts) -> TrackedValu
         confidence="high",
         classification="observed_fact",
         evidence_refs=evidence_refs,
+    )
+
+
+def _build_command(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
+    build_command = _package_script_command(
+        artifacts=artifacts,
+        script_name="build",
+        missing_reason="No build command evidence was found.",
+        conflict_reason="Multiple build command candidates were found.",
+    )
+    unsupported_refs = _unsupported_artifact_evidence_refs(artifacts, bucket="build_files")
+    if build_command.state == FieldState.UNRESOLVED and unsupported_refs:
+        return _unresolved(
+            "Unsupported build artifacts were discovered, so build command evidence may be incomplete.",
+            unsupported_refs,
+            reason_code="unsupported_artifact",
+        )
+    return build_command
+
+
+def _runtime_port(artifacts: LegacyAnalysisArtifacts) -> TrackedValue:
+    candidates = artifacts.rule_inference.get("runtime_port_candidates", [])
+    unresolved_refs, unresolved_details = _unresolved_compose_port_refs_and_details(artifacts)
+    if not candidates and unresolved_refs:
+        return _unresolved(
+            "Compose port evidence contains unresolved interpolation, so no runtime port was inferred.",
+            unresolved_refs,
+            reason_code=_coverage_reason_code(unresolved_details),
+        )
+    return _tracked_from_candidates(
+        candidates=candidates,
+        value_key="port",
+        missing_reason="No runtime port evidence was found.",
+        conflict_reason="Multiple runtime port candidates were found.",
     )
 
 
@@ -410,12 +495,21 @@ def _distinct_ordered(values: list[Any]) -> list[Any]:
     return result
 
 
-def _unresolved(reason: str, evidence_refs: list[str] | None = None) -> TrackedValue:
-    return TrackedValue(state=FieldState.UNRESOLVED, reason=reason, evidence_refs=evidence_refs or [])
+def _unresolved(
+    reason: str,
+    evidence_refs: list[str] | None = None,
+    reason_code: str = "missing_evidence",
+) -> TrackedValue:
+    return TrackedValue(
+        state=FieldState.UNRESOLVED,
+        reason=reason,
+        reason_code=reason_code,
+        evidence_refs=evidence_refs or [],
+    )
 
 
-def _supported_artifact_paths(artifacts: LegacyAnalysisArtifacts) -> set[str]:
-    supported_fact_types = {
+def _supported_fact_types() -> set[str]:
+    return {
         "dockerfile_base_image",
         "dockerfile_expose",
         "dockerfile_cmd",
@@ -434,12 +528,132 @@ def _supported_artifact_paths(artifacts: LegacyAnalysisArtifacts) -> set[str]:
         "compose_port",
         "compose_environment",
         "compose_volume",
+        "parse_warning",
     }
-    paths: set[str] = set()
+
+
+def _facts_by_artifact_path(artifacts: LegacyAnalysisArtifacts) -> dict[str, list[dict[str, Any]]]:
+    paths: dict[str, list[dict[str, Any]]] = {}
     for fact in artifacts.evidence_model.get("facts", []):
-        if fact.get("fact_type") in supported_fact_types:
-            paths.add(str(fact.get("artifact_ref")))
+        paths.setdefault(str(fact.get("artifact_ref")), []).append(fact)
     return paths
+
+
+def _has_supported_facts(facts: list[dict[str, Any]]) -> bool:
+    supported_fact_types = _supported_fact_types()
+    return any(fact.get("fact_type") in supported_fact_types for fact in facts)
+
+
+def _warning_details_by_artifact_path(artifacts: LegacyAnalysisArtifacts) -> dict[str, list[str]]:
+    details: dict[str, list[str]] = {}
+    for fact in artifacts.evidence_model.get("facts", []):
+        if fact.get("fact_type") == "parse_warning":
+            path = str(fact.get("artifact_ref"))
+            value = fact.get("value")
+            if value is not None:
+                details.setdefault(path, []).append(str(value))
+
+    for warning in artifacts.evidence_model.get("warnings", []):
+        parsed = _parse_warning_payload(warning)
+        path = parsed.get("path")
+        message = parsed.get("message")
+        if path and message:
+            details.setdefault(str(path), []).append(str(message))
+    return details
+
+
+def _parse_warning_payload(warning: Any) -> dict[str, Any]:
+    if isinstance(warning, dict):
+        return warning
+    if not isinstance(warning, str):
+        return {}
+    try:
+        parsed = json.loads(warning)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _unresolved_fact_details(facts: list[dict[str, Any]]) -> list[str]:
+    return [warning for _, warning in _unresolved_facts(facts)]
+
+
+def _unresolved_compose_port_refs_and_details(artifacts: LegacyAnalysisArtifacts) -> tuple[list[str], list[str]]:
+    refs: list[str] = []
+    details: list[str] = []
+    compose_port_facts = [
+        fact
+        for fact in artifacts.evidence_model.get("facts", [])
+        if fact.get("fact_type") == "compose_port"
+    ]
+    for evidence_id, warning in _unresolved_facts(compose_port_facts):
+        refs.append(evidence_id)
+        details.append(warning)
+    return _distinct_ordered(refs), _distinct_ordered(details)
+
+
+def _unresolved_facts(facts: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    unresolved: list[tuple[str, str]] = []
+    for fact in facts:
+        value = fact.get("value")
+        if not isinstance(value, dict):
+            continue
+        warning = value.get("warning")
+        evidence_id = fact.get("evidence_id")
+        if value.get("resolved") is False and warning and evidence_id:
+            unresolved.append((str(evidence_id), str(warning)))
+    return unresolved
+
+
+def _coverage_reason_code(details: list[str]) -> str:
+    text = " ".join(details).lower()
+    if "unresolved interpolation" in text:
+        return "unresolved_interpolation"
+    if details:
+        return "partial_parser_coverage"
+    return "parsed"
+
+
+def _is_supported_inventory_item(bucket: str, artifact_type: str) -> bool:
+    return (bucket, artifact_type) in {
+        ("build_files", "maven"),
+        ("build_files", "nodejs"),
+        ("build_files", "python_requirements"),
+        ("build_files", "python_pyproject"),
+        ("compose_files", "compose"),
+        ("container_files", "dockerfile"),
+    }
+
+
+def _unsupported_artifact_evidence_refs(artifacts: LegacyAnalysisArtifacts, bucket: str) -> list[str]:
+    paths = {
+        str(item.get("path"))
+        for item in artifacts.artifact_inventory.get(bucket, [])
+        if isinstance(item, dict)
+        and item.get("present", True)
+        and not _is_supported_inventory_item(bucket, str(item.get("type", bucket)))
+        and not _is_ignored_inventory_item(bucket, str(item.get("type", bucket)))
+    }
+    refs: list[str] = []
+    for fact in artifacts.evidence_model.get("facts", []):
+        if fact.get("fact_type") != "artifact_presence":
+            continue
+        value = fact.get("value")
+        if not isinstance(value, dict) or str(value.get("path")) not in paths:
+            continue
+        if fact.get("evidence_id"):
+            refs.append(str(fact["evidence_id"]))
+    return _distinct_ordered(refs)
+
+
+def _is_ignored_inventory_item(bucket: str, artifact_type: str) -> bool:
+    return bucket == "docs" or artifact_type == "env"
+
+
+def _ignored_reason_code(artifact_type: str) -> str:
+    if artifact_type == "env":
+        return "secret_safety"
+    return "intentionally_ignored"
 
 
 def _locator_for_fact(fact: dict[str, Any], index: int, compose_counts: dict[tuple[str, str, str], int]) -> str:

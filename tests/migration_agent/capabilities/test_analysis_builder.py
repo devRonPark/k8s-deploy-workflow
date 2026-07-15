@@ -131,6 +131,7 @@ class RepositoryUnderstandingBuilderTests(unittest.TestCase):
 
         self.assertEqual(runtime_port.state, FieldState.UNRESOLVED)
         self.assertIn("missing metadata", runtime_port.reason)
+        self.assertEqual(runtime_port.reason_code, "partial_parser_coverage")
         self.assertNotIn(
             "lifecycle.variants[0].runtime_port",
             {fact.field_path for fact in result.confirmed_facts},

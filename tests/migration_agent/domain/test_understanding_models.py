@@ -10,8 +10,10 @@ from migration_agent.domain.lifecycle import LifecycleModel, LifecycleVariant
 from migration_agent.domain.repository import RepositoryIdentity
 from migration_agent.domain.topology import ApplicationComponent, ApplicationTopology
 from migration_agent.domain.understanding import (
+    ArtifactCoverage,
     ConfirmedFact,
     ConflictFinding,
+    CoverageStatus,
     EvidenceRef,
     RepositoryUnderstanding,
     UnderstandingCoverage,
@@ -101,6 +103,15 @@ def understanding(**overrides: object) -> RepositoryUnderstanding:
             analyzed_artifacts=2,
             supported_artifacts=2,
             unsupported_artifacts=[],
+            items=[
+                ArtifactCoverage(
+                    artifact_ref="Dockerfile",
+                    artifact_type="dockerfile",
+                    status=CoverageStatus.PARSED,
+                    reason_code="parsed",
+                    evidence_refs=["F0001"],
+                )
+            ],
         ),
     }
     payload.update(overrides)
@@ -225,6 +236,7 @@ class UnderstandingModelTests(unittest.TestCase):
         finding = UnknownFinding(
             field_path="lifecycle.variants[0].container_build_strategy",
             reason="No Dockerfile evidence was found.",
+            reason_code="missing_evidence",
             evidence_refs=[],
         )
         conflict = ConflictFinding(
@@ -256,7 +268,57 @@ class UnderstandingModelTests(unittest.TestCase):
         )
 
         self.assertEqual(model.unknowns[0].field_path, "lifecycle.variants[0].container_build_strategy")
+        self.assertEqual(model.unknowns[0].reason_code, "missing_evidence")
         self.assertEqual([candidate["value"] for candidate in model.conflicts[0].candidates], [3000, 8080])
+
+    def test_coverage_items_are_validated_and_serialized(self) -> None:
+        coverage = UnderstandingCoverage(
+            analyzed_artifacts=2,
+            supported_artifacts=2,
+            unsupported_artifacts=["go.mod"],
+            partial_artifacts=["docker-compose.yml"],
+            ignored_artifacts=["README.md"],
+            items=[
+                ArtifactCoverage(
+                    artifact_ref="docker-compose.yml",
+                    artifact_type="compose",
+                    status=CoverageStatus.PARTIAL,
+                    reason_code="unresolved_interpolation",
+                    details=["web: unresolved interpolation: ${APP_PORT}"],
+                    evidence_refs=["F0001"],
+                ),
+                ArtifactCoverage(
+                    artifact_ref="go.mod",
+                    artifact_type="go",
+                    status=CoverageStatus.UNSUPPORTED,
+                    reason_code="unsupported_artifact",
+                    evidence_refs=["F0001"],
+                ),
+            ],
+        )
+
+        dumped = coverage.model_dump(mode="json")
+        again = UnderstandingCoverage.model_validate(dumped)
+
+        self.assertEqual(again.items[0].status, CoverageStatus.PARTIAL)
+        self.assertEqual(dumped["items"][0]["status"], "partial")
+
+        with self.assertRaises(ValidationError):
+            understanding(
+                coverage=UnderstandingCoverage(
+                    analyzed_artifacts=1,
+                    supported_artifacts=1,
+                    items=[
+                        ArtifactCoverage(
+                            artifact_ref="docker-compose.yml",
+                            artifact_type="compose",
+                            status=CoverageStatus.PARTIAL,
+                            reason_code="unresolved_interpolation",
+                            evidence_refs=["missing"],
+                        )
+                    ],
+                )
+            )
 
     def test_extra_fields_block_target_proposal_decision_and_manifest_concepts(self) -> None:
         for forbidden in ("target", "proposal", "decision", "manifest"):

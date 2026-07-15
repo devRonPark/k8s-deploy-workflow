@@ -70,6 +70,40 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertNotIn("Dockerfile proposal", console)
             self.assert_no_forbidden_outputs(output)
 
+    def test_coverage_summary_explains_partial_and_unsupported_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "node-compose-unresolved"
+
+            console, understanding, assessment = run_assess("node-compose-unresolved", output)
+
+            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            runtime_port_unknown = next(
+                item
+                for item in understanding["unknowns"]
+                if item["field_path"] == "lifecycle.variants[0].runtime_port"
+            )
+            build_command_unknown = next(
+                item
+                for item in understanding["unknowns"]
+                if item["field_path"] == "lifecycle.variants[0].build_command"
+            )
+            coverage = assessment["coverage"]
+            items = {item["artifact_ref"]: item for item in coverage["items"]}
+
+            self.assertEqual(runtime_port["state"], "unresolved")
+            self.assertEqual(runtime_port_unknown["reason_code"], "unresolved_interpolation")
+            self.assertIn("F", runtime_port_unknown["evidence_refs"][0])
+            self.assertEqual(build_command_unknown["reason_code"], "unsupported_artifact")
+            self.assertTrue(build_command_unknown["evidence_refs"])
+            self.assertEqual(items["docker-compose.yml"]["status"], "partial")
+            self.assertEqual(items["docker-compose.yml"]["reason_code"], "unresolved_interpolation")
+            self.assertEqual(items["go.mod"]["status"], "unsupported")
+            self.assertIn("docker-compose.yml: partial", console)
+            self.assertIn("go.mod: unsupported", console)
+            self.assertIn("Coverage", console)
+            self.assertIn("partial", (output / "repository-assessment.md").read_text(encoding="utf-8"))
+            self.assert_no_forbidden_outputs(output)
+
     def test_same_input_outputs_are_semantically_stable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             first_output = Path(tmp) / "first"

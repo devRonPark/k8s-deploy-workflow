@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import Field
 
 from migration_agent.domain.common import FieldState, StrictBaseModel, TrackedValue
-from migration_agent.domain.understanding import RepositoryUnderstanding
+from migration_agent.domain.understanding import ArtifactCoverage, CoverageStatus, RepositoryUnderstanding
 
 
 KUBERNETES_LIMITATION_MESSAGE = "Kubernetes manifests are not generated in v1."
@@ -19,6 +19,23 @@ class AssessmentLevel(StrEnum):
     CONFLICTED = "conflicted"
 
 
+class AssessmentCoverageItem(StrictBaseModel):
+    artifact_ref: str
+    artifact_type: str
+    status: str
+    reason_code: str
+    details: list[str] = Field(default_factory=list)
+
+
+class AssessmentCoverageView(StrictBaseModel):
+    parsed_count: int
+    partial_count: int
+    unsupported_count: int
+    ignored_count: int
+    items: list[AssessmentCoverageItem] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class RepositoryAssessmentView(StrictBaseModel):
     components: list[str] = Field(default_factory=list)
     execution: AssessmentLevel
@@ -29,6 +46,14 @@ class RepositoryAssessmentView(StrictBaseModel):
     unknown_count: int
     conflict_count: int
     evidence_count: int
+    coverage: AssessmentCoverageView = Field(
+        default_factory=lambda: AssessmentCoverageView(
+            parsed_count=0,
+            partial_count=0,
+            unsupported_count=0,
+            ignored_count=0,
+        )
+    )
     notable_unknowns: list[str] = Field(default_factory=list)
     notable_conflicts: list[str] = Field(default_factory=list)
 
@@ -55,12 +80,44 @@ def build_assessment_view(understanding: RepositoryUnderstanding) -> RepositoryA
         unknown_count=len(understanding.unknowns),
         conflict_count=len(understanding.conflicts),
         evidence_count=len(understanding.evidence),
+        coverage=_coverage_view(understanding.coverage.items),
         notable_unknowns=[unknown.field_path for unknown in understanding.unknowns],
         notable_conflicts=[
             f"{conflict.field_path}: {_candidate_values(conflict.candidates)}"
             for conflict in understanding.conflicts
         ],
     )
+
+
+def _coverage_view(items: list[ArtifactCoverage]) -> AssessmentCoverageView:
+    view_items = [
+        AssessmentCoverageItem(
+            artifact_ref=item.artifact_ref,
+            artifact_type=item.artifact_type,
+            status=item.status.value,
+            reason_code=item.reason_code,
+            details=item.details,
+        )
+        for item in items
+    ]
+    limitations = [
+        _coverage_limitation(item)
+        for item in items
+        if item.status in {CoverageStatus.PARTIAL, CoverageStatus.UNSUPPORTED}
+    ]
+    return AssessmentCoverageView(
+        parsed_count=sum(1 for item in items if item.status == CoverageStatus.PARSED),
+        partial_count=sum(1 for item in items if item.status == CoverageStatus.PARTIAL),
+        unsupported_count=sum(1 for item in items if item.status == CoverageStatus.UNSUPPORTED),
+        ignored_count=sum(1 for item in items if item.status == CoverageStatus.IGNORED),
+        items=view_items,
+        limitations=limitations,
+    )
+
+
+def _coverage_limitation(item: ArtifactCoverage) -> str:
+    detail = f" ({item.reason_code})" if item.reason_code else ""
+    return f"{item.artifact_ref}: {item.status.value}{detail}"
 
 
 def _single_level(value: TrackedValue | None) -> AssessmentLevel:
