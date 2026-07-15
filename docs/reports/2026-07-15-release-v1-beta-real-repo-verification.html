@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>release/v1-beta 5 Repo Verification Report</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #637083;
+      --line: #d9dee8;
+      --pass: #0f7b45;
+      --pass-bg: #dff7e9;
+      --warn: #9b5b00;
+      --warn-bg: #fff0cf;
+      --neutral: #42526e;
+      --neutral-bg: #e9edf5;
+      --accent: #2557a7;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; }
+    header { background: #10213d; color: white; padding: 36px 40px 32px; }
+    header h1 { margin: 0 0 10px; font-size: 30px; font-weight: 720; letter-spacing: 0; }
+    header p { margin: 4px 0; color: #d7e2f2; }
+    main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 48px; }
+    .cards { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+    .card span { display: block; color: var(--muted); font-size: 13px; }
+    .card strong { display: block; margin-top: 4px; font-size: 24px; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 18px 0; padding: 22px; }
+    h2 { margin: 0 0 14px; font-size: 21px; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eef2f8; color: #24344d; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
+    ul { margin: 0; padding-left: 18px; }
+    .muted { color: var(--muted); }
+    .badge { display: inline-block; min-width: 58px; text-align: center; border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 700; }
+    .badge.pass { color: var(--pass); background: var(--pass-bg); }
+    .badge.warn { color: var(--warn); background: var(--warn-bg); }
+    .badge.neutral { color: var(--neutral); background: var(--neutral-bg); }
+    .repo-grid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; margin: 12px 0 18px; }
+    .repo-grid > div { border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 68px; }
+    .label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .note { margin: 16px 0 0; color: var(--muted); }
+    .callout { border-left: 4px solid var(--accent); padding-left: 14px; color: #263a59; }
+    @media (max-width: 900px) {
+      .cards, .repo-grid { grid-template-columns: repeat(2, 1fr); }
+      .columns { grid-template-columns: 1fr; }
+      header { padding: 28px 22px; }
+      main { padding: 20px 14px 36px; }
+      table { font-size: 13px; }
+      th, td { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>release/v1-beta 5개 저장소 검증 결과</h1>
+    <p>검증 기준: <code>origin/release/v1-beta @ 7a1d3fea4c4cc95359ba5ffe2c79ad1e427a9033</code></p>
+    <p>검증 시각: 2026-07-15 18:18:17 KST</p>
+    <p>검증 명령: <code>PYTHON_BIN=/home/daolts/k8s-deploy-workflow/.venv/bin/python3 bash scripts/verify-v1-beta-real-repos.sh /tmp/k8s-release-v1-beta-report.XqS4ew/probes</code></p>
+  </header>
+  <main>
+    <div class="cards"><div class='card'><span>검증 대상</span><strong>5 repos</strong></div><div class='card'><span>전체 결과</span><strong>PASS</strong></div><div class='card'><span>컴포넌트</span><strong>76</strong></div><div class='card'><span>Unknown</span><strong>474</strong></div><div class='card'><span>Conflict</span><strong>6</strong></div><div class='card'><span>Evidence</span><strong>1731</strong></div></div>
+    <section>
+      <h2>요약</h2>
+      <p class="callout">5개 고정 SHA 저장소 모두 v1 beta 평가 실행과 필수 산출물 생성 검증을 통과했습니다. v1 beta는 평가 산출물만 만들며 Kubernetes manifest, proposal, decision, validation 산출물을 생성하지 않는 조건도 함께 확인했습니다.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Repository</th>
+            <th>SHA</th>
+            <th>Result</th>
+            <th>Components</th>
+            <th>Execution</th>
+            <th>Unknown</th>
+            <th>Conflict</th>
+            <th>Coverage parsed / partial / unsupported / ignored</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>mybatis/jpetstore-6</strong><br><span class='muted'>Single application validation</span></td><td><code>5a7cc780505b</code></td><td><span class="badge pass">PASS</span></td><td>1</td><td><span class="badge pass">complete</span></td><td>3</td><td>0</td><td>2 / 1 / 8 / 1</td></tr><tr><td><strong>fastapi/full-stack-fastapi-template</strong><br><span class='muted'>Compose / monorepo-style validation</span></td><td><code>4d3d5e92c1ea</code></td><td><span class="badge pass">PASS</span></td><td>9</td><td><span class="badge warn">conflicted</span></td><td>89</td><td>5</td><td>8 / 2 / 15 / 11</td></tr><tr><td><strong>GoogleCloudPlatform/microservices-demo</strong><br><span class='muted'>MSA experimental probe</span></td><td><code>9a4616e77f0f</code></td><td><span class="badge pass">PASS</span></td><td>21</td><td><span class="badge warn">partial</span></td><td>101</td><td>1</td><td>97 / 0 / 34 / 43</td></tr><tr><td><strong>spring-petclinic/spring-petclinic-microservices</strong><br><span class='muted'>Spring MSA experimental probe</span></td><td><code>305a1f13e4f9</code></td><td><span class="badge pass">PASS</span></td><td>20</td><td><span class="badge warn">partial</span></td><td>124</td><td>0</td><td>18 / 8 / 2 / 4</td></tr><tr><td><strong>dotnet/eShop</strong><br><span class='muted'>.NET polyrepo unsupported-scope probe</span></td><td><code>9b4f9434f46f</code></td><td><span class="badge pass">PASS</span></td><td>25</td><td><span class="badge warn">partial</span></td><td>157</td><td>0</td><td>57 / 5 / 4 / 4</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class='repo'><h2>mybatis/jpetstore-6</h2><div class='repo-grid'><div><span class='label'>Result</span><span class="badge pass">PASS</span></div><div><span class='label'>Execution</span><span class="badge pass">complete</span></div><div><span class='label'>Structure</span><span class="badge pass">complete</span></div><div><span class='label'>Build</span><span class="badge pass">complete</span></div><div><span class='label'>Container</span><span class="badge pass">complete</span></div><div><span class='label'>Outputs</span>OK</div></div><div class='columns'><div><h3>주요 Unknown</h3><ul><li><code>lifecycle.variants[0].build_command</code></li><li><code>lifecycle.variants[0].package_command</code></li><li><code>lifecycle.variants[0].container_entrypoint</code></li></ul></div><div><h3>주요 Conflict</h3><span class="muted">없음</span></div></div><p class='note'>Kubernetes manifests are not generated in v1.</p></section><section class='repo'><h2>fastapi/full-stack-fastapi-template</h2><div class='repo-grid'><div><span class='label'>Result</span><span class="badge pass">PASS</span></div><div><span class='label'>Execution</span><span class="badge warn">conflicted</span></div><div><span class='label'>Structure</span><span class="badge pass">complete</span></div><div><span class='label'>Build</span><span class="badge warn">unknown</span></div><div><span class='label'>Container</span><span class="badge warn">unknown</span></div><div><span class='label'>Outputs</span>OK</div></div><div class='columns'><div><h3>주요 Unknown</h3><ul><li><code>lifecycle.variants[0].build_command</code></li><li><code>lifecycle.variants[0].package_command</code></li><li><code>lifecycle.variants[0].run_command</code></li><li><code>lifecycle.variants[0].container_build_strategy</code></li><li><code>lifecycle.variants[0].container_entrypoint</code></li><li><code>lifecycle.variants[1].build_command</code></li></ul></div><div><h3>주요 Conflict</h3><ul><li><code>lifecycle.variants[8].runtime_port: 1025, 1080</code></li><li><code>lifecycle.variants[9].runtime_port: 1025, 1080</code></li><li><code>lifecycle.variants[13].runtime_port: 80, 8080</code></li><li><code>lifecycle.variants[14].runtime_port: 80, 8080</code></li><li><code>lifecycle.variants[16].runtime_port: 80, 443</code></li></ul></div></div><p class='note'>Kubernetes manifests are not generated in v1.</p></section><section class='repo'><h2>GoogleCloudPlatform/microservices-demo</h2><div class='repo-grid'><div><span class='label'>Result</span><span class="badge pass">PASS</span></div><div><span class='label'>Execution</span><span class="badge warn">partial</span></div><div><span class='label'>Structure</span><span class="badge pass">complete</span></div><div><span class='label'>Build</span><span class="badge warn">partial</span></div><div><span class='label'>Container</span><span class="badge warn">partial</span></div><div><span class='label'>Outputs</span>OK</div></div><div class='columns'><div><h3>주요 Unknown</h3><ul><li><code>lifecycle.variants[0].build_command</code></li><li><code>lifecycle.variants[0].package_command</code></li><li><code>lifecycle.variants[0].run_command</code></li><li><code>lifecycle.variants[0].container_build_strategy</code></li><li><code>lifecycle.variants[0].container_entrypoint</code></li><li><code>lifecycle.variants[1].build_command</code></li></ul></div><div><h3>주요 Conflict</h3><ul><li><code>lifecycle.variants[1].container_entrypoint: [&quot;/app/cartservice&quot;], [&quot;dotnet&quot;, &quot;cartservice.dll&quot;]</code></li></ul></div></div><p class='note'>Kubernetes manifests are not generated in v1.</p></section><section class='repo'><h2>spring-petclinic/spring-petclinic-microservices</h2><div class='repo-grid'><div><span class='label'>Result</span><span class="badge pass">PASS</span></div><div><span class='label'>Execution</span><span class="badge warn">partial</span></div><div><span class='label'>Structure</span><span class="badge pass">complete</span></div><div><span class='label'>Build</span><span class="badge warn">partial</span></div><div><span class='label'>Container</span><span class="badge warn">partial</span></div><div><span class='label'>Outputs</span>OK</div></div><div class='columns'><div><h3>주요 Unknown</h3><ul><li><code>lifecycle.variants[0].build_command</code></li><li><code>lifecycle.variants[0].package_command</code></li><li><code>lifecycle.variants[0].run_command</code></li><li><code>lifecycle.variants[0].container_build_strategy</code></li><li><code>lifecycle.variants[0].container_entrypoint</code></li><li><code>lifecycle.variants[1].build_command</code></li></ul></div><div><h3>주요 Conflict</h3><span class="muted">없음</span></div></div><p class='note'>Kubernetes manifests are not generated in v1.</p></section><section class='repo'><h2>dotnet/eShop</h2><div class='repo-grid'><div><span class='label'>Result</span><span class="badge pass">PASS</span></div><div><span class='label'>Execution</span><span class="badge warn">partial</span></div><div><span class='label'>Structure</span><span class="badge pass">complete</span></div><div><span class='label'>Build</span><span class="badge warn">unknown</span></div><div><span class='label'>Container</span><span class="badge warn">unknown</span></div><div><span class='label'>Outputs</span>OK</div></div><div class='columns'><div><h3>주요 Unknown</h3><ul><li><code>lifecycle.variants[0].build_command</code></li><li><code>lifecycle.variants[0].package_command</code></li><li><code>lifecycle.variants[0].run_command</code></li><li><code>lifecycle.variants[0].container_build_strategy</code></li><li><code>lifecycle.variants[0].container_entrypoint</code></li><li><code>lifecycle.variants[1].build_command</code></li></ul></div><div><h3>주요 Conflict</h3><span class="muted">없음</span></div></div><p class='note'>Kubernetes manifests are not generated in v1.</p></section>
+  </main>
+</body>
+</html>
