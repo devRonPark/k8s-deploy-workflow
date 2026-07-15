@@ -1197,6 +1197,16 @@ def _locator_for_fact(
         return f"package:{package}"
     if fact.fact_type == "package_script" and isinstance(value, dict):
         return f"jsonpath:$.scripts.{value.get('name', '')}"
+    if fact.fact_type == "kubernetes_resource" and isinstance(value, dict):
+        return f"yamlpath:$.metadata.name[{value.get('kind', 'Resource')}]"
+    if fact.fact_type == "kubernetes_service_port" and isinstance(value, dict):
+        return f"yamlpath:$.spec.ports[{index}]"
+    if fact.fact_type == "kubernetes_container_image" and isinstance(value, dict):
+        return "yamlpath:$.spec.template.spec.containers[0].image"
+    if fact.fact_type == "kubernetes_container_port" and isinstance(value, dict):
+        return f"yamlpath:$.spec.template.spec.containers[0].ports[{index}].containerPort"
+    if fact.fact_type == "helm_chart_metadata":
+        return "yamlpath:$.name"
     if fact.fact_type.startswith("compose_") and isinstance(value, dict):
         service = str(value.get("service", ""))
         if fact.fact_type == "compose_service":

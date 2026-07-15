@@ -528,6 +528,11 @@ def _supported_fact_types() -> set[str]:
         "compose_port",
         "compose_environment",
         "compose_volume",
+        "kubernetes_resource",
+        "kubernetes_service_port",
+        "kubernetes_container_image",
+        "kubernetes_container_port",
+        "helm_chart_metadata",
         "parse_warning",
     }
 
@@ -622,6 +627,8 @@ def _is_supported_inventory_item(bucket: str, artifact_type: str) -> bool:
         ("build_files", "python_pyproject"),
         ("compose_files", "compose"),
         ("container_files", "dockerfile"),
+        ("helm_charts", "helm_chart"),
+        ("kubernetes_manifests", "kubernetes_manifest"),
     }
 
 
@@ -690,6 +697,22 @@ def _locator_for_fact(fact: dict[str, Any], index: int, compose_counts: dict[tup
         return f"requirement-include:{value.get('kind', '')}:{value.get('path', '')}"
     if fact_type == "python_direct_reference" and isinstance(value, dict):
         return f"direct-reference:{value.get('kind', '')}:{value.get('package', '')}"
+    if fact_type == "kubernetes_resource" and isinstance(value, dict):
+        return f"yamlpath:{value.get('kind', 'Resource')}.{value.get('name', '')}.metadata"
+    if fact_type == "kubernetes_service_port" and isinstance(value, dict):
+        return f"yamlpath:Service.{value.get('name', '')}.spec.ports[{index}]"
+    if fact_type == "kubernetes_container_image" and isinstance(value, dict):
+        return (
+            f"yamlpath:{value.get('workload', 'workload')}"
+            f".containers.{value.get('container', '')}.image"
+        )
+    if fact_type == "kubernetes_container_port" and isinstance(value, dict):
+        return (
+            f"yamlpath:{value.get('workload', 'workload')}"
+            f".containers.{value.get('container', '')}.ports[{index}]"
+        )
+    if fact_type == "helm_chart_metadata":
+        return "yamlpath:$.name"
     if fact_type == "parse_warning":
         return f"parser-warning:{fact.get('source', 'parser')}[{index}]"
     if isinstance(fact_type, str) and fact_type.startswith("compose_") and isinstance(value, dict):

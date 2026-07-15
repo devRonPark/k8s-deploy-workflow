@@ -151,6 +151,34 @@ class V1BetaEndToEndTests(unittest.TestCase):
             self.assertEqual(coverage_items["docker-compose.dev.yml"]["status"], "partial")
             self.assert_no_forbidden_outputs(output)
 
+    def test_existing_kubernetes_and_helm_inputs_are_read_only_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "kubernetes-readonly-input"
+
+            _, understanding, assessment = run_assess("kubernetes-readonly-input", output)
+
+            runtime_port = understanding["lifecycle"]["variants"][0]["runtime_port"]
+            discovery = json.loads((output / "discovery.json").read_text(encoding="utf-8"))
+            fact_types = {
+                fact["fact_type"]
+                for fact in discovery["evidence_model"]["facts"]
+            }
+            coverage_items = {
+                item["artifact_ref"]: item
+                for item in assessment["coverage"]["items"]
+            }
+
+            self.assertEqual([component["component_id"] for component in understanding["topology"]["components"]], ["api"])
+            self.assertEqual(runtime_port["state"], "resolved")
+            self.assertEqual(runtime_port["value"], 8000)
+            self.assertIn("kubernetes_resource", fact_types)
+            self.assertIn("kubernetes_container_image", fact_types)
+            self.assertIn("kubernetes_container_port", fact_types)
+            self.assertIn("helm_chart_metadata", fact_types)
+            self.assertEqual(coverage_items["k8s/api.yaml"]["status"], "parsed")
+            self.assertEqual(coverage_items["chart/Chart.yaml"]["status"], "parsed")
+            self.assert_no_forbidden_outputs(output)
+
     def test_same_input_outputs_are_semantically_stable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             first_output = Path(tmp) / "first"

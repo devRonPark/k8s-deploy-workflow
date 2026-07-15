@@ -256,7 +256,7 @@ class RepositoryAnalysisScorecardAcceptanceTests(unittest.TestCase):
         self.assertFalse(report.quality_gate_passed)
         conflict = next(case for case in report.cases if case.case_id == "runtime-port-conflict")
         self.assertEqual(conflict.fields[0].actual_state, "conflict")
-        self.assertEqual(report.metrics.evidence_reference_accuracy, 0.8)
+        self.assertEqual(report.metrics.evidence_reference_accuracy, 9 / 11)
 
     def test_scorecard_report_is_byte_stable_for_same_inputs_and_clock(self):
         with tempfile.TemporaryDirectory() as tmp:

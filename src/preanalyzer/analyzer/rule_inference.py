@@ -18,12 +18,27 @@ from preanalyzer.models.rule_inference import (
 
 DEPENDENCY_IMAGES = ("postgres", "mysql", "mariadb", "redis")
 INFRA_IMAGES = ("traefik", "nginx")
+KUBERNETES_WORKLOAD_KINDS = {
+    "CronJob",
+    "DaemonSet",
+    "Deployment",
+    "Job",
+    "Pod",
+    "ReplicaSet",
+    "ReplicationController",
+    "StatefulSet",
+}
+KUBERNETES_COMPONENT_KINDS = KUBERNETES_WORKLOAD_KINDS | {"Service"}
 
 
 def infer(evidence: EvidenceModel) -> RuleInferenceSet:
     compose_components = _component_candidates_from_compose(evidence)
+    kubernetes_components = _component_candidates_from_kubernetes(evidence)
     package_components = _component_candidates_from_packages(evidence)
-    component_candidates = _reconcile_components(compose_components, package_components)
+    component_candidates = _reconcile_components(
+        _merge_component_candidates(compose_components + kubernetes_components),
+        package_components,
+    )
     root_by_component = {candidate.component_id: candidate.root_path for candidate in component_candidates}
 
     return RuleInferenceSet(
@@ -66,6 +81,31 @@ def _component_candidates_from_compose(evidence: EvidenceModel) -> list[Componen
     return sorted(by_service.values(), key=lambda candidate: candidate.component_id)
 
 
+def _component_candidates_from_kubernetes(evidence: EvidenceModel) -> list[ComponentCandidate]:
+    by_name: dict[str, ComponentCandidate] = {}
+    for fact in evidence.facts_by_type("kubernetes_resource"):
+        kind = fact.value.get("kind")
+        name = fact.value.get("name")
+        if kind not in KUBERNETES_COMPONENT_KINDS or not isinstance(name, str) or not name:
+            continue
+        existing = by_name.get(name)
+        if existing is None:
+            by_name[name] = ComponentCandidate(
+                component_id=name,
+                root_path=None,
+                source="kubernetes_manifest",
+                evidence_refs=[fact.evidence_id],
+            )
+            continue
+        by_name[name] = ComponentCandidate(
+            component_id=name,
+            root_path=existing.root_path,
+            source=existing.source,
+            evidence_refs=_distinct_ordered([*existing.evidence_refs, fact.evidence_id]),
+        )
+    return sorted(by_name.values(), key=lambda candidate: candidate.component_id)
+
+
 _PACKAGE_MANIFEST_FACTS = {
     "maven_packaging",
     "package_dependency",
@@ -102,6 +142,22 @@ def _component_candidates_from_packages(evidence: EvidenceModel) -> list[Compone
             )
         )
     return candidates
+
+
+def _merge_component_candidates(candidates: list[ComponentCandidate]) -> list[ComponentCandidate]:
+    by_id: dict[str, ComponentCandidate] = {}
+    for candidate in candidates:
+        existing = by_id.get(candidate.component_id)
+        if existing is None:
+            by_id[candidate.component_id] = candidate
+            continue
+        by_id[candidate.component_id] = ComponentCandidate(
+            component_id=candidate.component_id,
+            root_path=existing.root_path or candidate.root_path,
+            source=existing.source,
+            evidence_refs=_distinct_ordered([*existing.evidence_refs, *candidate.evidence_refs]),
+        )
+    return sorted(by_id.values(), key=lambda candidate: candidate.component_id)
 
 
 def _reconcile_components(
@@ -151,6 +207,13 @@ def _role_candidates(evidence: EvidenceModel) -> list[RoleCandidate]:
         elif image.startswith(INFRA_IMAGES):
             candidates.append(
                 RoleCandidate(service, "infrastructure", "infra_image_pattern", "high", [fact.evidence_id])
+            )
+    for fact in evidence.facts_by_type("kubernetes_resource"):
+        kind = fact.value.get("kind")
+        name = fact.value.get("name")
+        if kind in KUBERNETES_WORKLOAD_KINDS and isinstance(name, str) and name:
+            candidates.append(
+                RoleCandidate(name, "application", "kubernetes_workload", "medium", [fact.evidence_id])
             )
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.role))
 
@@ -266,6 +329,8 @@ def _runtime_port_candidates(
 ) -> list[RuntimePortCandidate]:
     candidates: list[RuntimePortCandidate] = []
     component_ids = {candidate.component_id for candidate in component_candidates}
+    named_container_ports = _kubernetes_named_container_ports(evidence)
+    service_backed_container_ports: set[tuple[str, int]] = set()
     for fact in evidence.facts_by_type("dockerfile_expose"):
         component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
         if component_id is not None:
@@ -277,7 +342,46 @@ def _runtime_port_candidates(
             candidates.append(
                 RuntimePortCandidate(service, container_port, fact.source, "medium", [fact.evidence_id])
             )
+    for fact in evidence.facts_by_type("kubernetes_service_port"):
+        service = fact.value.get("name")
+        target_port = fact.value.get("target_port")
+        service_port = fact.value.get("port")
+        if service not in component_ids:
+            continue
+        refs = [fact.evidence_id]
+        if isinstance(target_port, int):
+            port = target_port
+        elif isinstance(target_port, str):
+            container_port_fact = named_container_ports.get((service, target_port))
+            if container_port_fact is None:
+                continue
+            port = container_port_fact.value["container_port"]
+            refs.append(container_port_fact.evidence_id)
+        else:
+            port = service_port
+        if isinstance(port, int):
+            service_backed_container_ports.add((service, port))
+            candidates.append(RuntimePortCandidate(service, port, fact.source, "medium", refs))
+    for fact in evidence.facts_by_type("kubernetes_container_port"):
+        workload = fact.value.get("workload")
+        port = fact.value.get("container_port")
+        if workload in component_ids and isinstance(port, int):
+            if (workload, port) in service_backed_container_ports:
+                continue
+            candidates.append(RuntimePortCandidate(workload, port, fact.source, "medium", [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
+
+
+def _kubernetes_named_container_ports(evidence: EvidenceModel) -> dict[tuple[str, str], EvidenceFact]:
+    named_ports: dict[tuple[str, str], EvidenceFact] = {}
+    for fact in evidence.facts_by_type("kubernetes_container_port"):
+        workload = fact.value.get("workload")
+        name = fact.value.get("name")
+        port = fact.value.get("container_port")
+        if not isinstance(workload, str) or not isinstance(name, str) or not isinstance(port, int):
+            continue
+        named_ports.setdefault((workload, name), fact)
+    return named_ports
 
 
 def _runtime_command_candidates(

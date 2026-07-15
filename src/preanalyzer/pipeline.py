@@ -19,6 +19,8 @@ from preanalyzer.analyzer.evidence_builder import build as build_evidence
 from preanalyzer.analyzer.parsers.compose import try_parse as try_parse_compose
 from preanalyzer.analyzer.parsers.compose import try_parse_with_overrides
 from preanalyzer.analyzer.parsers.dockerfile import try_parse as try_parse_dockerfile
+from preanalyzer.analyzer.parsers.helm import try_parse as try_parse_helm
+from preanalyzer.analyzer.parsers.kubernetes import try_parse as try_parse_kubernetes
 from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
 from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
 from preanalyzer.analyzer.parsers.python_pkg import try_parse_pyproject, try_parse_requirements
@@ -580,6 +582,18 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
             record(record_path, try_parse_compose(repo / paths[0]))
         else:
             record(record_path, try_parse_with_overrides(repo / paths[0], [repo / path for path in paths[1:]]))
+
+    for item in inventory.kubernetes_manifests:
+        if item.get("present") is False:
+            continue
+        path = str(item["path"])
+        record(path, try_parse_kubernetes(repo / path))
+
+    for item in inventory.helm_charts:
+        if item.get("present") is False:
+            continue
+        path = str(item["path"])
+        record(path, try_parse_helm(repo / path))
 
     build_parsers = {
         "maven": try_parse_maven,
