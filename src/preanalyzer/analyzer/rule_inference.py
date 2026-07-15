@@ -18,12 +18,31 @@ from preanalyzer.models.rule_inference import (
 
 DEPENDENCY_IMAGES = ("postgres", "mysql", "mariadb", "redis")
 INFRA_IMAGES = ("traefik", "nginx")
+KUBERNETES_WORKLOAD_KINDS = {
+    "CronJob",
+    "DaemonSet",
+    "Deployment",
+    "Job",
+    "Pod",
+    "ReplicaSet",
+    "ReplicationController",
+    "StatefulSet",
+}
+KUBERNETES_COMPONENT_KINDS = KUBERNETES_WORKLOAD_KINDS
 
 
 def infer(evidence: EvidenceModel) -> RuleInferenceSet:
     compose_components = _component_candidates_from_compose(evidence)
+    kubernetes_components = _component_candidates_from_kubernetes(evidence)
+    dotnet_components = _component_candidates_from_dotnet(evidence)
+    spring_components = _component_candidates_from_spring(evidence)
     package_components = _component_candidates_from_packages(evidence)
-    component_candidates = _reconcile_components(compose_components, package_components)
+    component_candidates = _reconcile_components(
+        _merge_component_candidates(
+            compose_components + kubernetes_components + dotnet_components + spring_components
+        ),
+        package_components,
+    )
     root_by_component = {candidate.component_id: candidate.root_path for candidate in component_candidates}
 
     return RuleInferenceSet(
@@ -33,7 +52,7 @@ def infer(evidence: EvidenceModel) -> RuleInferenceSet:
         runtime_version_candidates=_runtime_version_candidates(evidence, component_candidates),
         runtime_port_candidates=_runtime_port_candidates(evidence, component_candidates),
         runtime_command_candidates=_runtime_command_candidates(evidence, component_candidates),
-        dependency_edge_candidates=_dependency_edge_candidates(evidence),
+        dependency_edge_candidates=_dependency_edge_candidates(evidence, component_candidates),
         env_classification=EnvClassification(secret_candidates=_secret_candidates(evidence)),
     )
 
@@ -43,18 +62,88 @@ def _component_candidates_from_compose(evidence: EvidenceModel) -> list[Componen
         fact.value["service"]: _normalize_root(fact.value["context"])
         for fact in evidence.facts_by_type("compose_build_context")
     }
-    candidates = []
+    by_service: dict[str, ComponentCandidate] = {}
     for fact in evidence.facts_by_type("compose_service"):
         service = fact.value["service"]
-        candidates.append(
-            ComponentCandidate(
+        existing = by_service.get(service)
+        root_path = build_context_by_service.get(service)
+        if existing is None:
+            by_service[service] = ComponentCandidate(
                 component_id=service,
-                root_path=build_context_by_service.get(service),
+                root_path=root_path,
                 source="compose_service",
                 evidence_refs=[fact.evidence_id],
             )
+            continue
+        refs = [*existing.evidence_refs, fact.evidence_id]
+        by_service[service] = ComponentCandidate(
+            component_id=service,
+            root_path=existing.root_path or root_path,
+            source=existing.source,
+            evidence_refs=_distinct_ordered(refs),
         )
-    return candidates
+    return sorted(by_service.values(), key=lambda candidate: candidate.component_id)
+
+
+def _component_candidates_from_kubernetes(evidence: EvidenceModel) -> list[ComponentCandidate]:
+    by_name: dict[str, ComponentCandidate] = {}
+    for fact in evidence.facts_by_type("kubernetes_resource"):
+        kind = fact.value.get("kind")
+        name = fact.value.get("name")
+        if kind not in KUBERNETES_COMPONENT_KINDS or not isinstance(name, str) or not name:
+            continue
+        existing = by_name.get(name)
+        if existing is None:
+            by_name[name] = ComponentCandidate(
+                component_id=name,
+                root_path=None,
+                source="kubernetes_manifest",
+                evidence_refs=[fact.evidence_id],
+            )
+            continue
+        by_name[name] = ComponentCandidate(
+            component_id=name,
+            root_path=existing.root_path,
+            source=existing.source,
+            evidence_refs=_distinct_ordered([*existing.evidence_refs, fact.evidence_id]),
+        )
+    return sorted(by_name.values(), key=lambda candidate: candidate.component_id)
+
+
+def _component_candidates_from_dotnet(evidence: EvidenceModel) -> list[ComponentCandidate]:
+    candidates: list[ComponentCandidate] = []
+    for fact in evidence.facts_by_type("dotnet_project_metadata"):
+        project_name = fact.value.get("project_name")
+        if not isinstance(project_name, str) or not project_name:
+            continue
+        candidates.append(
+            ComponentCandidate(
+                component_id=project_name,
+                root_path=_artifact_root(fact.artifact_ref),
+                source="dotnet_project",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
+    return sorted(candidates, key=lambda candidate: candidate.component_id)
+
+
+def _component_candidates_from_spring(evidence: EvidenceModel) -> list[ComponentCandidate]:
+    candidates: list[ComponentCandidate] = []
+    for fact in evidence.facts_by_type("spring_application_name"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        service_name = fact.value.get("name")
+        if not isinstance(service_name, str) or not service_name:
+            continue
+        candidates.append(
+            ComponentCandidate(
+                component_id=service_name,
+                root_path=_spring_config_root(fact.artifact_ref),
+                source="spring_config",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
+    return sorted(candidates, key=lambda candidate: candidate.component_id)
 
 
 _PACKAGE_MANIFEST_FACTS = {
@@ -93,6 +182,22 @@ def _component_candidates_from_packages(evidence: EvidenceModel) -> list[Compone
             )
         )
     return candidates
+
+
+def _merge_component_candidates(candidates: list[ComponentCandidate]) -> list[ComponentCandidate]:
+    by_id: dict[str, ComponentCandidate] = {}
+    for candidate in candidates:
+        existing = by_id.get(candidate.component_id)
+        if existing is None:
+            by_id[candidate.component_id] = candidate
+            continue
+        by_id[candidate.component_id] = ComponentCandidate(
+            component_id=candidate.component_id,
+            root_path=existing.root_path or candidate.root_path,
+            source=existing.source,
+            evidence_refs=_distinct_ordered([*existing.evidence_refs, *candidate.evidence_refs]),
+        )
+    return sorted(by_id.values(), key=lambda candidate: candidate.component_id)
 
 
 def _reconcile_components(
@@ -143,6 +248,28 @@ def _role_candidates(evidence: EvidenceModel) -> list[RoleCandidate]:
             candidates.append(
                 RoleCandidate(service, "infrastructure", "infra_image_pattern", "high", [fact.evidence_id])
             )
+    for fact in evidence.facts_by_type("kubernetes_resource"):
+        kind = fact.value.get("kind")
+        name = fact.value.get("name")
+        if kind in KUBERNETES_WORKLOAD_KINDS and isinstance(name, str) and name:
+            candidates.append(
+                RoleCandidate(name, "application", "kubernetes_workload", "medium", [fact.evidence_id])
+            )
+    for fact in evidence.facts_by_type("dotnet_project_metadata"):
+        project_name = fact.value.get("project_name")
+        sdk = str(fact.value.get("sdk") or "")
+        if isinstance(project_name, str) and project_name and sdk.endswith(".Sdk.Web"):
+            candidates.append(
+                RoleCandidate(project_name, "application", "dotnet_project", "medium", [fact.evidence_id])
+            )
+    for fact in evidence.facts_by_type("spring_application_name"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence)
+        if component_id is not None:
+            candidates.append(
+                RoleCandidate(component_id, "application", "spring_config", "medium", [fact.evidence_id])
+            )
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.role))
 
 
@@ -154,6 +281,7 @@ def _runtime_candidates(
     candidates: list[RuntimeCandidate] = []
     package_dependencies = evidence.facts_by_type("package_dependency")
     maven_packaging = evidence.facts_by_type("maven_packaging")
+    dotnet_projects = evidence.facts_by_type("dotnet_project_metadata")
 
     for fact in maven_packaging:
         component_id = _owning_component(fact.artifact_ref, component_candidates)
@@ -221,6 +349,44 @@ def _runtime_candidates(
                     [first.evidence_id],
                 )
             )
+    for fact in dotnet_projects:
+        component_id = _owning_component(fact.artifact_ref, component_candidates)
+        if component_id is None:
+            continue
+        target_frameworks = fact.value.get("target_frameworks")
+        if not isinstance(target_frameworks, list) or not target_frameworks:
+            continue
+        sdk = str(fact.value.get("sdk") or "")
+        candidates.append(
+            RuntimeCandidate(
+                component_id=component_id,
+                language="dotnet",
+                framework="aspnetcore" if sdk.endswith(".Sdk.Web") else None,
+                build_tool="dotnet",
+                build_strategy=_build_strategy_for(component_id, root_by_component, evidence),
+                source="dotnet_project",
+                confidence="high",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
+    for fact in evidence.facts_by_type("spring_application_name"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence, component_candidates)
+        if component_id is None:
+            continue
+        candidates.append(
+            RuntimeCandidate(
+                component_id=component_id,
+                language="java",
+                framework="spring",
+                build_tool=_build_tool_for(component_id, root_by_component, evidence),
+                build_strategy=_build_strategy_for(component_id, root_by_component, evidence),
+                source="spring_config",
+                confidence="medium",
+                evidence_refs=[fact.evidence_id],
+            )
+        )
     return sorted(candidates, key=lambda candidate: candidate.component_id)
 
 
@@ -257,6 +423,9 @@ def _runtime_port_candidates(
 ) -> list[RuntimePortCandidate]:
     candidates: list[RuntimePortCandidate] = []
     component_ids = {candidate.component_id for candidate in component_candidates}
+    named_container_ports = _kubernetes_named_container_ports(evidence)
+    service_workload_matches = _kubernetes_service_workload_matches(evidence)
+    service_backed_container_ports: set[tuple[str, int]] = set()
     for fact in evidence.facts_by_type("dockerfile_expose"):
         component_id = _component_for_artifact(fact.artifact_ref, component_candidates)
         if component_id is not None:
@@ -268,7 +437,101 @@ def _runtime_port_candidates(
             candidates.append(
                 RuntimePortCandidate(service, container_port, fact.source, "medium", [fact.evidence_id])
             )
+    for fact in evidence.facts_by_type("kubernetes_service_port"):
+        service = fact.value.get("name")
+        target_port = fact.value.get("target_port")
+        service_port = fact.value.get("port")
+        match = service_workload_matches.get(service)
+        if match is None:
+            continue
+        workload, selector_refs = match
+        if workload not in component_ids:
+            continue
+        refs = [fact.evidence_id, *selector_refs]
+        if isinstance(target_port, int):
+            port = target_port
+        elif isinstance(target_port, str):
+            container_port_fact = named_container_ports.get((workload, target_port))
+            if container_port_fact is None:
+                continue
+            port = container_port_fact.value["container_port"]
+            refs.append(container_port_fact.evidence_id)
+        else:
+            port = service_port
+        if isinstance(port, int):
+            service_backed_container_ports.add((workload, port))
+            candidates.append(RuntimePortCandidate(workload, port, fact.source, "medium", _distinct_ordered(refs)))
+    for fact in evidence.facts_by_type("kubernetes_container_port"):
+        workload = fact.value.get("workload")
+        port = fact.value.get("container_port")
+        if workload in component_ids and isinstance(port, int):
+            if (workload, port) in service_backed_container_ports:
+                continue
+            candidates.append(RuntimePortCandidate(workload, port, fact.source, "medium", [fact.evidence_id]))
+    for fact in evidence.facts_by_type("dotnet_launch_port"):
+        component_id = _owning_component(fact.artifact_ref, component_candidates)
+        port = fact.value.get("port")
+        if fact.value.get("scheme") != "http":
+            continue
+        if component_id is not None and isinstance(port, int):
+            candidates.append(RuntimePortCandidate(component_id, port, fact.source, "medium", [fact.evidence_id]))
+    for fact in evidence.facts_by_type("spring_server_port"):
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence, component_candidates)
+        port = fact.value.get("port")
+        if component_id is not None and isinstance(port, int):
+            candidates.append(RuntimePortCandidate(component_id, port, fact.source, "medium", [fact.evidence_id]))
     return sorted(candidates, key=lambda candidate: (candidate.component_id, candidate.port))
+
+
+def _kubernetes_named_container_ports(evidence: EvidenceModel) -> dict[tuple[str, str], EvidenceFact]:
+    named_ports: dict[tuple[str, str], EvidenceFact] = {}
+    for fact in evidence.facts_by_type("kubernetes_container_port"):
+        workload = fact.value.get("workload")
+        name = fact.value.get("name")
+        port = fact.value.get("container_port")
+        if not isinstance(workload, str) or not isinstance(name, str) or not isinstance(port, int):
+            continue
+        named_ports.setdefault((workload, name), fact)
+    return named_ports
+
+
+def _kubernetes_service_workload_matches(evidence: EvidenceModel) -> dict[str, tuple[str, list[str]]]:
+    workload_label_facts = []
+    for fact in evidence.facts_by_type("kubernetes_workload_pod_labels"):
+        kind = fact.value.get("kind")
+        workload = fact.value.get("name")
+        labels = fact.value.get("labels")
+        if kind not in KUBERNETES_WORKLOAD_KINDS:
+            continue
+        if not isinstance(workload, str) or not workload:
+            continue
+        if not isinstance(labels, dict) or not labels:
+            continue
+        workload_label_facts.append((workload, {str(key): str(value) for key, value in labels.items()}, fact))
+
+    matches: dict[str, tuple[str, list[str]]] = {}
+    for fact in evidence.facts_by_type("kubernetes_service_selector"):
+        service = fact.value.get("name")
+        selector = fact.value.get("selector")
+        if not isinstance(service, str) or not service:
+            continue
+        if not isinstance(selector, dict) or not selector:
+            continue
+        selector_values = {str(key): str(value) for key, value in selector.items()}
+        workload_matches = [
+            (workload, label_fact)
+            for workload, labels, label_fact in workload_label_facts
+            if _selector_matches(selector_values, labels)
+        ]
+        if len(workload_matches) != 1:
+            continue
+        workload, label_fact = workload_matches[0]
+        matches[service] = (workload, [fact.evidence_id, label_fact.evidence_id])
+    return matches
+
+
+def _selector_matches(selector: dict[str, str], labels: dict[str, str]) -> bool:
+    return all(labels.get(key) == value for key, value in selector.items())
 
 
 def _runtime_command_candidates(
@@ -287,6 +550,19 @@ def _runtime_command_candidates(
 
 def _component_for_artifact(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
     return _owning_component(artifact_ref, component_candidates)
+
+
+def _spring_component_for_artifact(
+    artifact_ref: str,
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate] | None = None,
+) -> str | None:
+    candidates = component_candidates or _component_candidates_from_spring(evidence)
+    root = _spring_config_root(artifact_ref)
+    matches = [candidate.component_id for candidate in candidates if candidate.root_path == root]
+    if len(matches) == 1:
+        return matches[0]
+    return _owning_component(artifact_ref, candidates)
 
 
 def _owning_component(artifact_ref: str, component_candidates: list[ComponentCandidate]) -> str | None:
@@ -320,6 +596,24 @@ def _owning_component(artifact_ref: str, component_candidates: list[ComponentCan
 def _artifact_root(artifact_ref: str) -> str:
     parent = artifact_ref.rsplit("/", 1)[0] if "/" in artifact_ref else "."
     return parent or "."
+
+
+def _spring_config_root(artifact_ref: str) -> str:
+    for marker in ("src/main/resources/", "src/test/resources/"):
+        if marker in artifact_ref:
+            root = artifact_ref.split(marker, 1)[0].rstrip("/")
+            return root or "."
+    return _artifact_root(artifact_ref)
+
+
+def _spring_config_variant_id(artifact_ref: str) -> str:
+    name = artifact_ref.rsplit("/", 1)[-1].lower()
+    for suffix in (".properties", ".yaml", ".yml"):
+        if name == f"application{suffix}":
+            return "common"
+        if name.startswith("application-") and name.endswith(suffix):
+            return name.removeprefix("application-").removesuffix(suffix) or "common"
+    return "common"
 
 
 def _component_id_for_root(root: str) -> str:
@@ -358,6 +652,30 @@ def _build_strategy_for(component_id: str, root_by_component: dict[str, str | No
     return "dockerfile_needed"
 
 
+def _build_tool_for(component_id: str, root_by_component: dict[str, str | None], evidence: EvidenceModel) -> str:
+    root_path = root_by_component.get(component_id)
+    for fact in evidence.facts_by_type("artifact_presence"):
+        if not fact.value.get("present", True):
+            continue
+        artifact_type = fact.value.get("type")
+        artifact_path = fact.value.get("path")
+        if not isinstance(artifact_path, str):
+            continue
+        if not _artifact_is_in_root(artifact_path, root_path):
+            continue
+        if artifact_type == "maven":
+            return "maven"
+        if artifact_type == "gradle":
+            return "gradle"
+    return "unknown"
+
+
+def _artifact_is_in_root(artifact_ref: str, root_path: str | None) -> bool:
+    if root_path in {None, "."}:
+        return "/" not in artifact_ref
+    return artifact_ref == root_path or artifact_ref.startswith(f"{root_path}/")
+
+
 def _fact_for_package(facts: list[EvidenceFact], package_name: str) -> EvidenceFact | None:
     for fact in facts:
         if fact.value["package"].lower() == package_name:
@@ -375,7 +693,21 @@ def _source_for_package_fact(fact: EvidenceFact) -> str:
     return fact.source
 
 
-def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeCandidate]:
+def _distinct_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _dependency_edge_candidates(
+    evidence: EvidenceModel,
+    component_candidates: list[ComponentCandidate],
+) -> list[DependencyEdgeCandidate]:
     candidates: list[DependencyEdgeCandidate] = []
     compose_services = {fact.value["service"] for fact in evidence.facts_by_type("compose_service")}
     for fact in evidence.facts_by_type("compose_depends_on"):
@@ -404,6 +736,23 @@ def _dependency_edge_candidates(evidence: EvidenceModel) -> list[DependencyEdgeC
                         evidence_refs=[fact.evidence_id],
                     )
                 )
+    for fact in evidence.facts_by_type("spring_dependency_hint"):
+        if _spring_config_variant_id(fact.artifact_ref) != "common":
+            continue
+        component_id = _spring_component_for_artifact(fact.artifact_ref, evidence, component_candidates)
+        target = fact.value.get("target")
+        dependency_type = fact.value.get("kind")
+        if component_id is not None and isinstance(target, str) and isinstance(dependency_type, str):
+            candidates.append(
+                DependencyEdgeCandidate(
+                    source_component=component_id,
+                    target=target,
+                    dependency_type=dependency_type,
+                    source=fact.source,
+                    confidence="medium",
+                    evidence_refs=[fact.evidence_id],
+                )
+            )
     return sorted(candidates, key=lambda c: (c.source_component, c.target, c.dependency_type))
 
 

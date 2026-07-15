@@ -10,8 +10,10 @@ from migration_agent.domain.lifecycle import LifecycleModel, LifecycleVariant
 from migration_agent.domain.repository import RepositoryIdentity
 from migration_agent.domain.topology import ApplicationComponent, ApplicationTopology
 from migration_agent.domain.understanding import (
+    ArtifactCoverage,
     ConfirmedFact,
     ConflictFinding,
+    CoverageStatus,
     EvidenceRef,
     RepositoryUnderstanding,
     UnderstandingCoverage,
@@ -47,6 +49,8 @@ def unresolved(reason: str = "No repository evidence was found.") -> TrackedValu
 
 def lifecycle_variant() -> LifecycleVariant:
     return LifecycleVariant(
+        component_id="root",
+        variant_id="common",
         build_command=unresolved("No build command evidence was found."),
         package_command=unresolved("No package command evidence was found."),
         run_command=resolved('["node", "server.js"]'),
@@ -101,6 +105,15 @@ def understanding(**overrides: object) -> RepositoryUnderstanding:
             analyzed_artifacts=2,
             supported_artifacts=2,
             unsupported_artifacts=[],
+            items=[
+                ArtifactCoverage(
+                    artifact_ref="Dockerfile",
+                    artifact_type="dockerfile",
+                    status=CoverageStatus.PARSED,
+                    reason_code="parsed",
+                    evidence_refs=["F0001"],
+                )
+            ],
         ),
     }
     payload.update(overrides)
@@ -108,6 +121,22 @@ def understanding(**overrides: object) -> RepositoryUnderstanding:
 
 
 class UnderstandingModelTests(unittest.TestCase):
+    def test_lifecycle_variant_component_id_is_validated_and_serialized(self) -> None:
+        variant = lifecycle_variant()
+
+        dumped = variant.model_dump(mode="json")
+        again = LifecycleVariant.model_validate(dumped)
+
+        self.assertEqual(dumped["component_id"], "root")
+        self.assertEqual(dumped["variant_id"], "common")
+        self.assertEqual(again.component_id, "root")
+        self.assertEqual(again.variant_id, "common")
+
+        with self.assertRaises(ValidationError):
+            LifecycleVariant.model_validate({**dumped, "component_id": 123})
+        with self.assertRaises(ValidationError):
+            LifecycleVariant.model_validate({**dumped, "variant_id": ""})
+
     def test_tracked_value_state_payloads_are_validated(self) -> None:
         with self.assertRaises(ValidationError):
             TrackedValue(state=FieldState.RESOLVED)
@@ -225,6 +254,7 @@ class UnderstandingModelTests(unittest.TestCase):
         finding = UnknownFinding(
             field_path="lifecycle.variants[0].container_build_strategy",
             reason="No Dockerfile evidence was found.",
+            reason_code="missing_evidence",
             evidence_refs=[],
         )
         conflict = ConflictFinding(
@@ -256,7 +286,57 @@ class UnderstandingModelTests(unittest.TestCase):
         )
 
         self.assertEqual(model.unknowns[0].field_path, "lifecycle.variants[0].container_build_strategy")
+        self.assertEqual(model.unknowns[0].reason_code, "missing_evidence")
         self.assertEqual([candidate["value"] for candidate in model.conflicts[0].candidates], [3000, 8080])
+
+    def test_coverage_items_are_validated_and_serialized(self) -> None:
+        coverage = UnderstandingCoverage(
+            analyzed_artifacts=2,
+            supported_artifacts=2,
+            unsupported_artifacts=["go.mod"],
+            partial_artifacts=["docker-compose.yml"],
+            ignored_artifacts=["README.md"],
+            items=[
+                ArtifactCoverage(
+                    artifact_ref="docker-compose.yml",
+                    artifact_type="compose",
+                    status=CoverageStatus.PARTIAL,
+                    reason_code="unresolved_interpolation",
+                    details=["web: unresolved interpolation: ${APP_PORT}"],
+                    evidence_refs=["F0001"],
+                ),
+                ArtifactCoverage(
+                    artifact_ref="go.mod",
+                    artifact_type="go",
+                    status=CoverageStatus.UNSUPPORTED,
+                    reason_code="unsupported_artifact",
+                    evidence_refs=["F0001"],
+                ),
+            ],
+        )
+
+        dumped = coverage.model_dump(mode="json")
+        again = UnderstandingCoverage.model_validate(dumped)
+
+        self.assertEqual(again.items[0].status, CoverageStatus.PARTIAL)
+        self.assertEqual(dumped["items"][0]["status"], "partial")
+
+        with self.assertRaises(ValidationError):
+            understanding(
+                coverage=UnderstandingCoverage(
+                    analyzed_artifacts=1,
+                    supported_artifacts=1,
+                    items=[
+                        ArtifactCoverage(
+                            artifact_ref="docker-compose.yml",
+                            artifact_type="compose",
+                            status=CoverageStatus.PARTIAL,
+                            reason_code="unresolved_interpolation",
+                            evidence_refs=["missing"],
+                        )
+                    ],
+                )
+            )
 
     def test_extra_fields_block_target_proposal_decision_and_manifest_concepts(self) -> None:
         for forbidden in ("target", "proposal", "decision", "manifest"):

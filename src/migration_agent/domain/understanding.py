@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import Field, field_validator, model_validator
@@ -46,6 +47,7 @@ class ConfirmedFact(StrictBaseModel):
 class UnknownFinding(StrictBaseModel):
     field_path: str
     reason: str
+    reason_code: str = "missing_evidence"
     evidence_refs: list[str] = Field(default_factory=list)
 
 
@@ -65,10 +67,29 @@ class ConflictFinding(StrictBaseModel):
         return self
 
 
+class CoverageStatus(StrEnum):
+    PARSED = "parsed"
+    PARTIAL = "partial"
+    UNSUPPORTED = "unsupported"
+    IGNORED = "ignored"
+
+
+class ArtifactCoverage(StrictBaseModel):
+    artifact_ref: str
+    artifact_type: str
+    status: CoverageStatus
+    reason_code: str
+    details: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class UnderstandingCoverage(StrictBaseModel):
     analyzed_artifacts: int
     supported_artifacts: int
     unsupported_artifacts: list[str] = Field(default_factory=list)
+    partial_artifacts: list[str] = Field(default_factory=list)
+    ignored_artifacts: list[str] = Field(default_factory=list)
+    items: list[ArtifactCoverage] = Field(default_factory=list)
 
 
 class RepositoryUnderstanding(StrictBaseModel):
@@ -103,5 +124,10 @@ class RepositoryUnderstanding(StrictBaseModel):
             missing = sorted(set(unknown.evidence_refs) - known)
             if missing:
                 raise ValueError(f"unknown references unknown evidence: {missing}")
+
+        for item in self.coverage.items:
+            missing = sorted(set(item.evidence_refs) - known)
+            if missing:
+                raise ValueError(f"coverage item references unknown evidence: {missing}")
 
         return self

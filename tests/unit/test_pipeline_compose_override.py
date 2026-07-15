@@ -78,6 +78,35 @@ class PipelineComposeOverrideTests(unittest.TestCase):
         self.assertEqual(len(port_facts), 1)
         self.assertEqual(port_facts[0]["value"]["container_port"], 80)
 
+    def test_compose_override_file_is_merged_for_compose_yaml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "compose.yaml").write_text(
+                "services:\n  api:\n    image: old/api\n    ports:\n      - \"8080:80\"\n",
+                encoding="utf-8",
+            )
+            (repo / "compose.override.yml").write_text(
+                "services:\n  api:\n    image: new/api\n",
+                encoding="utf-8",
+            )
+
+            _, _, evidence, _ = run_phase1_analysis(
+                repo=repo,
+                output_dir=Path(tmp) / "out",
+                url="fixture://compose-override",
+                ref="fixture",
+                clock=fixed_clock,
+            )
+
+        image_facts = [
+            fact.model_dump()
+            for fact in evidence.facts
+            if fact.fact_type == "compose_image" and fact.value.get("service") == "api"
+        ]
+        self.assertEqual(len(image_facts), 1)
+        self.assertEqual(image_facts[0]["value"]["image"], "new/api")
+
 
 if __name__ == "__main__":
     unittest.main()

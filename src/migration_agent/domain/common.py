@@ -61,6 +61,7 @@ class TrackedValue(StrictBaseModel):
     candidates: list[Any] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     reason: str | None = None
+    reason_code: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_state_payload(self) -> "TrackedValue":

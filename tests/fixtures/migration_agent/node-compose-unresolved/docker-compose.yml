@@ -1,0 +1,5 @@
+services:
+  web:
+    image: node:20
+    ports:
+      - "${HOST_PORT}:${APP_PORT}"

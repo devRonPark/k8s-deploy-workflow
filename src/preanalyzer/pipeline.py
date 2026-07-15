@@ -17,12 +17,22 @@ from preanalyzer.path_safety import resolve_repository_path
 
 from preanalyzer.analyzer.evidence_builder import build as build_evidence
 from preanalyzer.analyzer.parsers.compose import try_parse as try_parse_compose
-from preanalyzer.analyzer.parsers.compose import try_parse_with_override
+from preanalyzer.analyzer.parsers.compose import try_parse_with_overrides
 from preanalyzer.analyzer.parsers.dockerfile import try_parse as try_parse_dockerfile
+from preanalyzer.analyzer.parsers.dotnet import (
+    try_parse_appsettings,
+    try_parse_build_metadata,
+    try_parse_launch_settings,
+    try_parse_project,
+    try_parse_solution,
+)
+from preanalyzer.analyzer.parsers.helm import try_parse as try_parse_helm
+from preanalyzer.analyzer.parsers.kubernetes import try_parse as try_parse_kubernetes
 from preanalyzer.analyzer.parsers.maven import try_parse as try_parse_maven
 from preanalyzer.analyzer.parsers.nodejs import try_parse as try_parse_nodejs
 from preanalyzer.analyzer.parsers.python_pkg import try_parse_pyproject, try_parse_requirements
 from preanalyzer.analyzer.parsers.result import ParseWarning
+from preanalyzer.analyzer.parsers.spring import try_parse_spring_config
 from preanalyzer.analyzer.rule_inference import infer
 from preanalyzer.analyzer.runtime_command_resolver import analyze_runtime_commands
 from preanalyzer.analyzer.scanner import build_inventory, snapshot
@@ -575,13 +585,28 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
         path = str(item["path"])
         record(path, try_parse_dockerfile(repo / path))
 
-    for base_path, override_path in _pair_compose_files(inventory.compose_files):
-        if override_path is None:
-            record(base_path, try_parse_compose(repo / base_path))
+    for record_path, paths in _compose_parse_jobs(inventory.compose_files):
+        if len(paths) == 1:
+            record(record_path, try_parse_compose(repo / paths[0]))
         else:
-            record(base_path, try_parse_with_override(repo / base_path, repo / override_path))
+            record(record_path, try_parse_with_overrides(repo / paths[0], [repo / path for path in paths[1:]]))
+
+    for item in inventory.kubernetes_manifests:
+        if item.get("present") is False:
+            continue
+        path = str(item["path"])
+        record(path, try_parse_kubernetes(repo / path))
+
+    for item in inventory.helm_charts:
+        if item.get("present") is False:
+            continue
+        path = str(item["path"])
+        record(path, try_parse_helm(repo / path))
 
     build_parsers = {
+        "dotnet_build_metadata": try_parse_build_metadata,
+        "dotnet_project": try_parse_project,
+        "dotnet_solution": try_parse_solution,
         "maven": try_parse_maven,
         "nodejs": try_parse_nodejs,
         "python_pyproject": try_parse_pyproject,
@@ -590,6 +615,18 @@ def _parse_inventory(repo: Path, inventory: ArtifactInventory) -> tuple[dict[str
     for item in inventory.build_files:
         path = str(item["path"])
         parser = build_parsers.get(item["type"])
+        if parser is not None:
+            record(path, parser(repo / path))
+
+    app_config_parsers = {
+        "dotnet_appsettings": try_parse_appsettings,
+        "dotnet_launch_settings": try_parse_launch_settings,
+        "application_yaml": try_parse_spring_config,
+        "java_properties": try_parse_spring_config,
+    }
+    for item in inventory.app_configs:
+        path = str(item["path"])
+        parser = app_config_parsers.get(item["type"])
         if parser is not None:
             record(path, parser(repo / path))
 
@@ -622,18 +659,21 @@ COMPOSE_BASE_NAMES = {
     "docker-compose.yml",
 }
 COMPOSE_OVERRIDE_NAMES = {
+    "compose.override.yaml",
+    "compose.override.yml",
     "docker-compose.override.yaml",
     "docker-compose.override.yml",
 }
 
 
-def _pair_compose_files(compose_files: list) -> list[tuple[str, str | None]]:
-    """Pair base compose files with a same-directory override file.
+def _compose_parse_jobs(compose_files: list) -> list[tuple[str, list[str]]]:
+    """Build deterministic Compose parse jobs.
 
-    Yields (base_path, override_path) tuples. When a directory holds exactly
-    one base and exactly one override file they are paired for merged parsing.
-    Every other compose file (no override, an orphan override, or an ambiguous
-    multi-base directory) is yielded as (path, None) for independent parsing.
+    A directory with one base file and at most one default override has a known
+    merge relationship. Variant files such as ``docker-compose.dev.yml`` are
+    parsed as base + default override + variant and recorded under the variant
+    path so coverage can explain which view contributed facts. Ambiguous
+    multi-base or multi-override directories fall back to independent parsing.
     """
     by_dir: dict[str, dict[str, list[str]]] = {}
     for item in compose_files:
@@ -648,16 +688,21 @@ def _pair_compose_files(compose_files: list) -> list[tuple[str, str | None]]:
         else:
             bucket["other"].append(path)
 
-    pairs: list[tuple[str, str | None]] = []
+    jobs: list[tuple[str, list[str]]] = []
     for bucket in by_dir.values():
-        if len(bucket["base"]) == 1 and len(bucket["override"]) == 1:
-            pairs.append((bucket["base"][0], bucket["override"][0]))
+        base = sorted(bucket["base"])
+        overrides = sorted(bucket["override"])
+        variants = sorted(bucket["other"])
+
+        if len(base) == 1 and len(overrides) <= 1:
+            default_chain = [base[0], *overrides]
+            jobs.append((base[0], default_chain))
+            for variant in variants:
+                jobs.append((variant, [*default_chain, variant]))
         else:
-            for path in bucket["base"] + bucket["override"]:
-                pairs.append((path, None))
-        for path in bucket["other"]:
-            pairs.append((path, None))
-    return sorted(pairs, key=lambda pair: pair[0])
+            for path in base + overrides + variants:
+                jobs.append((path, [path]))
+    return sorted(jobs, key=lambda job: job[0])
 
 
 def _write_yaml(path: Path, document: dict) -> None:

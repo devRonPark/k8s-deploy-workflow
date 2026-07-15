@@ -1,0 +1,4 @@
+services:
+  api:
+    ports: !override
+      - "9000:9000"

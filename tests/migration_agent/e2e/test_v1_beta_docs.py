@@ -20,6 +20,13 @@ class V1BetaDocumentationTests(unittest.TestCase):
             "Known limitations",
         ):
             self.assertIn(expected, text)
+        for expected in (
+            "Maven project metadata and Gradle build-tool hints",
+            "Spring application configuration",
+            ".NET project, launch settings, and appsettings metadata",
+            "Existing Kubernetes manifests and Helm chart metadata as read-only evidence",
+        ):
+            self.assertIn(expected, text)
 
     def test_feedback_template_contains_beta_questions(self) -> None:
         text = Path("docs/feedback/v1-beta-feedback-template.md").read_text(encoding="utf-8")

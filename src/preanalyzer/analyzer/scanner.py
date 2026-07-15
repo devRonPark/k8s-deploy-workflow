@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import fnmatch
 import hashlib
+import re
 import subprocess
 
 import yaml
@@ -31,8 +32,12 @@ COMPOSE_NAMES = {
     "docker-compose.override.yaml",
     "docker-compose.override.yml",
 }
+COMPOSE_VARIANT_RE = re.compile(r"^(?:docker-)?compose\.[^.]+(?:\.[^.]+)*\.ya?ml$")
 
 BUILD_FILE_TYPES = {
+    "Directory.Build.props": "dotnet_build_metadata",
+    "Directory.Build.targets": "dotnet_build_metadata",
+    "Directory.Packages.props": "dotnet_build_metadata",
     "pom.xml": "maven",
     "build.gradle": "gradle",
     "build.gradle.kts": "gradle",
@@ -127,7 +132,7 @@ def build_inventory(repo: Path, snapshot: RepositorySnapshot) -> ArtifactInvento
         if _is_dockerfile(path):
             container_files.append({"path": rel, "type": "dockerfile", "present": True})
 
-        if lower_name in COMPOSE_NAMES:
+        if _is_compose_file(path):
             compose_files.append({"path": rel, "type": "compose"})
 
         build_type = _build_file_type(path)
@@ -206,7 +211,7 @@ def _is_dockerfile(path: Path) -> bool:
 def _build_file_type(path: Path) -> str | None:
     if path.name in BUILD_FILE_TYPES:
         return BUILD_FILE_TYPES[path.name]
-    if path.suffix == ".csproj":
+    if path.suffix in {".csproj", ".fsproj", ".vbproj"}:
         return "dotnet_project"
     if path.suffix == ".sln":
         return "dotnet_solution"
@@ -218,6 +223,10 @@ def _app_config_type(path: Path) -> str | None:
     lower_name = name.lower()
     if lower_name.startswith(".env"):
         return "env"
+    if name == "launchSettings.json":
+        return "dotnet_launch_settings"
+    if lower_name.startswith("appsettings") and lower_name.endswith(".json"):
+        return "dotnet_appsettings"
     if name in APP_CONFIG_NAMES:
         return APP_CONFIG_NAMES[name]
     if lower_name.startswith("application") and lower_name.endswith((".yml", ".yaml")):
@@ -240,7 +249,7 @@ def _ci_cd_type(path: Path, rel: str) -> str | None:
 def _is_kubernetes_manifest(path: Path) -> bool:
     if path.suffix.lower() not in {".yaml", ".yml"}:
         return False
-    if path.name.lower() in COMPOSE_NAMES:
+    if _is_compose_file(path):
         return False
     try:
         text = path.read_text(encoding="utf-8")
@@ -251,6 +260,11 @@ def _is_kubernetes_manifest(path: Path) -> bool:
         return any(isinstance(doc, dict) and "apiVersion" in doc and "kind" in doc for doc in documents)
     except yaml.YAMLError:
         return False
+
+
+def _is_compose_file(path: Path) -> bool:
+    lower_name = path.name.lower()
+    return lower_name in COMPOSE_NAMES or bool(COMPOSE_VARIANT_RE.match(lower_name))
 
 
 def _format_utc(value: datetime) -> str:

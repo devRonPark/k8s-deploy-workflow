@@ -116,14 +116,65 @@ class ScannerTests(unittest.TestCase):
     def test_compose_variants_detected(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            for name in ["docker-compose.yml", "docker-compose.override.yml", "compose.yaml"]:
+            for name in [
+                "docker-compose.yml",
+                "docker-compose.override.yml",
+                "docker-compose.dev.yml",
+                "compose.yaml",
+                "compose.prod.yaml",
+            ]:
                 (repo / name).write_text("services: {}\n", encoding="utf-8")
 
             inventory = build_inventory(repo, snapshot(repo, None, None, fixed_clock))
 
         self.assertEqual(
             paths(inventory.compose_files),
-            ["compose.yaml", "docker-compose.override.yml", "docker-compose.yml"],
+            [
+                "compose.prod.yaml",
+                "compose.yaml",
+                "docker-compose.dev.yml",
+                "docker-compose.override.yml",
+                "docker-compose.yml",
+            ],
+        )
+
+    def test_dotnet_files_are_inventory_inputs(self):
+        repo = Path("tests/fixtures/migration_agent/dotnet-web-config")
+
+        inventory = build_inventory(repo, snapshot(repo, None, None, fixed_clock))
+
+        self.assertIn({"path": "eShop.sln", "type": "dotnet_solution"}, inventory.build_files)
+        self.assertIn(
+            {"path": "src/Catalog.Api/Catalog.Api.csproj", "type": "dotnet_project"},
+            inventory.build_files,
+        )
+        self.assertIn(
+            {"path": "Directory.Build.props", "type": "dotnet_build_metadata"},
+            inventory.build_files,
+        )
+        self.assertIn(
+            {"path": "src/Catalog.Api/appsettings.json", "type": "dotnet_appsettings"},
+            inventory.app_configs,
+        )
+        self.assertIn(
+            {"path": "src/Catalog.Api/Properties/launchSettings.json", "type": "dotnet_launch_settings"},
+            inventory.app_configs,
+        )
+
+    def test_all_dotnet_sdk_project_extensions_are_inventory_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "Lib.fsproj").write_text("<Project Sdk=\"Microsoft.NET.Sdk\" />", encoding="utf-8")
+            (repo / "App.vbproj").write_text("<Project Sdk=\"Microsoft.NET.Sdk\" />", encoding="utf-8")
+
+            inventory = build_inventory(repo, snapshot(repo, None, None, fixed_clock))
+
+        self.assertEqual(
+            inventory.build_files,
+            [
+                {"path": "App.vbproj", "type": "dotnet_project"},
+                {"path": "Lib.fsproj", "type": "dotnet_project"},
+            ],
         )
 
     def test_env_template_detected_but_env_value_not_inventoried(self):

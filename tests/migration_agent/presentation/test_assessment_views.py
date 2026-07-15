@@ -9,6 +9,8 @@ from pydantic import ValidationError
 
 from migration_agent.capabilities.repository_analysis import analyze_repository
 from migration_agent.presentation.assessment import (
+    AssessmentCoverageItem,
+    AssessmentCoverageView,
     AssessmentLevel,
     RepositoryAssessmentView,
     build_assessment_view,
@@ -113,6 +115,35 @@ class RepositoryAssessmentViewTests(unittest.TestCase):
                 unknown_count=0,
                 conflict_count=0,
                 evidence_count=1,
+            )
+
+    def test_assessment_coverage_view_round_trips_and_rejects_invalid_shape(self) -> None:
+        coverage = AssessmentCoverageView(
+            parsed_count=1,
+            partial_count=1,
+            unsupported_count=1,
+            ignored_count=0,
+            items=[
+                AssessmentCoverageItem(
+                    artifact_ref="docker-compose.yml",
+                    artifact_type="compose",
+                    status="partial",
+                    reason_code="unresolved_interpolation",
+                    details=["web: unresolved interpolation: ${APP_PORT}"],
+                )
+            ],
+            limitations=["docker-compose.yml: partial (unresolved_interpolation)"],
+        )
+
+        again = AssessmentCoverageView.model_validate(coverage.model_dump(mode="json"))
+
+        self.assertEqual(again, coverage)
+        with self.assertRaises(ValidationError):
+            AssessmentCoverageItem(
+                artifact_ref="docker-compose.yml",
+                artifact_type="compose",
+                status="partial",
+                details=[],
             )
 
 

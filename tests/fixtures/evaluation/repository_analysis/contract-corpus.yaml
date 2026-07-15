@@ -1,5 +1,5 @@
 schema_version: repository-analysis-corpus/v1
-corpus_version: 2026-07-14.6
+corpus_version: 2026-07-14.7
 change_history:
   - version: 2026-07-14.1
     reason: Lock normal, negative finding, conflict, and coverage-gap contracts.
@@ -55,6 +55,10 @@ change_history:
       - maven-normal
       - python-normal
       - gradle-kotlin-coverage-gap
+      - kubernetes-kustomize-coverage-gap
+  - version: 2026-07-14.7
+    reason: Add Kubernetes and Helm evidence locators to repository scorecard rules.
+    affected_cases:
       - kubernetes-kustomize-coverage-gap
 artifact_contract:
   - artifact_type: node_package

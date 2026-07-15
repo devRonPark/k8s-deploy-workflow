@@ -1,0 +1,4 @@
+services:
+  api:
+    environment:
+      API_SECRET_KEY: "${API_SECRET_KEY}"
